@@ -1,0 +1,23 @@
+# UniVTAC: lift_can
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/lift_can/univtac_lift_can.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_lift_can.UniVTACLiftCanCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/lift_can/low_level_lift_can.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: lift_can
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_lift_can
+
+trials: 100
+num_workers: 1  # Isaac Sim is not parallel-safe

@@ -122,6 +122,14 @@ try:
 except ImportError:
     print("R1Pro not installed, skipping R1Pro APIs")
 
+# UniVTAC APIs (always available — talk to server over HTTP)
+from .tactile.univtac_api import UniVTACTactileApi
+from .tactile.univtac_motion_api import UniVTACMotionApi
+from .tactile.univtac_perception_api import UniVTACPerceptionApi
+register_api("UniVTACTactileApi", UniVTACTactileApi)
+register_api("UniVTACMotionApi", UniVTACMotionApi)
+register_api("UniVTACPerceptionApi", UniVTACPerceptionApi)
+
 if _libero_available:
     register_api("FrankaLiberoPrivilegedApi", FrankaLiberoPrivilegedApi)
     register_api("FrankaLiberoApi", lambda env: FrankaLiberoApi(env, use_sam3=True))

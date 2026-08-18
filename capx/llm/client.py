@@ -42,6 +42,8 @@ VLM_MODELS = [
     "deepseek/deepseek-r1",
     "qwen/qwen3.5-122b-a10b",
     "moonshotai/kimi-k2",
+    "moonshotai/kimi-k2.6",
+    "meta-llama/llama-4-maverick",
 ]
 CLAUDE_MODELS = ["anthropic/claude-opus-4-5", "anthropic/claude-haiku-4-5"]
 OSS_MODELS = [
@@ -81,9 +83,21 @@ ENSEMBLE_CONFIGS = [
 # ---------------------------------------------------------------------------
 
 
+def _strip_openrouter_prefix(model: str) -> str:
+    """Strip 'openrouter/' prefix if present, returning the native model ID."""
+    if model.startswith("openrouter/"):
+        return model[len("openrouter/"):]
+    return model
+
+
 def is_openrouter_model(model: str) -> bool:
     """Return True if the model should be routed through the OpenRouter proxy."""
     return model.startswith("openrouter/") or model in OPENROUTER_MODELS
+
+
+def is_vlm_model(model: str) -> bool:
+    """Return True if the model is a vision-language model (VLM)."""
+    return _strip_openrouter_prefix(model) in VLM_MODELS
 
 
 @dataclass
@@ -245,7 +259,7 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
 
     # keep calling until it works
     response = requests.post(
-        server_url, headers=headers, data=json.dumps(payload), timeout=200
+        server_url, headers=headers, data=json.dumps(payload), timeout=600
     )
     retry = 1
     while response.status_code in [404, 500, 502, 503, 504]:
@@ -253,7 +267,7 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
         print(f"Retry {retry}. Model query failed with status code {response.status_code}. Error: {response.text}. Retrying in {sleep_time} seconds...")
         time.sleep(sleep_time)
         response = requests.post(
-            server_url, headers=headers, data=json.dumps(payload), timeout=200
+            server_url, headers=headers, data=json.dumps(payload), timeout=600
         )
         retry += 1
 
@@ -269,6 +283,11 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
             out["content"] = body["output_text"]
         else:
             out["content"] = body["choices"][0]["message"]["content"]
+        if out["content"] is None:
+            raise RuntimeError(
+                f"Model returned None content. "
+                f"Raw response: {json.dumps(body, indent=2)[:500]}"
+            )
     except (KeyError, IndexError) as exc:
         raise RuntimeError(f"Unexpected response format: {body}") from exc
     if body.get("choices") is not None:
@@ -337,7 +356,7 @@ def query_model_streaming(
         args.server_url,
         headers=headers,
         data=json.dumps(payload),
-        timeout=200,
+        timeout=600,
         stream=True,
     ) as response:
         response.raise_for_status()

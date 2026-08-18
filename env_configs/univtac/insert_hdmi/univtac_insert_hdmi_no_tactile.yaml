@@ -1,0 +1,22 @@
+# UniVTAC: insert_hdmi (no-tactile ablation, single-turn)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/insert_hdmi/univtac_insert_hdmi_no_tactile.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_insert_hdmi.UniVTACInsertHDMICodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/insert_hdmi/low_level_insert_hdmi.yaml
+    privileged: false
+    apis:
+      - UniVTACMotionApi
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: insert_hdmi
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_insert_hdmi_no_tactile
+
+trials: 100
+num_workers: 1

@@ -76,17 +76,21 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
         "X-Title": "CaP-X",
     }
 
+    import httpx
+    _timeout = httpx.Timeout(300.0, connect=30.0)
     if async_client:
         client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             default_headers=default_headers,
+            timeout=_timeout,
         )
     else:
         client = OpenAI(
             api_key=api_key,
             base_url=base_url,
             default_headers=default_headers,
+            timeout=_timeout,
         )
 
     app = FastAPI(title="OpenRouter Proxy", version="1.0.0")

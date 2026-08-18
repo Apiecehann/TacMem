@@ -97,6 +97,12 @@ class LaunchArgs:
     num_workers: int | None = None
     """Number of parallel worker processes to use. Overrides the value in the YAML config."""
 
+    trial_timeout: int | None = None
+    """Seconds before a single trial times out (default 1000)."""
+
+    multiturn_limit: int | None = None
+    """Max code blocks per trial in multi-turn mode (default 10)."""
+
     record_video: bool | None = None
     """Whether to record and save videos of the environment execution."""
 

@@ -42,6 +42,12 @@ class ApiBase(ABC):
             ...
     """
 
+    # Function names that stay callable in executed code but are excluded
+    # from the LLM prompt.  Used for ground-truth oracles (e.g. a final
+    # success check) that the framework wants to invoke without the agent
+    # knowing about them.
+    _prompt_hidden: set[str] = set()
+
     def __init__(self, env: BaseEnv) -> None:
         self._env = env
         self._webui_enabled: bool = False
@@ -105,6 +111,8 @@ class ApiBase(ABC):
         lines: list[str] = []
         # lines: list[str] = [f"API: {self.__class__.__name__}", ""]
         for name, fn in self.functions().items():
+            if name in self._prompt_hidden:
+                continue
             try:
                 sig = str(inspect.signature(fn))
             except Exception:

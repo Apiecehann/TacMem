@@ -1,0 +1,22 @@
+# UniVTAC: grasp_classify (no-tactile ablation, single-turn)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/grasp_classify/univtac_grasp_classify_no_tactile.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_grasp_classify.UniVTACGraspClassifyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/grasp_classify/low_level_grasp_classify.yaml
+    privileged: false
+    apis:
+      - UniVTACMotionApi
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: grasp_classify
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_grasp_classify_no_tactile
+
+trials: 100
+num_workers: 1

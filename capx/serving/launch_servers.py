@@ -89,6 +89,17 @@ SERVER_REGISTRY: dict[str, dict[str, Any]] = {
         "gpu_memory_mb": 2000,
         "extra_args": {},
     },
+    "univtac": {
+        "target": "capx.serving.launch_univtac_server",
+        "default_port": 8120,
+        "gpu_required": True,
+        "gpu_memory_mb": 8000,
+        "extra_args": {"task": "insert_hole"},
+        # UniVTAC requires the UniVTAC conda environment (Isaac Sim).
+        # Point UNIVTAC_PYTHON at that env's python (falls back to the
+        # current interpreter — which will fail — if unset).
+        "python_bin": os.environ.get("UNIVTAC_PYTHON", ""),
+    },
 }
 
 # Reverse lookup: _target_ module string -> short name
@@ -115,6 +126,11 @@ PROFILES: dict[str, list[dict[str, Any]]] = {
     ],
     "minimal": [
         {"server": "pyroki", "port": 8116},
+    ],
+    # UniVTAC server is self-contained: sim + IK + perception + tactile all in one.
+    # No need for sam3 / graspnet / pyroki alongside it.
+    "tactile": [
+        {"server": "univtac", "port": 8120},
     ],
 }
 
@@ -306,8 +322,11 @@ def _build_cmd(server_config: dict[str, Any], workers: int) -> list[str]:
     port = server_config.get("port", reg["default_port"])
     host = server_config.get("host", "127.0.0.1")
 
+    # Support per-server python binary override (e.g. UniVTAC needs its own conda env)
+    python_bin = reg.get("python_bin") or sys.executable
+
     cmd = [
-        sys.executable,
+        python_bin,
         "-m",
         module,
         "--port",

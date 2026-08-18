@@ -1,0 +1,23 @@
+# UniVTAC: pull_out_key
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/pull_out_key/univtac_pull_out_key.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_pull_out_key.UniVTACPullOutKeyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/pull_out_key/low_level_pull_out_key.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: pull_out_key
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_pull_out_key
+
+trials: 100
+num_workers: 1  # Isaac Sim is not parallel-safe

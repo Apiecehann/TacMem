@@ -1,0 +1,22 @@
+# UniVTAC: pull_out_key (no-tactile ablation, single-turn)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/pull_out_key/univtac_pull_out_key_no_tactile.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_pull_out_key.UniVTACPullOutKeyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/pull_out_key/low_level_pull_out_key.yaml
+    privileged: false
+    apis:
+      - UniVTACMotionApi
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: pull_out_key
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_pull_out_key_no_tactile
+
+trials: 100
+num_workers: 1

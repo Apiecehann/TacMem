@@ -3,6 +3,8 @@
 
 # CaP-X
 
+> **说明**：本仓库基于 [capgym/cap-x](https://github.com/capgym/cap-x) 改进，新增 **UniVTAC 触觉评测集**与**触觉 API**（`get_tactile_data` / `detect_contact` / `detect_slip` 等），面向接触密集型的机器人操作任务评测。使用方法见 [docs/running_univtac_eval.md](docs/running_univtac_eval.md)。
+
 ### A Framework for Benchmarking and Improving Coding Agents for Robot Manipulation
 
 [Project Page](https://capgym.github.io/) &ensp;|&ensp; [Paper](https://arxiv.org/abs/2603.22435) 
@@ -106,6 +108,19 @@ uv sync --extra contactgraspnet  # Contact-GraspNet grasp planning
 uv sync --extra curobo           # cuRobo GPU-accelerated IK & motion planning (requires CUDA)
 ```
 
+## UniVTAC Tactile Evaluation
+
+本仓库新增了基于 [UniVTAC](https://github.com/univtac/UniVTAC) 的触觉操控评测（8 个接触密集型任务）与触觉 API。
+
+**依赖**：需单独克隆 UniVTAC 到本仓库的**同级目录**（`cap-x/../UniVTAC`），或用 `UNIVTAC_ROOT` 环境变量指定位置；评测需在 UniVTAC 的 conda 环境（含 Isaac Sim）中运行。
+
+```bash
+cd <cap-x 的父目录>
+git clone https://github.com/univtac/UniVTAC.git
+```
+
+完整启动与评测方法见 [docs/running_univtac_eval.md](docs/running_univtac_eval.md)。
+
 ## Quick Start
 
 ### 1. Perception servers (auto-launched)
@@ -189,6 +204,7 @@ uv run --no-sync --active capx/envs/launch.py \
 | ----- | -------- |
 | [Adding Environments](docs/adding-environments.md) | Creating simulators, task environments, YAML configs |
 | [Adding APIs](docs/adding-apis.md) | Implementing and registering new robot control APIs |
+| [UniVTAC Tactile Eval](docs/running_univtac_eval.md) | UniVTAC 触觉评测集、触觉 API、server 启动与评测运行 |
 | [Configuration](docs/configuration.md) | YAML format, CLI flags, LLM provider setup |
 | [LIBERO-PRO Tasks](docs/libero-tasks.md) | Setup, running any of 130+ LIBERO tasks, suite reference |
 | [BEHAVIOR Tasks](docs/behavior-tasks.md) | Setup, R1Pro tasks, expected baselines, environment variables |

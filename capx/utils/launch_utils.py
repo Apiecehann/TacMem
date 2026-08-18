@@ -162,15 +162,17 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
     return env_factory, merged_config, api_servers
 
 
-def _extract_code(content: str) -> list[str]:
+def _extract_code(content: str | None) -> list[str]:
     """Extract Python code from Markdown fenced code block.
 
     Args:
-        content: Raw model response
+        content: Raw model response (may be None if model returned empty output)
 
     Returns:
         Extracted Python code list
     """
+    if content is None:
+        return ["# (model returned empty response)"]
     fence_start = "```python\n"
     fence_end = "```"
     start_idx = 0
@@ -396,7 +398,7 @@ def _save_trial_artifacts(
         return None
     trial_dir = (
         Path(config["output_dir"])
-        / f"trial_{trial:02d}_sandboxrc_{sandbox_rc}_reward_{reward:.3f}_taskcompleted_{int(task_completed)}"
+        / f"trial_{trial:02d}_taskcompleted_{int(task_completed)}"
     )
     trial_dir.mkdir(parents=True, exist_ok=True)
 

@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 
-def _encode_video_base64(frames: list[np.ndarray], fps: int = 30) -> str:
+def _encode_video_base64(frames: list[np.ndarray], fps: int = 10) -> str:
     """Encode a list of RGB frames as a base64-encoded MP4 video data URL.
 
     Args:
@@ -46,7 +46,7 @@ def _write_video(frames: list[np.ndarray], output_dir: str | None, *, suffix: st
     parent = Path(output_dir)
     out_path = parent / f"video_{suffix}.mp4"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with imageio.get_writer(out_path, fps=30, format="FFMPEG", codec="libx264") as writer:
+    with imageio.get_writer(out_path, fps=10, format="FFMPEG", codec="libx264") as writer:
         for frame in frames:
             writer.append_data(np.ascontiguousarray(frame))
     print(f"Saved interaction video to {out_path} ({len(frames)} frames)")

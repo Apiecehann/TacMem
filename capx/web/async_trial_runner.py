@@ -426,11 +426,25 @@ async def run_trial_async(
         # ========================================================================
         # Code execution loop
         # ========================================================================
+        # Framework-appended final-check call (mirrors capx/envs/trial.py):
+        # explicit config name wins, else auto-detect a function hidden from
+        # the LLM prompt but still bound in the exec namespace.
+        final_check = getattr(env.cfg, "append_final_check", None)
+        if final_check is None:
+            final_check = env.final_check_name()
         while code_block_idx < len(code_blocks) and code_block_idx <= MULTITURN_LIMIT:
             if is_cancelled():
                 raise asyncio.CancelledError("Cancelled during code execution")
 
             code = code_blocks[code_block_idx]
+            # Append the final-check call to the last block.  The function is
+            # excluded from the LLM prompt (ApiBase._prompt_hidden) but remains
+            # bound in the exec namespace, and the reward is computed
+            # framework-side after each step — so this only guarantees the
+            # trial log records the final verification.
+            if final_check and code_block_idx == len(code_blocks) - 1:
+                code = code.rstrip() + f"\n\n{final_check}()\n"
+                code_blocks[code_block_idx] = code
             session.current_block_index = code_block_idx
 
             # Check for cancellation before executing (safety check)

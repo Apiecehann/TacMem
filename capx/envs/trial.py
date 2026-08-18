@@ -29,6 +29,7 @@ from capx.envs.tasks.base import CodeExecutionEnvBase
 
 from capx.llm.client import (
     VLM_MODELS,
+    is_vlm_model,
     ModelQueryArgs,
     query_model as _query_model,
     query_model_ensemble as _query_model_ensemble,
@@ -52,7 +53,12 @@ if TYPE_CHECKING:
     from capx.envs.launch import LaunchArgs
 
 
-MULTITURN_LIMIT = 10
+MULTITURN_LIMIT = 10  # default, overridden by --multiturn-limit
+
+# Wall-clock execution budget armed after env.reset() (see _run_single_trial).
+# This REPLACES the runner's configured trial timeout, so a SIGALRM raised
+# while executed code runs (e.g. mid HTTP request) is this arm firing.
+TRIAL_EXEC_ALARM_SECONDS = 1000
 
 # ---------------------------------------------------------------------------
 # Shared formatting helpers
@@ -115,11 +121,14 @@ def _trial_video_dir(
     info_step: dict[str, Any],
     reward: float,
 ) -> str:
-    """Return the trial output directory path used for video saving."""
+    """Return the trial output directory path used for video saving.
+
+    Must match the directory created by :func:`_save_trial_artifacts` so that
+    videos and other artifacts land in the same folder.
+    """
     return os.path.join(
         config["output_dir"],
-        f"trial_{trial:02d}_sandboxrc_{info_step['sandbox_rc']}_reward_{reward:.3f}"
-        f"_taskcompleted_{int(info_step.get('task_completed', False))}",
+        f"trial_{trial:02d}_taskcompleted_{int(info_step.get('task_completed', False))}",
     )
 
 
@@ -230,8 +239,8 @@ def _capture_initial_visual_feedback(
     use_wrist = config.get("use_wrist_camera", False)
 
     needs_visual = (
-        (config["use_visual_feedback"] and args.model in VLM_MODELS)
-        or (config["use_img_differencing"] and visual_differencing_args.model in VLM_MODELS)
+        (config["use_visual_feedback"] and is_vlm_model(args.model))
+        or (config["use_img_differencing"] and is_vlm_model(visual_differencing_args.model))
         or config.get("use_video_differencing", False)
     )
     if not (needs_visual and hasattr(env, "render")):
@@ -283,8 +292,7 @@ def _capture_initial_visual_feedback(
         )
         feedback = f"The initial state of the environment is described as follows:\n{description}"
         obs["full_prompt"][-1]["content"][0]["text"] += f"\n\n{feedback}"
-        if args.debug:
-            print(description)
+        print(f"[VDM] Initial scene: {description}")
 
     return visual_feedback_imgs, visual_feedback_base64_history, task_description
 
@@ -550,8 +558,8 @@ def _handle_multi_turn_step(
     # Capture visual feedback if applicable
     visual_feedback_base64 = None
     needs_visual = (
-        (config["use_visual_feedback"] and args.model in VLM_MODELS)
-        or (config["use_img_differencing"] and visual_differencing_args.model in VLM_MODELS)
+        (config["use_visual_feedback"] and is_vlm_model(args.model))
+        or (config["use_img_differencing"] and is_vlm_model(visual_differencing_args.model))
     )
     if needs_visual and hasattr(env, "render"):
         vf_base64, vf_img = _get_visual_feedback(env)
@@ -574,12 +582,16 @@ def _handle_multi_turn_step(
             visual_differencing_args, task_description, turn_frames, wrist_turn_frames,
         )
         is_video_feedback = True
+        if differencing_feedback:
+            print(f"[VDM Video] Feedback: {differencing_feedback}")
     elif config["use_img_differencing"] and len(visual_feedback_base64_history) >= 2:
         # Image-based differencing: pass before/after images to VDM
         differencing_feedback = _get_visual_differencing_feedback(
             visual_differencing_args, task_description, visual_feedback_base64_history,
             wrist_base64_history=wrist_base64_history,
         )
+        if differencing_feedback:
+            print(f"[VDM] Feedback: {differencing_feedback}")
 
     # Only pass visual feedback to prompt if visual_feedback is enabled
     if not config["use_visual_feedback"]:
@@ -655,7 +667,7 @@ def _run_single_trial(
     import signal
     remaining = signal.alarm(0)  # cancel current alarm
     if remaining > 0:
-        signal.alarm(1000)  # restart fresh 1000s from now
+        signal.alarm(TRIAL_EXEC_ALARM_SECONDS)  # restart fresh from now
     obs["full_prompt"] = copy.deepcopy(obs["full_prompt"])
     _patch_libero_goal(env, obs)
 
@@ -696,7 +708,7 @@ def _run_single_trial(
     )
 
     if config["use_img_differencing"] or use_video_diff:
-        assert visual_differencing_args.model in VLM_MODELS, (
+        assert is_vlm_model(visual_differencing_args.model), (
             "Image/video differencing model must be in the list of VLM models"
         )
 
@@ -777,8 +789,27 @@ def _run_single_trial(
         and hasattr(env, "get_video_frame_count")
     )
 
-    while code_block_idx < len(code_blocks) and code_block_idx <= MULTITURN_LIMIT:
+    limit = getattr(args, "multiturn_limit", MULTITURN_LIMIT) or MULTITURN_LIMIT
+    # Framework-appended final-check call: an explicitly configured name
+    # (CodeExecEnvConfig.append_final_check) wins, otherwise auto-detect a
+    # function hidden from the LLM prompt but still bound in the exec
+    # namespace (ApiBase._prompt_hidden).  The oracle code already ends with
+    # its own final check, so only LLM-generated code gets the appended call.
+    final_check = getattr(env.cfg, "append_final_check", None)
+    if final_check is None:
+        final_check = env.final_check_name()
+    if final_check and config["use_oracle_code"]:
+        final_check = None
+    while code_block_idx < len(code_blocks) and code_block_idx <= limit:
         code = code_blocks[code_block_idx]
+        # Append the final-check call to the last block.  The function is
+        # excluded from the LLM prompt (ApiBase._prompt_hidden) but remains
+        # bound in the exec namespace, and the reward is computed
+        # framework-side after each step — so this only guarantees the trial
+        # log records the final verification.
+        if final_check and code_block_idx == len(code_blocks) - 1:
+            code = code.rstrip() + f"\n\n{final_check}()\n"
+            code_blocks[code_block_idx] = code
         code_block_idx += 1
 
         # Record frame index before step

@@ -1,0 +1,42 @@
+from capx.envs.tasks.base import CodeExecutionEnvBase
+
+PROMPT = """
+You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+on both fingertips. The API is described below.
+
+Goal: Insert the grasped prism into the tilted hole until it is fully seated.
+
+Key rules:
+- Use small incremental motions for fine insertion control.
+- Tactile contact asymmetry between the two fingertips indicates the prism
+  is tilted and needs angular correction.
+
+Write ONLY executable Python code (no code fences). Import numpy if needed.
+"""
+
+ORACLE_CODE = """
+import numpy as np
+
+# Insert with fine steps, monitoring tactile symmetry
+for step in range(15):
+    move_delta(dz=-0.003)
+
+    if detect_slip(threshold_px=2.0):
+        open_gripper()
+        move_delta(dz=0.005)
+        close_gripper()
+
+    data = get_tactile_data()
+    depth_diff = abs(data["left_depth_mm"] - data["right_depth_mm"])
+    if depth_diff > 0.5:
+        correction = 0.01 if data["left_depth_mm"] > data["right_depth_mm"] else -0.01
+        move_delta(dry=correction)
+
+    if data["left_depth_mm"] > 1.5 and data["right_depth_mm"] > 1.5:
+        break
+"""
+
+
+class UniVTACInsertHoleCodeEnv(CodeExecutionEnvBase):
+    prompt = PROMPT
+    oracle_code = ORACLE_CODE

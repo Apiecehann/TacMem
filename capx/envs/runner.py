@@ -11,6 +11,7 @@ import functools
 import os
 import signal
 import sys
+import time
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -36,7 +37,7 @@ from capx.utils.parallel_eval import run_parallel_with_setup
 # Constants
 # ---------------------------------------------------------------------------
 
-TRIAL_TIMEOUT_SECONDS = 1000
+TRIAL_TIMEOUT_SECONDS = 7200  # default (2 h), overridden by --trial-timeout
 MAX_TRIAL_RETRIES = 3
 
 
@@ -192,6 +193,33 @@ def _run_single_trial_worker(
     return _run_trial_with_retries(env, trial, args, config, multi_turn_prompt)
 
 
+def _wait_for_server_healthy(env: CodeExecutionEnvBase, timeout: float = 360.0) -> None:
+    """Block until the task's API server answers /health (or *timeout* elapses).
+
+    After a cuRobo hang the UniVTAC server is SIGKILLed by its freeze watchdog
+    and respawned by the launch supervisor (an ~60-90 s Isaac Sim boot).  We
+    wait here so a trial never starts against a dead/booting server — which
+    would otherwise burn its full wall-clock budget on a stuck /reset.
+
+    The server URL is read via duck-typing (``env.low_level_env._server``); for
+    envs that don't expose one this is a no-op.
+    """
+    import requests as _requests
+
+    server_url = getattr(getattr(env, "low_level_env", None), "_server", None)
+    if not server_url:
+        return
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if _requests.get(f"{server_url}/health", timeout=3.0).status_code == 200:
+                return
+        except Exception:
+            pass
+        time.sleep(3.0)
+    print(f"WARNING: server {server_url} did not answer /health within {timeout:.0f}s")
+
+
 def _run_trial_with_retries(
     env: CodeExecutionEnvBase,
     trial: int,
@@ -200,20 +228,24 @@ def _run_trial_with_retries(
     multi_turn_prompt: str | None,
 ) -> TrialSummary:
     """Attempt a trial up to MAX_TRIAL_RETRIES times, retrying on timeout."""
+    # Bridge the respawn window after a cuRobo hang (see _wait_for_server_healthy).
+    _wait_for_server_healthy(env)
     for attempt in range(MAX_TRIAL_RETRIES):
         try:
             is_last_attempt = attempt == MAX_TRIAL_RETRIES - 1
+            timeout = getattr(args, "trial_timeout", TRIAL_TIMEOUT_SECONDS) or TRIAL_TIMEOUT_SECONDS
             return _run_single_trial_with_timeout(
                 env=env,
                 trial=trial,
                 args=args,
                 config=config,
                 multi_turn_prompt=multi_turn_prompt,
-                timeout_s=TRIAL_TIMEOUT_SECONDS,
+                timeout_s=timeout,
                 raise_on_timeout=not is_last_attempt,
             )
         except TimeoutError:
-            print(f"Trial {trial} timed out (attempt {attempt + 1}/{MAX_TRIAL_RETRIES}). Retrying...")
+            print(f"Trial {trial} timed out (attempt {attempt + 1}/{MAX_TRIAL_RETRIES}). Waiting for server to recover...")
+            _wait_for_server_healthy(env)
 
     # All retries exhausted
     return TrialSummary(
@@ -287,7 +319,10 @@ def _run_single_trial_with_timeout(
     def _timeout_handler(signum: int, frame) -> None:  # type: ignore[override]
         nonlocal timed_out
         timed_out = True
-        raise TimeoutError(f"Trial {trial} exceeded {timeout_seconds} seconds")
+        # Don't claim a number: trial.py re-arms the alarm with its own
+        # post-reset budget (TRIAL_EXEC_ALARM_SECONDS), so the configured
+        # timeout_seconds is stale whenever this fires during execution.
+        raise TimeoutError(f"Trial {trial} timed out on its wall-clock alarm")
 
     previous_handler = signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(timeout_seconds)
@@ -309,7 +344,7 @@ def _run_single_trial_with_timeout(
         if raise_on_timeout:
             raise TimeoutError(f"Trial {trial} timed out") from exc
 
-        print(f"Trial {trial} timed out after {timeout_seconds} seconds")
+        print(f"Trial {trial} timed out on its wall-clock alarm")
         return _build_timeout_summary(trial, timeout_seconds, partial_artifacts, config, exc)
     finally:
         signal.alarm(0)
@@ -329,11 +364,27 @@ def _build_timeout_summary(
     code_block_metadata = pa.get("code_block_metadata", [])
     final_code = _annotate_code_blocks(code_blocks, code_block_metadata)
 
+    # Save partial artifacts (code, video, prompts) even on timeout
+    from capx.utils.launch_utils import _save_trial_artifacts as _save
+
     info_step = pa.get("info_step", {"sandbox_rc": 1, "stdout": "", "stderr": str(exc)})
     if info_step.get("stderr") == "":
         info_step["stderr"] = str(exc)
     else:
         info_step["stderr"] += f"\n\nTimeout Error: {exc}"
+
+    _save(
+        config=config,
+        trial=trial, sandbox_rc=info_step.get("sandbox_rc", 1),
+        reward=pa.get("reward", 0.0),
+        task_completed=info_step.get("task_completed", False),
+        final_code=final_code, raw_code=raw_code,
+        all_responses=pa.get("all_responses", []),
+        log_lines=pa.get("log_lines", []),
+        visual_feedback_imgs=pa.get("visual_feedback_imgs", []),
+        ensemble_data=pa.get("ensemble_data"),
+        multiturn_ensemble_data=pa.get("multiturn_ensemble_data"),
+    )
 
     reward = pa.get("reward", 0.0)
     terminated = pa.get("terminated", False)
@@ -345,7 +396,7 @@ def _build_timeout_summary(
     log_lines = _build_log_lines(
         final_code, info_step, reward, terminated, truncated,
         num_regenerations, num_finishes, num_code_blocks,
-        prefix=f"Trial {trial} timed out after {timeout_seconds} seconds.",
+        prefix=f"Trial {trial} timed out on its wall-clock alarm.",
     )
 
     code_path = _save_trial_artifacts(

@@ -1,0 +1,16 @@
+# UniVTAC: lift_can (no-tactile ablation, single-turn)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/lift_can/univtac_lift_can_no_tactile.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_lift_can.UniVTACLiftCanCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/lift_can/low_level_lift_can.yaml
+    privileged: false
+    apis:
+      - UniVTACMotionApi
+record_video: true
+output_dir: ./outputs/univtac_lift_can_no_tactile
+
+trials: 100
+num_workers: 1

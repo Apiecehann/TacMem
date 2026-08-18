@@ -50,6 +50,12 @@ class CodeExecEnvConfig:
     task_only_prompt: str | None = None
     multi_turn_prompt: str | None = None
     oracle_code: str | None = None
+    # Final-check function name.  None (default) auto-detects from the APIs:
+    # a function hidden from the prompt (ApiBase._prompt_hidden) but still
+    # bound in the exec namespace.  Set a name to force one, or "" to disable
+    # the appended call.  Scoring is unaffected either way — reward is
+    # computed framework-side after each step.
+    append_final_check: str | None = None
     privileged: bool = False
     enable_render: bool = True
     viser_debug: bool = False
@@ -134,6 +140,21 @@ class CodeExecutionEnvBase(Env):
             float: The reward at the current base simulator state.
         """
         return self.low_level_env.compute_reward()
+
+    def final_check_name(self) -> str | None:
+        """Return the framework-only final-check function name, if one exists.
+
+        A final check is a function an API keeps callable in the exec
+        namespace but hides from the LLM prompt (``ApiBase._prompt_hidden``).
+        Exactly one such function across all APIs is required; the trial loop
+        then appends a single final call after code generation.
+        """
+        hidden: set[str] = set()
+        for api in self._apis.values():
+            hidden |= getattr(api, "_prompt_hidden", set()) & api.functions().keys()
+        if len(hidden) == 1:
+            return next(iter(hidden))
+        return None
 
     # ---- Private methods ----
     def _get_complete_prompt(self) -> str:

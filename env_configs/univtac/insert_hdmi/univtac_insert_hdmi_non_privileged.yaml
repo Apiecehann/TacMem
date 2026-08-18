@@ -1,0 +1,88 @@
+# UniVTAC: insert_hdmi (non-privileged / perception)
+# Object poses come from SAM3 segmentation + depth back-projection instead of the
+# simulator's ground-truth /object_pose endpoint.
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/insert_hdmi/univtac_insert_hdmi_non_privileged.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_insert_hdmi.UniVTACInsertHDMICodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/insert_hdmi/low_level_insert_hdmi.yaml
+    privileged: false
+    apis:
+      - UniVTACPerceptionApi
+
+    # Non-privileged: object poses come from SAM3 text-prompt segmentation. The
+    # prompt phrases below were chosen empirically — bare "prism" mis-segments the
+    # socket body, "slot" catches the gripper from some viewpoints, while "hole"
+    # is more discriminative (4/5 seeds, larger score margin). The plug itself is
+    # only found with a color cue. get_object_pose semantics (centroid, not prim
+    # origin; noisy) are documented in the API docstring itself.
+    prompt: |
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Goal: Insert the HDMI plug straight down into its socket. The plug is
+      already grasped and held just above the socket — keep the gripper closed.
+
+      Localize both objects ONCE at the start, with these exact phrases:
+      - the plug:   "black connector"
+      - the socket: "hole"
+
+      Key rules:
+      - Trust the grasp: descend straight down, do not re-align. Do not
+        re-query get_object_pose once the plug is moving (occlusion makes
+        SAM3 mis-segment).
+      - Sanity-check detections: the hole must lie BELOW the plug, near table
+        level. Reject a "hole" above the plug (the gripper) or a "black
+        connector" at table level (not the plug) — fall back to grasp
+        alignment.
+      - Insert by feel, not force: descend in small steps. Gel hardening is
+        normal on contact and is NOT a jam; a slip during descent is a jam —
+        lift no more than one descend step (never drift net-upward), nudge a
+        few mm, retry. Never rotate.
+      - Confirm seating, don't count descent: when the plug stops going down,
+        nudge a few mm left then right. Slip during this probe means the plug
+        is locked in the socket (seated) — stop and leave it; free motion with
+        no slip means it is not seated — keep trying.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+    oracle_code: |
+      import numpy as np
+
+      PLUG = "black connector"   # SAM3 -> the HDMI plug (centroid)
+      SOCKET = "hole"            # SAM3 -> the socket's hole (centroid)
+
+      socket_pos, _, _ = get_object_pose(SOCKET)
+
+      # The plug is already grasped and roughly aligned over the socket, so no
+      # lateral correction is needed (a centroid-based correction would overshoot,
+      # since the two centroids differ from their prim origins by a constant).
+      # Descend straight down until the plug centroid is ~1.3 cm above the hole
+      # centroid — the centroid equivalent of the privileged "1 cm above origin"
+      # seating depth (plug centroid = origin + half height; hole = socket top).
+      for _ in range(40):
+          plug_pos, _, _ = get_object_pose(PLUG)
+          if plug_pos[2] - socket_pos[2] < 0.013:
+              break
+          move_delta(dz=-0.002)
+
+      check_success()
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: insert_hdmi
+    port: 8120
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_insert_hdmi_non_privileged
+
+trials: 100
+num_workers: 1  # Isaac Sim is not parallel-safe

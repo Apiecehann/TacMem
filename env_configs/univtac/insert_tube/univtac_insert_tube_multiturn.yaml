@@ -1,0 +1,48 @@
+# UniVTAC: insert_tube (multi-turn)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/insert_tube/univtac_insert_tube_multiturn.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_insert_tube.UniVTACInsertTubeCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/insert_tube/low_level_insert_tube.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+    multi_turn_prompt: |
+      The following code blocks were just executed:
+      ```python
+      {executed_code}
+      ```
+      The current console stdout is:
+      ```
+      {console_stdout}
+      ```
+      The current console stderr is:
+      ```
+      {console_stderr}
+      ```
+      If there were errors during compilation or execution, the console stderr
+      will show them — consider regenerating the code to fix them.
+      If no errors but the task check failed, query the environment state
+      through perception tools (get_object_pose, get_tactile_data)
+      and prints to understand what went wrong, then REGENERATE.
+      Please respond with EXACTLY ONE of:
+      - The word 'REGENERATE' followed immediately by new Python code in a fenced
+        code block (```python...```) if you want to modify the code.
+      - The word 'FINISH' if the task appears to be complete.
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: insert_tube
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_insert_tube_multiturn
+
+trials: 100
+save_multiturn_prompts: true
+num_workers: 1  # Isaac Sim is not parallel-safe
+use_legacy_multi_turn_decision_prompt: true
