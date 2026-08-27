@@ -28,6 +28,14 @@ _PROCESSOR: Any | None = None
 _MODEL: Any | None = None
 _DEVICE: str = "cuda"
 
+
+@app.get("/health")
+async def health():
+    """Readiness probe — 200 only once the model is loaded and serving."""
+    if _PROCESSOR is None:
+        raise HTTPException(status_code=503, detail="Model not initialized")
+    return {"status": "ok"}
+
 # Semaphore to serialize GPU access (prevents OOM from concurrent inference)
 _GPU_SEMAPHORE = asyncio.Semaphore(1)
 

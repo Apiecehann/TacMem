@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import argparse
 import base64
+import builtins
 import io
 import logging
 import os
 import signal
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 from typing import Any, Literal
@@ -35,11 +37,48 @@ from fastapi import FastAPI, HTTPException
 from PIL import Image
 from pydantic import BaseModel
 
+try:
+    from capx.serving.univtac_video import (
+        EpisodeRecorder,
+        frames_root,
+        recording_root,
+    )
+except ImportError:  # direct-script run: capx/serving/ on sys.path
+    from univtac_video import EpisodeRecorder, frames_root, recording_root
+
+try:
+    from capx.serving import univtac_action_log as action_log
+except ImportError:  # direct-script run: capx/serving/ on sys.path
+    from univtac_action_log import action_log
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("univtac_server")
+
+# IsaacSim's python bridge raises the root logger to DEBUG when it is
+# imported below, so PIL's PngImagePlugin logs every PNG chunk read
+# (~12 "STREAM b'IHDR' ..." DEBUG lines per captured frame).  Pin the
+# chatty subtree back down; the server reports its own errors/warnings.
+logging.getLogger("PIL").setLevel(logging.WARNING)
+
+# UniVTAC's envs/_base_task.py prints a per-step progress line with
+# end="\r" (~3 Hz while an action runs).  Piped to a log file or mixed
+# with logging output the carriage return is not honored, so every step
+# becomes its own line and collides with other output.  Nothing else in
+# the process prints with end="\r", so dropping those calls keeps the
+# terminal for actual warnings/errors.
+_orig_print = builtins.print
+
+
+def _print(*args, **kwargs):
+    if kwargs.get("end") == "\r":
+        return
+    _orig_print(*args, **kwargs)
+
+
+builtins.print = _print
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -75,7 +114,6 @@ app = FastAPI(title="UniVTAC Tactile API Server")
 # Global state (initialized after Isaac Sim app starts)
 _TASK: Any = None
 _TASK_NAME: str = ""
-_FRAME_BUFFER: list[str] = []  # base64 PNG frames captured during motion
 # Marker positions at reset time (gripper open, no contact), used as the
 # zero-displacement reference for marker flow.  The sim-internal "initial"
 # frame is captured once at startup and carries a constant per-finger offset,
@@ -87,6 +125,10 @@ _MARKER_REFERENCE: dict[str, Any] | None = None
 # subsequent calls return object_pose + offset so a re-grasp tracks the object
 # wherever it has moved.  Cleared on every reset.
 _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+# Durable episode video recorder: frames go to scratch (frames_root), and
+# episode.mp4 + index.json are assembled into the recording root on
+# finalize (episode_video / reset / shutdown).  See univtac_video.py.
+_RECORDER = EpisodeRecorder(recording_root(), frames_root=frames_root())
 
 # ---------------------------------------------------------------------------
 # Thread-safe command queue — Isaac Sim APIs must be called from main thread.
@@ -95,6 +137,7 @@ _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 # ---------------------------------------------------------------------------
 import queue as _queue
 import threading as _threading
+import time as _time
 
 _cmd_queue: _queue.Queue = _queue.Queue()
 
@@ -147,6 +190,42 @@ def _run_on_main(fn, *args, timeout: float = _QUERY_TIMEOUT, **kwargs):
     if result_holder.get("error"):
         raise result_holder["error"]
     return result_holder["result"]
+
+
+def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
+                detail_prefix: str) -> dict:
+    """Run an action endpoint's sim call, logging one trajectory line.
+
+    Every action call (success or failure) is appended to the action log
+    (see univtac_action_log.py); each line carries the left/right tactile
+    depths from the result dict when present, so the log is self-contained
+    for physical progress (e.g. a wedged prism shows as a plateau/jump in
+    the depths even though the action returned success).  Raises
+    HTTPException(500, f"{detail_prefix}: {e}") on error — the same
+    response text the handlers produced before.
+    """
+    t0 = _time.perf_counter()
+    try:
+        result = _run_on_main(fn, *fargs, timeout=timeout)
+    except Exception as e:
+        action_log.log_action(
+            name, args, ok=False, msg=f"{detail_prefix}: {e}",
+            dur_s=_time.perf_counter() - t0,
+        )
+        raise HTTPException(status_code=500, detail=f"{detail_prefix}: {e}") from e
+    dur = _time.perf_counter() - t0
+    ok = bool(result.get("success", True))
+    extra = None
+    if isinstance(result.get("tactile"), dict):
+        extra = {"tactile": {
+            "L_depth_mm": result["tactile"].get("left_depth_mm"),
+            "R_depth_mm": result["tactile"].get("right_depth_mm"),
+        }}
+    action_log.log_action(
+        name, args, ok=ok, msg=result.get("message"),
+        dur_s=dur, step=result.get("step"), extra=extra,
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -370,13 +449,26 @@ def _capture_frame() -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
+def _record_frame(label: str) -> str:
+    """Capture the composite frame and persist it to the episode recording.
+
+    ``_RECORDER`` writes each frame to disk immediately, so the episode can
+    be replayed even if the server dies before finalizing.
+    """
+    b64 = _capture_frame()
+    _RECORDER.record(b64, label)
+    return b64
+
+
 def _sim_reset(seed: int) -> dict:
     """Reset the task environment."""
-    global _TASK, _FRAME_BUFFER, _MARKER_REFERENCE
-    _FRAME_BUFFER = []
+    global _TASK, _MARKER_REFERENCE
+    _RECORDER.finalize()  # assemble previous episode's video (no-op if none)
     _GRASP_OFFSET.clear()
     _TASK.reset(seed=seed)
-    _FRAME_BUFFER.append(_capture_frame())  # initial state
+    _rec_info = _RECORDER.start(_TASK_NAME, seed)
+    action_log.log_episode_reset(_TASK_NAME, seed, _rec_info.get("started") or "")
+    _record_frame("reset:initial")  # initial state
     try:
         obs = _TASK._get_observations()
         tactile = obs.get("tactile", {})
@@ -442,7 +534,7 @@ def _sim_move(position: list, quat_wxyz: list, z_approach: float,
         )
 
     # Capture before-move frame
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"move:tag={tag}:before")
 
     try:
         success = _TASK.move([action], tag=tag, delay=True, is_save=False)
@@ -472,7 +564,7 @@ def _sim_move(position: list, quat_wxyz: list, z_approach: float,
         _TASK.plan_success = True
 
     tactile_data = _sim_get_tactile_data()
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"move:tag={tag}:after")
 
     return {
         "success": success,
@@ -564,7 +656,7 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
         }
 
     # Capture before-move frame
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"move_delta:tag={tag}:before")
 
     # --- motion planning with fallback ----------------------------------------
     # cuRobo can transiently fail even for simple deltas (random seed, joint
@@ -638,7 +730,7 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
         _TASK.plan_success = True
 
     tactile_data = _sim_get_tactile_data()
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"move_delta:tag={tag}:after")
 
     return {
         "success": success,
@@ -690,7 +782,7 @@ def _sim_gripper(action: str, force_threshold: float | None,
             depth_threshold = None
 
     # Capture frame before the gripper action
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"gripper:{'open' if action == 'open' else 'close'}:before")
 
     try:
         success = _TASK.move(
@@ -710,7 +802,7 @@ def _sim_gripper(action: str, force_threshold: float | None,
         _TASK.plan_success = True
 
     tactile_data = _sim_get_tactile_data()
-    _FRAME_BUFFER.append(_capture_frame())
+    _record_frame(f"gripper:{'open' if action == 'open' else 'close'}:after")
 
     return {
         "success": success,
@@ -857,8 +949,9 @@ def _sim_get_tactile_data() -> dict:
             "left_depth_base64": left_depth_b64,
             "right_depth_base64": right_depth_b64,
         }
-    except Exception:
+    except Exception as exc:
         logger.warning("Tactile data unavailable: %s", traceback.format_exc())
+        action_log.log_query_failure("tactile", f"Tactile data unavailable: {exc}")
         return {
             "left_contact": False,
             "right_contact": False,
@@ -922,8 +1015,9 @@ def _sim_get_observation() -> dict:
             "ee_quaternion": ee_pose.q.tolist(),
             "gripper_qpos": gripper_qpos,
         }
-    except Exception:
+    except Exception as exc:
         logger.warning("Observation unavailable: %s", traceback.format_exc())
+        action_log.log_query_failure("observation", f"Observation unavailable: {exc}")
         return {
             "head_rgb_base64": "",
             "wrist_rgb_base64": "",
@@ -957,8 +1051,9 @@ def _sim_check_success() -> dict:
             detail = _TASK.check_success_detail()
         return {"completed": bool(completed), "check_early_stop": bool(early_stop),
                 "detail": detail}
-    except Exception:
+    except Exception as exc:
         logger.warning("check_success failed: %s", traceback.format_exc())
+        action_log.log_query_failure("check_success", f"check_success failed: {exc}")
         return {"completed": False, "check_early_stop": False, "detail": None}
 
 
@@ -986,7 +1081,7 @@ def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
     angle_per_step = total_angle_rad / steps
     for i in range(steps):
         _TASK.gripper_rotate(actor, angle_per_step, steps=1, is_save=False)
-        _FRAME_BUFFER.append(_capture_frame())
+        _record_frame("rotate:step")
 
     # --- verify object actually rotated ---------------------------------------
     quat_after = np.asarray(actor.get_pose().q, dtype=np.float64)
@@ -1131,9 +1226,12 @@ def _sim_get_object_pose(object_name: str, return_bbox_extent: bool = False) -> 
             bbox = _try_get_bbox_extent(actor)
             result["bbox_extent"] = bbox
         return result
-    except Exception:
+    except Exception as exc:
         logger.warning("get_object_pose('%s') failed: %s",
                        object_name, traceback.format_exc())
+        action_log.log_query_failure("object_pose", f"get_object_pose('{object_name}') failed: {exc}",
+                                     args={"object_name": object_name,
+                                           "return_bbox_extent": return_bbox_extent})
         return {"found": False, "position": None, "quaternion_wxyz": None, "bbox_extent": None}
 
 
@@ -1246,23 +1344,25 @@ def _extent_from_prim_path(prim_path: str) -> list[float] | None:
 def reset(req: ResetRequest):
     """Reset the task environment with a random seed."""
     if _TASK is None:
+        action_log.log_action("reset", {"seed": req.seed}, ok=False,
+                              msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    try:
-        result = _run_on_main(_sim_reset, req.seed, timeout=300.0)
-        return ResetResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Reset failed: {e}")
+    result = _run_action("reset", {"seed": req.seed}, 300.0, _sim_reset,
+                         req.seed, detail_prefix="Reset failed")
+    return ResetResponse(**result)
 
 
 @app.get("/ee_pose", response_model=PoseResponse)
 def get_ee_pose():
     """Get current end-effector pose."""
     if _TASK is None:
+        action_log.log_query_failure("ee_pose", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_ee_pose, timeout=30.0)
         return PoseResponse(**result)
     except TimeoutError:
+        action_log.log_query_failure("ee_pose", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
 
 
@@ -1270,10 +1370,12 @@ def get_ee_pose():
 def get_gripper_state():
     """Get current gripper state."""
     if _TASK is None:
+        action_log.log_query_failure("gripper_state", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         return _run_on_main(_sim_get_gripper_state, timeout=30.0)
     except TimeoutError:
+        action_log.log_query_failure("gripper_state", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
 
 
@@ -1281,60 +1383,60 @@ def get_gripper_state():
 def move(req: MoveRequest):
     """Move end-effector to target pose, optionally with gripper action."""
     if _TASK is None:
+        action_log.log_action("move", req.model_dump(), ok=False,
+                              msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    try:
-        result = _run_on_main(
-            _sim_move,
-            req.position, req.quaternion_wxyz, req.z_approach,
-            req.gripper_action, req.gripper_pos, req.tag,
-            timeout=_MOTION_TIMEOUT,
-        )
-        return ActionResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Move failed: {e}")
+    result = _run_action(
+        "move", req.model_dump(), _MOTION_TIMEOUT,
+        _sim_move, req.position, req.quaternion_wxyz, req.z_approach,
+        req.gripper_action, req.gripper_pos, req.tag,
+        detail_prefix="Move failed",
+    )
+    return ActionResponse(**result)
 
 
 @app.post("/move_delta", response_model=ActionResponse)
 def move_delta(req: MoveDeltaRequest):
     """Move end-effector by a small delta (for fine-grained contact adjustments)."""
     if _TASK is None:
+        action_log.log_action("move_delta", req.model_dump(), ok=False,
+                              msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    try:
-        result = _run_on_main(
-            _sim_move_delta,
-            req.dx, req.dy, req.dz,
-            req.drx, req.dry, req.drz,
-            req.coord, req.tag,
-            timeout=_MOTION_TIMEOUT,
-        )
-        return ActionResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Move delta failed: {e}")
+    result = _run_action(
+        "move_delta", req.model_dump(), _MOTION_TIMEOUT,
+        _sim_move_delta, req.dx, req.dy, req.dz, req.drx, req.dry, req.drz,
+        req.coord, req.tag,
+        detail_prefix="Move delta failed",
+    )
+    return ActionResponse(**result)
 
 
 @app.post("/gripper", response_model=ActionResponse)
 def gripper(req: GripperRequest):
     """Open or close the gripper."""
     if _TASK is None:
+        action_log.log_action("gripper", req.model_dump(), ok=False,
+                              msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    try:
-        result = _run_on_main(_sim_gripper, req.action, req.force_threshold,
-                               req.use_adaptive_grasp,
-                               timeout=_MOTION_TIMEOUT)
-        return ActionResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gripper action failed: {e}")
+    result = _run_action(
+        "gripper", req.model_dump(), _MOTION_TIMEOUT,
+        _sim_gripper, req.action, req.force_threshold, req.use_adaptive_grasp,
+        detail_prefix="Gripper action failed",
+    )
+    return ActionResponse(**result)
 
 
 @app.get("/tactile", response_model=TactileResponse)
 def get_tactile():
     """Get current tactile sensor readings from both fingertips."""
     if _TASK is None:
+        action_log.log_query_failure("tactile", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_tactile_data, timeout=30.0)
         return TactileResponse(**result)
     except TimeoutError:
+        action_log.log_query_failure("tactile", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
 
 
@@ -1342,11 +1444,13 @@ def get_tactile():
 def get_observation():
     """Get full observation: cameras, tactile, and robot state."""
     if _TASK is None:
+        action_log.log_query_failure("observation", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_observation, timeout=30.0)
         return ObservationResponse(**result)
     except TimeoutError:
+        action_log.log_query_failure("observation", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
 
 
@@ -1354,6 +1458,7 @@ def get_observation():
 def check_success():
     """Check if the current task is successfully completed."""
     if _TASK is None:
+        action_log.log_query_failure("check_success", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_check_success, timeout=30.0)
@@ -1361,17 +1466,33 @@ def check_success():
     except TimeoutError:
         # Main thread is busy (e.g. long-running motion).  Report as
         # "not yet complete" rather than crashing — the LLM can retry.
+        action_log.log_query_failure(
+            "check_success",
+            "Simulation busy — returned completed=False without checking",
+        )
         return SuccessResponse(completed=False, check_early_stop=False)
 
 
+# NOTE: operator/internal-only — ground-truth prim pose.  The agent line
+# (univtac_skill/robo.py) never calls this endpoint: its get_object_pose
+# goes through UniVTACPerceptionApi (SAM3 segmentation + depth
+# back-projection, non-privileged by design).  Kept for: (1) the internal
+# _sim_get_grasp_pose call, (2) privileged eval configs, (3) operator
+# debugging.  Do not wire it back into any agent-facing client.
 @app.get("/object_pose", response_model=ObjectPoseResponse)
 def get_object_pose(object_name: str, return_bbox_extent: bool = False):
-    """Get the current pose of a named object in the simulator."""
+    """Get the current pose of a named object in the simulator (operator-only)."""
+    _object_pose_args = {"object_name": object_name,
+                         "return_bbox_extent": return_bbox_extent}
     if _TASK is None:
+        action_log.log_query_failure("object_pose", "Task not initialized",
+                                     args=_object_pose_args)
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_object_pose, object_name, return_bbox_extent, timeout=30.0)
     except TimeoutError:
+        action_log.log_query_failure("object_pose", "Simulation busy — retry in a few seconds",
+                                     args=_object_pose_args)
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
     return ObjectPoseResponse(**result)
 
@@ -1390,13 +1511,20 @@ def health():
 @app.get("/grasp_pose", response_model=PoseResponse)
 def get_grasp_pose(object_name: str):
     """Return a kinematically-feasible grasp pose for a named object."""
+    _grasp_pose_args = {"object_name": object_name}
     if _TASK is None:
+        action_log.log_query_failure("grasp_pose", "Task not initialized",
+                                     args=_grasp_pose_args)
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_grasp_pose, object_name, timeout=30.0)
     except TimeoutError:
+        action_log.log_query_failure("grasp_pose", "Simulation busy — retry in a few seconds",
+                                     args=_grasp_pose_args)
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
     if result.get("position") is None:
+        action_log.log_query_failure("grasp_pose", f"Object '{object_name}' not found",
+                                     args=_grasp_pose_args)
         raise HTTPException(status_code=404, detail=f"Object '{object_name}' not found")
     return PoseResponse(**result)
 
@@ -1405,21 +1533,52 @@ def get_grasp_pose(object_name: str):
 def rotate_gripper(req: RotateGripperRequest):
     """Rotate the gripper while holding an object (expert gripper_rotate)."""
     if _TASK is None:
+        action_log.log_action("rotate_gripper", req.model_dump(), ok=False,
+                              msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    try:
-        result = _run_on_main(
-            _sim_rotate_gripper, req.object_name, req.angle_rad, req.steps,
-            timeout=_MOTION_TIMEOUT,
-        )
-        return ActionResponse(**result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rotate failed: {e}")
+    result = _run_action(
+        "rotate_gripper", req.model_dump(), _MOTION_TIMEOUT,
+        _sim_rotate_gripper, req.object_name, req.angle_rad, req.steps,
+        detail_prefix="Rotate failed",
+    )
+    return ActionResponse(**result)
 
 
-@app.get("/video_frames")
-def get_video_frames():
-    """Return all captured frames (base64 PNGs) since last reset."""
-    return {"frames": list(_FRAME_BUFFER), "count": len(_FRAME_BUFFER)}
+@app.get("/episode_video")
+def get_episode_video():
+    """Finalize the current episode's recording and return info about it.
+
+    Calling this **assembles ``episode.mp4`` right now** (idempotent — a
+    no-op if there is no active episode or it is already finalized), so the
+    returned ``mp4`` exists immediately instead of waiting for the next
+    ``/reset`` or server shutdown.  The episode ends here: frames captured
+    after this call belong to a future episode (none until the next reset),
+    so the agent calls it once, at the very end.
+
+    ``mp4_ready`` is True once the MP4 has been assembled (this call, the
+    next reset, or server shutdown).  If the server was killed before
+    finalizing (e.g. SIGKILL), the scratch PNG frames are still on disk
+    (see ``frames_dir``, under /tmp) — assemble them with
+    ``scripts/assemble_univtac_video.py <dir>``.
+    """
+    _RECORDER.finalize()  # assemble the video now (no-op if none active)
+    info = _RECORDER.info()
+    if info is None:
+        return {"recording": False, "mp4": None, "mp4_ready": False,
+                "frames": 0, "dir": None, "index_json": None}
+    mp4 = info.get("mp4")
+    return {
+        "recording": True,
+        "task": info.get("task"),
+        "seed": info.get("seed"),
+        "started": info.get("started"),
+        "dir": info.get("dir"),
+        "frames_dir": info.get("frames_dir"),
+        "mp4": mp4,
+        "mp4_ready": bool(mp4) and Path(mp4).exists(),
+        "index_json": info.get("index_json"),
+        "frames": info.get("frames", 0),
+    }
 
 
 @app.get("/tasks")
@@ -1433,7 +1592,8 @@ def list_tasks():
 # ---------------------------------------------------------------------------
 
 
-def init_task(task_name: str, device: str, sensor_type: str = "gsmini") -> None:
+def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
+              seed: int = 0) -> None:
     """Initialize the UniVTAC task. Must be called after Isaac Sim app is ready."""
     global _TASK, _TASK_NAME
 
@@ -1451,15 +1611,28 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini") -> None:
     # Build env config
     env_cfg = task_module.TaskCfg()
     env_cfg.tactile_sensor_type = sensor_type
-    env_cfg.save_dir = Path("./eval_result") / "server" / task_name
+    # UIPC dumps its scene (systems.json / dump/ / sanity_check/) into
+    # uipc_sim.workspace (= save_root/"scene") on every reset, even with
+    # save_frequency=0.  Serving never replays those dumps (the process
+    # keeps first_frame in memory), so keep them out of the repo.
+    env_cfg.save_dir = Path(tempfile.gettempdir()) / "univtac_server" / task_name
     env_cfg.decimation = task_config.get("decimation", env_cfg.decimation)
-    env_cfg.save_frequency = task_config.get("save_frequency", 0)  # Don't save during serving
-    env_cfg.video_frequency = task_config.get("video_frequency", 0)
+    # Never write UniVTAC's own video/save outputs during serving.  The
+    # VideoHandler opens an ffmpeg pipe per reset that is never closed (an
+    # orphaned-subprocess leak), and the server already captures its own
+    # frames (see _record_frame).  Force both to 0 regardless of task_config.
+    env_cfg.save_frequency = 0
+    env_cfg.video_frequency = 0
     env_cfg.render_frequency = task_config.get("render_frequency", 0)
     env_cfg.obs_data_type = task_config.get("observations", {})
     env_cfg.random_texture = task_config.get("random_texture", False)
     env_cfg.scene.num_envs = 1
-    env_cfg.reset_time_limit = 300.0  # generous timeout for first reset
+    # First reset in a fresh process runs the full scene init (UIPC build,
+    # render-target creation) and has been observed at ~330 s on a loaded
+    # machine (2026-08-25); the per-segment limit is applied to every reset
+    # phase, so keep a wide margin.  Subsequent resets replay first_frame
+    # and are fast.
+    env_cfg.reset_time_limit = 600.0
     env_cfg.debug_vis = False
     env_cfg.logger_level = "error"
 
@@ -1478,10 +1651,14 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini") -> None:
     _TASK_NAME = task_name
     logger.info("Task '%s' initialized successfully.", task_name)
 
-    # No startup reset here.  The eval framework always POSTs /reset first
-    # (capx.envs.trial), which is what initialises the render targets in collect
-    # mode (per-step rendering is skipped otherwise).  Dev scripts that query
-    # /observation directly reset first themselves.
+    # Startup reset.  Agents have no reset() (see robo.py), so the scene must
+    # leave its raw loaded state on its own.  reset() runs the task's pre_move
+    # hook — for insert_HDMI that grasps the prism above the slot and sets
+    # ``target_pose``, which check_success() reads, and it initialises the
+    # render targets that collect mode needs (previously the eval framework's
+    # first POST /reset did this; that is no longer possible).
+    _sim_reset(seed=seed)
+    logger.info("Startup reset complete (seed=%s).", seed)
 
 
 # ---------------------------------------------------------------------------
@@ -1516,6 +1693,9 @@ def main() -> None:
                         help="seconds of /health silence before the freeze watchdog SIGKILLs this server")
     parser.add_argument("--no-watchdog", action="store_true",
                         help="disable the external freeze watchdog")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Scene-randomization seed for the startup reset "
+                             "(drives pre_move noise, e.g. grasp offset)")
     # Let AppLauncher add its own args (--headless, --livestream, --device, etc.)
     AppLauncher.add_app_launcher_args(parser)
 
@@ -1560,7 +1740,7 @@ def main() -> None:
     try:
         # Use AppLauncher's --device for GPU selection (already parsed as cli.device)
         device = getattr(cli, "device", "cuda:0")
-        init_task(cli.task, device, cli.sensor_type)
+        init_task(cli.task, device, cli.sensor_type, seed=cli.seed)
     except Exception:
         logger.error("Failed to initialize task: %s", traceback.format_exc())
         simulation_app.close()
@@ -1569,6 +1749,7 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Step 4: Start FastAPI server
     # -------------------------------------------------------------------
+    action_log.log_server_start()
     logger.info("Starting UniVTAC API server on %s:%d (task=%s)",
                 cli.host, cli.port, cli.task)
 
@@ -1640,13 +1821,30 @@ def main() -> None:
         result_holder["result"] = inner_result.get("result")
         result_holder["error"] = inner_result.get("error")
         if result_holder["error"] is not None:
-            logger.error("Sim operation failed: %s",
-                         result_holder["error"])
+            err_text = str(result_holder["error"])
+            logger.error("Sim operation failed: %s", result_holder["error"])
+            # A CUDA illegal-memory-access poisons the whole CUDA context —
+            # every later sim op fails with cascading errors (PhysX, render,
+            # TorchScript) and the process cannot recover in place.  Die fast
+            # so the supervisor respawns a fresh process instead of serving
+            # errors from a dead GPU context.  (/health does not touch CUDA,
+            # so the freeze watchdog cannot detect this.)
+            if "CUDA error" in err_text or "illegal memory access" in err_text:
+                logger.error("CUDA context poisoned (illegal memory access) — "
+                             "exiting so the supervisor can respawn a fresh "
+                             "process.")
+                action_log.log_event(
+                    "cuda_fatal",
+                    a=getattr(fn, "__name__", str(fn)),
+                    msg=err_text[:200],
+                )
+                os._exit(1)
 
         done_event.set()
 
     # Cleanup on exit
     logger.info("Shutting down...")
+    _RECORDER.finalize()  # assemble the final episode's video
     _TASK.close()
     simulation_app.close()
 

@@ -48,3 +48,13 @@ wandb/
 *.webp
 check.md
 cmd.txt
+# Agent warmup memory (per-machine, never committed)
+univtac_skill/memory/
+# Agent runtime artifacts (camera snapshots, step logs)
+univtac_skill/scratch/
+univtac_results_*.txt
+# Per-episode video recordings (PNG frames + MP4) — large, generated at runtime
+video_recordings/
+# numba / matplotlib runtime caches created by univtac_skill/run_py
+univtac_skill/.numba_cache/
+univtac_skill/.mplconfig/

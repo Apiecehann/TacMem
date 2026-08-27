@@ -1,0 +1,10 @@
+{
+    "task": "insert_hdmi",
+    "task_description": "Insert the prism (HDMI plug) straight down into the slot (HDMI socket) until seated. The prism is already grasped in your gripper, held just above the slot; keep the gripper closed throughout and trust the grasp — do not re-align from perceived positions (they are noisy SAM3 centroids). Descend straight down in small steps; when the plug stops advancing downward, it is jammed on the socket rim — lift at most a couple of steps, nudge sideways 1-3 mm, and retry. Never keep pressing at a jam: if it does not advance after one small retry, lift back clear of the rim, re-align, and try again — pressing a wedged plug pries it out of the light grasp and it falls flat beside the socket. When it stops advancing and holds position, confirm seating with a small sideways probe. Once seated, lift the gripper a few centimeters — the plug stays wedged in the socket, and the gripper lifting clear is the final confirmation of a proper seat — but only if the plug is visually confirmed standing in the slot afterwards: far-plane fingers after the lift also mean the plug fell out during the descent and lies flat on the base. Zoom the plug region to check standing-in-slot vs lying-flat before trusting the lift test. After lifting, verify with check_success() — the tactile signature alone cannot distinguish a proper seat from the plug coming out with the gripper (both read as light grasp); do not trust the signature alone.",
+    "server_url": "http://127.0.0.1:8120",
+    "api_module": "robo",
+    "sam3_prompts": {
+        "prism": "black connector",
+        "slot": "hole"
+    }
+}

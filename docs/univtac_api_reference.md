@@ -21,6 +21,12 @@
 触觉、`check_success` 均继承不变（`sample_grasp_pose` 仍是 ground-truth 抓取采样，
 抓取感知后续再做）。
 
+> **agent 线（`univtac_skill/robo.py`）已永久非特权、无切换开关**：robo 直接用
+> `UniVTACPerceptionApi`，`get_object_pose` 永远走 SAM3 分割 + 深度反投影
+> （:8114），与 cap 非特权评测线同语义。没有特权/非特权开关——想换回真值
+> 位姿只能改代码。唯一例外是 `check_success`：返回中仍带数值判据 `detail`
+> （cap 评测线对 LLM 隐藏，agent 线可见，属已知接受项）。
+
 > **注意：非特权 `get_object_pose` 的 `position` 是分割点云的质心，不是 prim 原点**
 > （特权模式返回 prim 原点），四元数不可靠（恒等）。所以按质心语义写非特权的
 > PROMPT/ORACLE，不要照搬原点的「1 cm 上方」阈值。
@@ -196,6 +202,12 @@ get_object_pose(object_name: str, return_bbox_extent: bool = False)
 
 获取物体的 3D 位姿。支持名称前缀匹配（例如 `"prism"` 可匹配 `"rough_prism"`）。
 
+> **⚠️ 本节描述的是特权语义（prim 原点、可信四元数、bbox 总尺寸），仅适用于
+> eval 特权配置（`UniVTACTactileApi` / `UniVTACMotionApi`，`*_multiturn*.yaml` 等）。
+> 非特权 `UniVTACPerceptionApi`（cap 非特权评测线、以及 agent 的 robo）
+> 语义完全不同：`position` 是分割点云质心、`quaternion_wxyz` 恒为 `[1,0,0,0]`
+> 不可信、`bbox` 是 `np.ptp`（质心包围盒）。详见第 0 节。**
+
 **返回值：** `(position_XYZ_m (3,), quaternion_WXYZ (4,), bbox_or_None (3,) | None)`
 
 - `position`：USD prim 的**世界原点** XYZ（米）。**注意：是 prim 原点，不一定是几何中心。** 任务物体都以原点在底面的方式著录（静止时贴桌面，z≈0.002–0.01）
@@ -206,7 +218,7 @@ get_object_pose(object_name: str, return_bbox_extent: bool = False)
 > 把 prism 放到 pad 上：`target_z = pad_pos[2] + pad_ext[2] - 0.001`（1 mm 下压余量）。
 > 注意不要用 `bbox/2`：position 已在底面，bbox 已是总高，再取半会把物体悬空半个身高。
 
-**两个 API 均可用。**
+**特权语义仅限 eval 特权配置（见上）；agent 线不走本语义。**
 
 ---
 
@@ -294,6 +306,38 @@ detect_slip(threshold_px: float = 2.0, coherence_threshold: float = 0.7) -> bool
 
 ---
 
+### 3.12 插入状态判读（insert_hdmi 专用，实测标定 2026-08-19）
+
+`probe_calibration.log` 对 4 种物理状态（自由悬垂 / 进入中 / 坐入 / 口沿卡死）各跑
+降 2mm、提 2mm、±3mm 横向探针的实测数字。**插入类任务中「滑移」的语义与通用
+「打滑」不同，必须以本节的幅度分级和探针判据为准：**
+
+**滑移幅度分级（detect_slip 的位移增量，px）：**
+| 幅度 | 物理含义 | 应采取的决策 |
+|---|---|---|
+| ≤ 0.5 px | 正常夹持噪声 / 自由接触 | 继续下降 |
+| 0.5–3 px | 摩擦 / 接触变形 | 继续下降（不是卡死） |
+| 4–8 px,且之后 1–2 步内衰减 | **正在穿过插座口沿**（穿入摩擦） | **不是卡死！** 继续下降，不要提拉 |
+| ≥ 3 px 且多步持续、插头不再下沉 | 真卡死（楔在口沿） | 提 ≤2 步 + 侧向轻推后重试 |
+
+> 实测：clean 插入 7 次 2mm 下降全部每步下沉 ~2.3mm、滑移 ≤0.43px；wedge 场景
+> 在 relZ≈8mm 处停摆时滑移才到 5.2–5.8px。**滑移本身绝不等于卡死**——穿口沿瞬间
+> 的大滑移是正常物理，提示词不应要求「slip during descent → lift」。
+
+**坐入 vs 口沿卡死的探针判别（主判据，横向探针 + 位姿回查）：**
+插头不再下沉时，侧向推 ~3mm 后回查一次插头位姿：
+- **坐入**：插头被插座咬住，位姿基本不变（实测 rel Y 只偏 0.3–0.8mm / 推 3mm）→ 停止。
+- **口沿卡死**：插头一推就脱开（实测 rel Y 偏 45–52mm，直接甩飞）→ 不是坐入，拉回重试。
+- 位姿回查用 SAM3 的 `get_object_pose`（非特权模式）或 `check_success` 的
+  `detail.prism_pos`；甩飞信号（≥1cm）远超 SAM3 噪声（~1–2mm），判据可靠。
+
+**✗ 已证伪的判据（不要用）：**
+- **提拉探针**：坐入和卡死的 2mm 提拉滑移都是 ~0.01px（插头都被锁住提不动），无法区分。
+- **深度读数**：`left/right_depth_mm` 在卡死时也无变化（27.2–27.6mm 波动 ±0.3mm）。
+- **大滑移=卡死**：穿口沿摩擦（4–8px，1–2 步后消失）会被误判成卡死。
+
+---
+
 ## 4. 错误处理
 
 所有 HTTP 调用均受错误翻译保护。LLM 在 `{console_stderr}` 中看到清晰且可操作的错误信息：
@@ -301,9 +345,9 @@ detect_slip(threshold_px: float = 2.0, coherence_threshold: float = 0.7) -> bool
 | 场景 | LLM 看到的错误 |
 |---|---|
 | 运动规划失败 | `RuntimeError: Motion failed: <服务端消息>` |
-| 请求超时 | `RuntimeError: Server did not respond within 90s for POST /move. ... This usually means the motion planner (cuRobo IK) is stuck. Check that the target pose is physically reachable ...` |
+| 请求超时 | `RuntimeError: Server did not respond within 150s for POST /move. ... This usually means the motion planner (cuRobo IK) is stuck. Check that the target pose is physically reachable ...` |
 | 服务器崩溃/未启动 | `RuntimeError: Cannot connect to simulation server at http://127.0.0.1:8120/move. The server may have crashed or not been started yet.` |
-| `move_delta` 步长过大 | `RuntimeError: Motion failed: \|dz\|=0.213 exceeds per-step limit (0.050). Use multiple smaller steps instead.` |
+| `move_delta` 步长过大 | `RuntimeError: Motion failed: \|dz\|=0.213 exceeds per-step limit (0.100). Use multiple smaller steps instead.` |
 | 目标 Z 低于桌面 | `RuntimeError: Motion failed: Target Z=-0.042 is below the table surface. Reduce the downward delta.` |
 | 物体未找到 | `RuntimeError: Object 'can' not found in scene` |
 | 旋转时物体滑脱 | `RuntimeError: Motion failed: Object 'prism' rotated only 1.1° (requested 8.6°). The object may not be firmly gripped — try closing the gripper again with a higher force_threshold, or re-grasp.` |
@@ -313,6 +357,11 @@ detect_slip(threshold_px: float = 2.0, coherence_threshold: float = 0.7) -> bool
 ## 5. 使用示例
 
 ### 5.1 标准触觉抓取-分类-放置流程（TactileApi）
+
+> **特权语境**：本例使用 `UniVTACTactileApi`（eval 特权配置），
+> `get_object_pose` 返回 prim 原点 + 可信四元数，放置高度计算（`bbox[2]`、
+> `prism_pos[2] < 0.03` 阈值）依赖特权语义。agent 线（robo，非特权）不可照搬
+> 本示例的位姿数值；其正确语义见 `univtac_skill/SKILL.md`。
 
 ```python
 import numpy as np
@@ -372,6 +421,9 @@ check_success()
 ```
 
 ### 5.2 无触觉运动流程（MotionApi）
+
+> **特权语境**：`UniVTACMotionApi` 是 eval ablation 基线（特权位姿）。同 5.1，
+> 位姿语义对 agent 线（非特权）不成立。
 
 ```python
 import numpy as np

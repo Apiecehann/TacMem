@@ -1,13 +1,80 @@
 import base64
 import os
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, TypeVar, Union
 
 import cv2
-import imageio
 import numpy as np
 from PIL import Image
+
+
+def encode_frames_to_mp4(
+    frames: list[np.ndarray], out_path: str | Path, *, fps: int = 10
+) -> Path:
+    """Encode in-memory RGB frames to a libx264 MP4 — the repo's single
+    "frames -> MP4" entry point.
+
+    Both video producers delegate here: the eval harness (``_write_video``,
+    ``_encode_video_base64`` below) and the UniVTAC serving server
+    (``capx.serving.univtac_video.assemble_mp4``).  Uses the system ffmpeg
+    directly (the same encoder imageio's FFMPEG plugin shells out to), so it
+    works in any environment with ffmpeg on PATH — no imageio dependency.
+
+    Args:
+        frames: List of RGB uint8 arrays (H, W, 3); float arrays are
+            interpreted as 0-1 and scaled.
+        out_path: Destination MP4 path (created with parents).
+        fps: Playback frame rate (default 10).
+
+    Returns:
+        The written ``out_path``.
+
+    Raises:
+        ValueError: empty ``frames`` or inconsistent frame sizes.
+        RuntimeError: ffmpeg not found on PATH.
+        subprocess.CalledProcessError: ffmpeg failed.
+    """
+    out_path = Path(out_path)
+    if not frames:
+        raise ValueError("no frames to encode")
+    h, w = frames[0].shape[:2]
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not found on PATH")
+    proc = subprocess.Popen(
+        [
+            ffmpeg, "-y", "-loglevel", "error",
+            "-f", "rawvideo", "-pixel_format", "rgb24",
+            "-video_size", f"{w}x{h}", "-framerate", str(fps),
+            "-i", "-",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            str(out_path),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        for frame in frames:
+            arr = np.ascontiguousarray(frame)
+            if arr.shape[:2] != (h, w):
+                raise ValueError(f"inconsistent frame size: {arr.shape} vs {(h, w)}")
+            if arr.dtype != np.uint8:
+                arr = (arr.clip(0, 1) * 255).astype(np.uint8)
+            proc.stdin.write(arr.tobytes())
+    except Exception:
+        proc.stdin.close()
+        proc.wait()
+        raise
+    proc.stdin.close()
+    ret = proc.wait()
+    if ret != 0:
+        raise subprocess.CalledProcessError(ret, ffmpeg)
+    return out_path
 
 
 def _encode_video_base64(frames: list[np.ndarray], fps: int = 10) -> str:
@@ -23,11 +90,7 @@ def _encode_video_base64(frames: list[np.ndarray], fps: int = 10) -> str:
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         tmp_path = tmp.name
     try:
-        with imageio.get_writer(
-            tmp_path, fps=fps, format="FFMPEG", codec="libx264"
-        ) as writer:
-            for frame in frames:
-                writer.append_data(np.ascontiguousarray(frame))
+        encode_frames_to_mp4(frames, tmp_path, fps=fps)
         with open(tmp_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode("utf-8")
     finally:
@@ -45,10 +108,7 @@ def _write_video(frames: list[np.ndarray], output_dir: str | None, *, suffix: st
     """
     parent = Path(output_dir)
     out_path = parent / f"video_{suffix}.mp4"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with imageio.get_writer(out_path, fps=10, format="FFMPEG", codec="libx264") as writer:
-        for frame in frames:
-            writer.append_data(np.ascontiguousarray(frame))
+    encode_frames_to_mp4(frames, out_path, fps=10)
     print(f"Saved interaction video to {out_path} ({len(frames)} frames)")
 
 

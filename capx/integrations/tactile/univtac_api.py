@@ -12,11 +12,14 @@ All calls are forwarded to the UniVTAC API server over HTTP.
 
 from __future__ import annotations
 
+import base64
+import io
 import os
 from typing import Any
 
 import numpy as np
 import requests
+from PIL import Image
 
 from capx.integrations.base_api import ApiBase
 from capx.envs.base import BaseEnv
@@ -296,9 +299,9 @@ class UniVTACTactileApi(ApiBase):
             surface — 34 mm is the far plane (no contact) and it DECREASES as
             contact hardens: ~27 mm is a light grasp, ~20 mm is a hard jam);
             left_marker_displacement_px, right_marker_displacement_px (float,
-            mean absolute marker displacement since the no-contact reset
-            baseline — rises with ANY gel deformation (contact, insertion) as
-            well as with slip, so it is NOT a clean slip indicator on its own);
+            mean absolute marker displacement since the no-contact baseline
+            — rises with ANY gel deformation (contact, insertion) as well as
+            with slip, so it is NOT a clean slip indicator on its own);
             left_marker_coherence, right_marker_coherence (float, 0-1
             uniformity of marker motion — high when markers move together
             (shear/slip), low when they move incoherently (compression/
@@ -493,3 +496,86 @@ class UniVTACTactileApi(ApiBase):
                     "Try calling get_object_pose() without return_bbox_extent."
                 )
         return position, quat, bbox
+
+    # ------------------------------------------------------------------
+    # Agent-facing observation (NOT part of the cap-x LLM API)
+    # ------------------------------------------------------------------
+
+    def get_observation(self, include_depth: bool = True) -> dict:
+        """Return the current head/wrist camera images for interactive agents.
+
+        Agent-facing only: this method is intentionally NOT listed in
+        ``functions()``, so it never appears in the generated LLM prompt and
+        is not bound in the exec sandbox.  It exists for coding agents that
+        drive the arm interactively (see ``univtac_skill/robo.py``).
+
+        Args:
+            include_depth: (bool) Also decode the metric depth maps (float32
+                metres). Default True.
+
+        Returns:
+            dict with ``head_rgb`` / ``wrist_rgb``: (H, W, 3) uint8 numpy
+            arrays (None if unavailable), and ``head_depth`` / ``wrist_depth``:
+            (H, W) float32 metres (None if include_depth is False or the
+            camera is unavailable).  ``head_intrinsics`` / ``head_cam_pos_w`` /
+            ``head_cam_quat_w_ros``: head-camera calibration passed through
+            from the server (None if the server does not provide it) — needed
+            by the perception back-projection.
+        """
+        data = self._get("/observation")
+        result: dict = {}
+        for cam in ("head", "wrist"):
+            rgb_b64 = data.get(f"{cam}_rgb_base64", "")
+            if rgb_b64:
+                img = Image.open(io.BytesIO(base64.b64decode(rgb_b64)))
+                result[f"{cam}_rgb"] = np.asarray(img.convert("RGB"), dtype=np.uint8)
+            else:
+                result[f"{cam}_rgb"] = None
+
+            depth = None
+            if include_depth:
+                depth_b64 = data.get(f"{cam}_depth_float32_base64", "")
+                shape = data.get(f"{cam}_image_shape")
+                if depth_b64 and shape:
+                    depth = np.frombuffer(
+                        base64.b64decode(depth_b64), dtype=np.float32
+                    ).reshape(shape[0], shape[1])
+            result[f"{cam}_depth"] = depth
+
+        # Camera calibration (needed for perception back-projection); passed
+        # through from the server response, unchanged.
+        for key in ("head_intrinsics", "head_cam_pos_w", "head_cam_quat_w_ros"):
+            result[key] = data.get(key)
+
+        shapes = ", ".join(
+            f"{cam}="
+            + (str(result[f"{cam}_rgb"].shape) if result[f"{cam}_rgb"] is not None else "None")
+            for cam in ("head", "wrist")
+        )
+        print(f"Observation: {shapes}")
+        return result
+
+    def get_ee_pose(self) -> dict:
+        """Return the end-effector pose in the world frame.
+
+        Agent-facing only: this method is intentionally NOT listed in
+        ``functions()``, so it never appears in the generated LLM prompt and
+        is not bound in the exec sandbox.  It exists for coding agents that
+        drive the arm interactively (see ``univtac_skill/robo.py``).
+
+        Diagnostic use only: verify that a commanded move_delta actually
+        executed (execution state != world state), detect drift from a
+        known-good pose, and re-anchor before a precise descent.  Do NOT use
+        it for object alignment — ``goto_pose`` plans in the same frame this
+        returns, and object perception (SAM3) is far noisier than the arm
+        kinematics, so aligning to the perception through this adds no
+        precision.
+
+        Args:
+            None.
+
+        Returns:
+            dict with ``position``: [x, y, z] metres and ``quaternion_wxyz``:
+            [w, x, y, z], both in the world frame.
+        """
+        return self._get("/ee_pose")

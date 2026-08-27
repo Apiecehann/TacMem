@@ -31,20 +31,22 @@ env:
 
       Key rules:
       - Trust the grasp: descend straight down, do not re-align. Do not
-        re-query get_object_pose once the plug is moving (occlusion makes
-        SAM3 mis-segment).
+        re-query get_object_pose mid-descent (occlusion makes SAM3
+        mis-segment) — the seating probe below is the only exception.
       - Sanity-check detections: the hole must lie BELOW the plug, near table
         level. Reject a "hole" above the plug (the gripper) or a "black
         connector" at table level (not the plug) — fall back to grasp
         alignment.
-      - Insert by feel, not force: descend in small steps. Gel hardening is
-        normal on contact and is NOT a jam; a slip during descent is a jam —
-        lift no more than one descend step (never drift net-upward), nudge a
-        few mm, retry. Never rotate.
-      - Confirm seating, don't count descent: when the plug stops going down,
-        nudge a few mm left then right. Slip during this probe means the plug
-        is locked in the socket (seated) — stop and leave it; free motion with
-        no slip means it is not seated — keep trying.
+      - Insert by feel: descend in small steps. Slip during descent is normal
+        friction — passing the socket mouth shears the markers hard for a step
+        or two, then it fades. Do NOT lift on slip alone. Judge progress by
+        the plug: keep descending while each step advances it; when several
+        descends stop advancing the plug, it is jammed — lift at most a couple
+        of steps, nudge sideways, retry. Never rotate.
+      - Confirm seating with a lateral probe: when the plug stops advancing,
+        nudge sideways ~3 mm, then re-query the plug pose once. If the plug
+        stayed put, it is seated — stop and leave it. If it swung away, it was
+        jammed on the rim, not seated — bring it back and retry.
 
       Write ONLY executable Python code (no code fences). Import numpy if needed.
 

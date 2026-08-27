@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run Python for the UniVTAC skill with the correct environment.
+#
+# The launch recipe (venv path, PYTHONPATH for `robo`/`capx`, numba and
+# matplotlib cache dirs) is fiddly, and the agent's information boundary
+# forbids hunting through cap-x internals to re-derive it.  Everything the
+# agent runs goes through this one entry point.
+#
+# Usage (from univtac_skill/):
+#     ./run_py -c "from robo import health; print(health())"
+#     ./run_py scratch/your_script.py
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CAPX="$(dirname "$DIR")"                 # cap-x repo root
+PYTHON="${CAPX}/.venv/bin/python3"
+
+if [ ! -x "$PYTHON" ]; then
+    echo "run_py: venv python not found at ${PYTHON}" >&2
+    exit 1
+fi
+
+export PYTHONPATH="$DIR:$CAPX${PYTHONPATH:+:$PYTHONPATH}"
+export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-$DIR/.numba_cache}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$DIR/.mplconfig}"
+
+exec "$PYTHON" "$@"

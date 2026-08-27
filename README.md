@@ -120,6 +120,7 @@ git clone https://github.com/univtac/UniVTAC.git
 ```
 
 完整启动与评测方法见 [docs/running_univtac_eval.md](docs/running_univtac_eval.md)。
+交互式 coding agent 直接操作仿真（复用触觉 API、`univtac_skill/` 手册）见 [docs/univtac_agent.md](docs/univtac_agent.md)。
 
 ## Quick Start
 

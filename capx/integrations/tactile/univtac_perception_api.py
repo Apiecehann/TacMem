@@ -14,10 +14,6 @@ ground-truth grasp sampler (grasp perception is out of scope for this class).
 
 from __future__ import annotations
 
-import base64
-import io
-from typing import Any
-
 import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation as SciRotation
@@ -89,17 +85,19 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
     def _perceive_once(self, object_name: str, camera: str) -> np.ndarray:
         """One fetch-and-segment cycle.
 
-        Pulls /observation, runs SAM3 on the text prompt, and back-projects
-        the highest-scoring mask into world points.  Raises on camera
-        calibration or empty results; returns a possibly-empty point cloud.
+        Pulls /observation (decoded by ``get_observation``), runs SAM3 on the
+        text prompt, and back-projects the highest-scoring mask into world
+        points.  Raises on camera calibration or empty results; returns a
+        possibly-empty point cloud.
         """
-        obs = self._get("/observation")
+        obs = self.get_observation(include_depth=True)
 
-        rgb = self._decode_rgb(obs.get(f"{camera}_rgb_base64", ""))
-        depth = self._decode_depth(
-            obs.get(f"{camera}_depth_float32_base64", ""),
-            obs.get(f"{camera}_image_shape"),
-        )
+        rgb = obs[f"{camera}_rgb"]
+        depth = obs[f"{camera}_depth"]
+        if rgb is None:
+            raise RuntimeError("Server returned no RGB image for the requested camera")
+        if depth is None:
+            raise RuntimeError("Server returned no metric depth for the requested camera")
         intrinsics = np.asarray(obs.get(f"{camera}_intrinsics"), dtype=np.float64)
         pos_w = np.asarray(obs.get(f"{camera}_cam_pos_w"), dtype=np.float64)
         quat_w_ros = np.asarray(obs.get(f"{camera}_cam_quat_w_ros"), dtype=np.float64)
@@ -131,21 +129,6 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
         return np.zeros((0, 3), dtype=np.float64)
 
     # ---- helpers ----
-
-    @staticmethod
-    def _decode_rgb(b64: str) -> np.ndarray:
-        if not b64:
-            raise RuntimeError("Server returned no RGB image for the requested camera")
-        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
-        return np.asarray(img, dtype=np.uint8)
-
-    @staticmethod
-    def _decode_depth(b64: str, shape: Any) -> np.ndarray:
-        if not b64 or not shape:
-            raise RuntimeError("Server returned no metric depth for the requested camera")
-        h, w = int(shape[0]), int(shape[1])
-        raw = np.frombuffer(base64.b64decode(b64), dtype=np.float32)
-        return raw.reshape(h, w)
 
     @staticmethod
     def _mask_to_world_points(
