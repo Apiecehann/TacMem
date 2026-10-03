@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 import viser
@@ -22,9 +22,6 @@ vendor_root = os.path.normpath(os.path.join(here, "..", "third_party", "LIBERO")
 if os.path.isdir(vendor_root) and vendor_root not in sys.path:
     sys.path.append(vendor_root)
 # try:
-from libero import benchmark  # type: ignore[import-not-found]
-from libero.envs import OffScreenRenderEnv  # type: ignore[import-not-found]
-from libero.utils import get_libero_path  # type: ignore[import-not-found]
 # except Exception as e:  # pragma: no cover - optional dependency
 #     raise ModuleNotFoundError(
 #         "LIBERO not available; add submodule or run `uv sync --extra libero`."
@@ -626,8 +623,6 @@ class FrankaLiberoEnv(BaseEnv):
         obs = self.get_observation()
         if self.viser_debug:
             self._viser_init_check()
-
-            obs_cartesian = obs["robot_cartesian_pos"][:-1]
 
             action_joint_copy = obs["robot_joint_pos"].copy()
             action_joint_copy[-1] *= self.gripper_metric_length

@@ -24,7 +24,9 @@ for step in range(15):
     data = get_tactile_data()
     depth_diff = abs(data["left_depth_mm"] - data["right_depth_mm"])
     if depth_diff > 0.5:
-        correction = 0.01 if data["left_depth_mm"] > data["right_depth_mm"] else -0.01
+        # 0.02 rad is the smallest yaw move_delta can execute; anything
+        # smaller is below the per-call minimum and is rejected.
+        correction = 0.02 if data["left_depth_mm"] > data["right_depth_mm"] else -0.02
         move_delta(dry=correction)
     if data["left_depth_mm"] > 1.5 and data["right_depth_mm"] > 1.5:
         break
@@ -35,3 +37,6 @@ move_delta(dz=-0.005)
 class UniVTACInsertTubeCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
+    # Optional API-doc sections this task's LLM needs; the rest of the
+    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
+    api_doc_sections = ()

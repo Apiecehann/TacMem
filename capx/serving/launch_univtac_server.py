@@ -24,9 +24,11 @@ import io
 import logging
 import os
 import signal
+import socket
 import sys
 import tempfile
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -50,6 +52,11 @@ try:
     from capx.serving import univtac_action_log as action_log
 except ImportError:  # direct-script run: capx/serving/ on sys.path
     from univtac_action_log import action_log
+
+try:
+    from capx.serving import tactile_reflex
+except ImportError:  # direct-script run: capx/serving/ on sys.path
+    import tactile_reflex
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -88,7 +95,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # UniVTAC is cloned as a sibling of cap-x by default; override with UNIVTAC_ROOT.
 UNIVTAC_ROOT = Path(os.environ.get("UNIVTAC_ROOT", str(_REPO_ROOT.parent / "UniVTAC")))
-TASK_CONFIG_DIR = UNIVTAC_ROOT / "task_config"
+# ViTaForge is a fork/superset of UniVTAC with the same ``envs/`` +
+# ``task_config/`` layout, so its tasks are served by this same module — they
+# just need a different backing root on sys.path (see TASK_BACKING below).
+VITAFORGE_ROOT = Path(os.environ.get("VITAFORGE_ROOT", str(_REPO_ROOT.parent / "ViTaForge")))
 
 # One line per tactile reading (marker displacement + depth + ground-truth
 # texture) appended on every tactile read, for calibrating the
@@ -104,7 +114,114 @@ AVAILABLE_TASKS = [
     "pull_out_key",
     "put_bottle_in_shelf",
     "grasp_classify",
+    "tactile_transfer_rearrange_clean",
+    "tactile_memory_match",
+    "weight_classify",
+    "hardness_classify",
+    "bulb_tightening",
 ]
+
+
+@dataclass(frozen=True)
+class TaskBacking:
+    """Where a task's ``envs/`` package and task_config live.
+
+    Attributes:
+        root: Repository root containing ``envs/`` and ``task_config/``.
+        config_file: Task config YAML under ``root/task_config``.
+        cfg_overrides: ``(key, value)`` pairs applied to the TaskCfg after
+            ``TaskCfg()`` and before ``Task(...)``.  Used where the config
+            file alone would leave the task in a degenerate state (e.g.
+            weight_classify defaults to one weight label, which would make
+            every trial identical).
+    """
+
+    root: Path
+    config_file: str
+    cfg_overrides: tuple[tuple[str, Any], ...] = ()
+
+
+DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
+# Tasks served out of ViTaForge instead of UniVTAC.  The root is a property of
+# the task, not of the invocation, so it lives here rather than in a CLI flag —
+# an unsupported task/root combination is then unrepresentable.
+TASK_BACKING: dict[str, TaskBacking] = {
+    "weight_classify": TaskBacking(
+        VITAFORGE_ROOT,
+        "gelsight.yml",
+        (("weight_label", "random"),),
+    ),
+    # hardness_classify defaults to hardness_label="random" already, but state
+    # it here for the same reason as weight_classify: a config that pinned one
+    # label would make every trial identical and the eval meaningless.
+    "hardness_classify": TaskBacking(
+        VITAFORGE_ROOT,
+        "gelsight.yml",
+        (("hardness_label", "random"),),
+    ),
+    # Spike (2026-09-25): bulb_tightening is ViTaForge's consolidated successor
+    # to screw_light_bulb, built on the force-task contract in
+    # envs/_force_task_utils.py.  Registered so the server can construct it at
+    # all; whether it can be *driven and scored* through this server's
+    # atom-based API is what the spike measures (see /force_state and
+    # /submit_episode below).
+    #
+    # Its task_parameters block does NOT reach the task through
+    # _apply_task_config (a 4-field whitelist), so init_task binds it
+    # explicitly with ViTaForge's own prepare_force_task_config — which is
+    # also what supplies the derived ``workspace`` key.  No
+    # VITAFORGE_TASK_CONFIG export is needed (see the binding block in
+    # init_task; exporting it instead only gets you as far as
+    # KeyError: 'workspace').
+    # The task NAME must stay "bulb_tightening": FINAL_TASKS keys the
+    # force-task binder off the name (envs/_force_task_utils.py:702), and an
+    # unregistered name would silently skip the binder and run on code
+    # defaults.
+    #
+    # REVERTED 2026-09-27 to the reference profile.  bulb_tightening_seated.yml
+    # (initial_depth_m .020 / seat_top_m .0284, free travel 0.6 mm) was tried and
+    # is FALSIFIED, not merely disappointing.  check_success needs
+    # formal_net_turns >= 1 AND phase_error_m < .002 at the same time, and
+    # expected_advance(yaw) = (yaw/360)*lead (:614) means one full turn demands
+    # 7.69 mm of real axial advance.  A seated bulb cannot advance: the compliant
+    # seat reaches axial_overload (seat_force_N > 180) after ~1.35 mm
+    # (k ~= 132 kN/m, measured 10.97 N at 83 um).  So the two gates are jointly
+    # unsatisfiable at zero free travel.  The 13 mm free travel IS the thread's
+    # own travel -- 13.000/7.6895 = 1.6907 turns = 608.6 deg, which is where
+    # net_turns comes from and why phase_error stays ~0; the expert's 594 deg is
+    # exactly that.  Removing it removed the only phase in which both hold.
+    # The seated profile file is kept for its evidence value and marked
+    # FALSIFIED in its own header -- do not repoint this at it.
+    "bulb_tightening": TaskBacking(
+        VITAFORGE_ROOT,
+        "bulb_tightening.yml",
+        (),
+    ),
+}
+
+
+def _backing_for(task_name: str) -> TaskBacking:
+    """Return the backing root/config for a task (UniVTAC unless registered)."""
+    return TASK_BACKING.get(task_name, DEFAULT_BACKING)
+
+
+def _reserve_listener(host: str, port: int) -> socket.socket:
+    """Bind and retain the API listener until Uvicorn takes ownership.
+
+    Task initialization can take several minutes. Reserving the address before
+    it starts makes a competing server fail immediately instead of wasting that
+    initialization time and later spawning a watchdog for a server that never
+    bound its port.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind((host, port))
+        listener.listen(socket.SOMAXCONN)
+    except OSError:
+        listener.close()
+        raise
+    return listener
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -144,8 +261,17 @@ _cmd_queue: _queue.Queue = _queue.Queue()
 
 # Timeout for main-thread operations.  Motion planning (cuRobo IK)
 # can hang indefinitely on degenerate inputs, so every _run_on_main
-# call must have a bounded wait.
-_MOTION_TIMEOUT = 120.0  # goto_pose / move_delta / rotate_gripper
+# call must have a bounded wait.  2026-09-07: raised 120 -> 550 so a
+# slow-but-finite physics grind (observed: contact-heavy ops taking a
+# few hundred seconds, /health still answering) completes instead of
+# being cut at 125 s.  2026-10-02: raised 550 -> 1500 — a re-grasp
+# close in bulb_tightening ran 752 s on a loaded machine and a 550 s
+# cut killed the whole trial at 56% of its budget.  The client read
+# timeout (1800 s) outwaits this 1505 s wait by design, so a
+# merely-slow op returns its real response instead of a client-side
+# ReadTimeout (which the runner treats as a retryable timeout and
+# restarts from depth 0, throwing away all progress).
+_MOTION_TIMEOUT = 1500.0  # goto_pose / move_delta / rotate_gripper
 _QUERY_TIMEOUT  = 10.0   # get_ee_pose, get_object_pose, etc.
 
 def _exec_wrapper(fn, args, kwargs, out: dict) -> None:
@@ -233,14 +359,41 @@ def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
 # ---------------------------------------------------------------------------
 
 
-def _rgb_tensor_to_base64(tensor: torch.Tensor) -> str:
-    """Convert RGB tensor (H, W, 3) to base64 PNG string."""
+def _rgb_to_uint8(tensor: torch.Tensor) -> np.ndarray:
+    """Quantize an RGB tensor (H, W, 3) to the uint8 array the payload carries."""
     if tensor.dtype != torch.uint8:
         tensor = (tensor.clamp(0, 1) * 255).to(torch.uint8)
-    img = Image.fromarray(tensor.cpu().numpy())
+    return tensor.cpu().numpy()
+
+
+def _rgb_tensor_to_base64(tensor: torch.Tensor) -> str:
+    """Convert RGB tensor (H, W, 3) to base64 PNG string."""
+    img = Image.fromarray(_rgb_to_uint8(tensor))
     buf = io.BytesIO()
     img.save(buf, format="png")
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _rgb_tensor_anisotropy(tensor: torch.Tensor | None) -> float | None:
+    """Row-to-row over column-to-column gradient of the marker image.
+
+    The one scalar that sees spatial structure instead of an image average:
+    pressed against a rough surface the gel picks up the ridges as banding,
+    which raises the row gradient while leaving the column gradient alone.
+    1.0 is an evenly loaded gel; None when there is no image to read.
+
+    Computed from ``_rgb_to_uint8`` -- the same array the base64 payload
+    carries -- so this is the identical number a client decodes out of that
+    image.
+    """
+    if tensor is None:
+        return None
+    gray = _rgb_to_uint8(tensor).astype(np.float64).mean(axis=2)
+    if gray.ndim != 2 or gray.shape[0] < 2 or gray.shape[1] < 2:
+        return None
+    row = float(np.abs(np.diff(gray, axis=0)).mean())
+    col = float(np.abs(np.diff(gray, axis=1)).mean())
+    return row / col if col > 1e-9 else None
 
 
 def _depth_tensor_to_base64(tensor: torch.Tensor) -> str:
@@ -321,6 +474,10 @@ class ResetRequest(BaseModel):
     seed: int = 0
 
 
+class RecordingModeRequest(BaseModel):
+    mode: str = "harness"
+
+
 class ResetResponse(BaseModel):
     success: bool = True
     seed: int = 0
@@ -347,10 +504,33 @@ class MoveDeltaRequest(BaseModel):
     tag: str = "delta"
 
 
+class StopOn(BaseModel):
+    """Fast-loop stop conditions for /move_reflexive (all ORed).
+
+    A key present in the JSON enables its condition; threshold values
+    absent fall back to the module defaults (tactile_reflex.
+    DEFAULT_THRESHOLDS).  contact=True enables the first-touch stop.
+    """
+
+    contact: bool = False
+    hard_depth: float | None = None    # mm; default 20.0
+    shear_spike: float | None = None   # px; default 2.0
+    slip: float | None = None          # deg; default 30.0
+    asymmetry: float | None = None     # mm; default 3.0
+    plateau: dict[str, float] | None = None  # {"mm": 0.5, "steps": 5}
+    max_steps: int | None = None       # safety net
+
+
+class MoveReflexiveRequest(MoveDeltaRequest):
+    stop_on: StopOn | None = None
+    tag: str = "delta_reflexive"
+
+
 class GripperRequest(BaseModel):
     action: Literal["open", "close"]
     force_threshold: float | None = None
     use_adaptive_grasp: bool | None = None  # None → fall back to task config
+    position: float | None = None  # 0.0 = fully closed, 1.0 = fully open; None → 0.0 / 1.0
 
 
 class ActionResponse(BaseModel):
@@ -359,6 +539,11 @@ class ActionResponse(BaseModel):
     message: str = ""
     step: int = 0
     tactile: dict[str, Any] | None = None
+
+
+class MoveReflexiveResponse(ActionResponse):
+    event: dict[str, Any] | None = None
+    terminated_by: str | None = None
 
 
 class TactileResponse(BaseModel):
@@ -370,8 +555,16 @@ class TactileResponse(BaseModel):
     right_marker_displacement_px: float = 0.0
     left_marker_coherence: float = 0.0
     right_marker_coherence: float = 0.0
-    left_marker_std_px: float = 0.0
-    right_marker_std_px: float = 0.0
+    # None rather than a neutral 1.0 when there is no image to read, so a
+    # caller can skip the reading instead of trusting a fabricated one.
+    left_marker_anisotropy: float | None = None
+    right_marker_anisotropy: float | None = None
+    # Coherent shear direction (mean marker displacement vector), sensor UV
+    # pixel frame — the direction signal behind the reflex events.
+    left_marker_shear_dx: float = 0.0
+    left_marker_shear_dy: float = 0.0
+    right_marker_shear_dx: float = 0.0
+    right_marker_shear_dy: float = 0.0
     left_rgb_base64: str = ""
     right_rgb_base64: str = ""
     left_depth_base64: str = ""
@@ -417,6 +610,20 @@ class RotateGripperRequest(BaseModel):
     object_name: str
     angle_rad: float
     steps: int = 4
+    # Lead-coupled helix mode: axial advance per full turn, in metres.  None
+    # keeps the plain rotate path that every other task uses.
+    feed_lead_m: float | None = None
+
+
+class RotateGripperResponse(ActionResponse):
+    feed_lead_m: float | None = None
+    requested: int = 0
+    completed: int = 0
+    grip_released: bool = False
+    aborted: str | None = None
+    reached: str | None = None
+    submitted: str | None = None
+    trace: list[dict[str, Any]] | None = None
 
 
 class ObjectPoseResponse(BaseModel):
@@ -460,14 +667,23 @@ def _record_frame(label: str) -> str:
     return b64
 
 
-def _sim_reset(seed: int) -> dict:
-    """Reset the task environment."""
+def _sim_reset(seed: int, *, log: bool = True) -> dict:
+    """Reset the task environment.
+
+    Args:
+        seed: scene-randomization seed for this episode.
+        log: whether to open an action-log episode.  The startup reset
+            passes False: there is no real episode yet, and opening the
+            log here would create an ``outputs/agent`` episode directory
+            before the eval harness has a chance to announce harness mode.
+    """
     global _TASK, _MARKER_REFERENCE
     _RECORDER.finalize()  # assemble previous episode's video (no-op if none)
     _GRASP_OFFSET.clear()
     _TASK.reset(seed=seed)
     _rec_info = _RECORDER.start(_TASK_NAME, seed)
-    action_log.log_episode_reset(_TASK_NAME, seed, _rec_info.get("started") or "")
+    if log:
+        action_log.log_episode_reset(_TASK_NAME, seed, _rec_info.get("started") or "")
     _record_frame("reset:initial")  # initial state
     try:
         obs = _TASK._get_observations()
@@ -591,7 +807,6 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
     global _TASK
 
     from envs.utils.atom import Action
-    from envs.utils.transforms import Pose
 
     # --- safety limits ---------------------------------------------------------
     MIN_TRANS = 0.002   # 2 mm
@@ -615,13 +830,21 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
                 "tactile": _sim_get_tactile_data(),
             }
 
-    # Skip trivially tiny deltas (below all minimums)
+    # Skip trivially tiny deltas (below all minimums).  Report it as a
+    # failure, not as "OK": nothing moved, and a caller running a
+    # converge-to-target loop would otherwise see an endless run of successes
+    # while the arm stands still.
     if abs(dx) < MIN_TRANS and abs(dy) < MIN_TRANS and abs(dz) < MIN_TRANS \
        and abs(drx) < MIN_ROT and abs(dry) < MIN_ROT and abs(drz) < MIN_ROT:
         return {
-            "success": True,
+            "success": False,
             "plan_success": _TASK.plan_success,
-            "message": "OK (delta below minimum, skipped)",
+            "message": (
+                f"Delta is below the {MIN_TRANS * 1000:.0f} mm / "
+                f"{MIN_ROT:.2f} rad minimum on every axis - the arm did NOT "
+                f"move.  Command at least {MIN_TRANS * 1000:.0f} mm, or stop: "
+                f"repeated no-op commands mean the target is blocked."
+            ),
             "step": _TASK.step_count,
             "tactile": _sim_get_tactile_data(),
         }
@@ -667,7 +890,8 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
         if scale < 1.0:
             logger.warning(
                 "_sim_move_delta: retrying with scale=%.0f%% (was %s)",
-                scale * 100, dict(dx=dx, dy=dy, dz=dz, drx=drx, dry=dry, drz=drz),
+                scale * 100,
+                {"dx": dx, "dy": dy, "dz": dz, "drx": drx, "dry": dry, "drz": drz},
             )
             scaled_dx, scaled_dy, scaled_dz = dx * scale, dy * scale, dz * scale
             scaled_drx, scaled_dry, scaled_drz = drx * scale, dry * scale, drz * scale
@@ -741,8 +965,205 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
     }
 
 
+def _sim_move_reflexive(dx: float, dy: float, dz: float,
+                        drx: float, dry: float, drz: float,
+                        coord: str, tag: str, stop_on: dict | None) -> dict:
+    """Move by a delta, stopping early when a tactile event fires.
+
+    Mirrors _sim_move_delta (same safety limits and retry loop), but a
+    per-step reflex callback evaluates the tactile fast loop (see
+    tactile_reflex.py) while the motion runs.  The first enabled event
+    freezes the arm in place — ``plan_success=False`` plus a no-op
+    ``set_arm``; plan_success alone cannot stop the kinematic write in
+    ``take_dense_action`` — and an event digest is returned instead of the
+    full trajectory.
+
+    ``stop_on=None`` runs the motion to completion and only reports the
+    digest (monitoring mode).  A reflex-terminated motion is NEVER retried
+    at a smaller scale.  ``plan_success`` is always restored to True before
+    returning so the next motion is not blocked by a stale failure flag.
+    """
+    global _TASK
+
+    from envs.utils.atom import Action
+
+    # --- safety limits (mirrors _sim_move_delta; keep in sync) --------------
+    MIN_TRANS = 0.002   # 2 mm
+    MIN_ROT   = 0.02    # ~1 degree
+    MAX_TRANS = 0.10    # 10 cm — single-step cap
+    MAX_ROT   = 0.5     # ~30 degrees
+
+    for val, name, limit in [(abs(dx), "dx", MAX_TRANS), (abs(dy), "dy", MAX_TRANS),
+                              (abs(dz), "dz", MAX_TRANS), (abs(drx), "drx", MAX_ROT),
+                              (abs(dry), "dry", MAX_ROT), (abs(drz), "drz", MAX_ROT)]:
+        if val > limit:
+            return {
+                "success": False,
+                "plan_success": _TASK.plan_success,
+                "message": (
+                    f"|{name}|={val:.3f} exceeds per-step limit ({limit:.3f}). "
+                    f"Use multiple smaller steps instead."
+                ),
+                "step": _TASK.step_count,
+                "tactile": _sim_get_tactile_data(),
+            }
+
+    # Skip trivially tiny deltas (below all minimums).  Report it as a
+    # failure, not as "OK": nothing moved, and a caller running a
+    # converge-to-target loop would otherwise see an endless run of successes
+    # while the arm stands still.
+    if abs(dx) < MIN_TRANS and abs(dy) < MIN_TRANS and abs(dz) < MIN_TRANS \
+       and abs(drx) < MIN_ROT and abs(dry) < MIN_ROT and abs(drz) < MIN_ROT:
+        return {
+            "success": False,
+            "plan_success": _TASK.plan_success,
+            "message": (
+                f"Delta is below the {MIN_TRANS * 1000:.0f} mm / "
+                f"{MIN_ROT:.2f} rad minimum on every axis - the arm did NOT "
+                f"move.  Command at least {MIN_TRANS * 1000:.0f} mm, or stop: "
+                f"repeated no-op commands mean the target is blocked."
+            ),
+            "step": _TASK.step_count,
+            "tactile": _sim_get_tactile_data(),
+        }
+
+    if coord == "ee":
+        ee_pose = _TASK._robot_manager.get_ee_pose()
+        new_pose = ee_pose.add_bias([dx, dy, dz], coord="local")
+        if any([drx, dry, drz]):
+            new_pose = new_pose.add_rotation(euler=[drx, dry, drz], coord="local")
+    else:
+        ee_pose = _TASK._robot_manager.get_ee_pose()
+        new_pose = ee_pose.add_bias([dx, dy, dz], coord="world")
+        if any([drx, dry, drz]):
+            new_pose = new_pose.add_rotation(euler=[drx, dry, drz], coord="world")
+
+    # --- table-surface guard (mirrors _sim_move_delta; keep in sync) -------
+    target_z = float(new_pose.p[2])
+    if target_z < 0.01:
+        _TASK.plan_success = True
+        return {
+            "success": False,
+            "plan_success": _TASK.plan_success,
+            "message": (
+                f"Target Z={target_z:.3f} is below the table surface. "
+                f"Reduce the downward delta."
+            ),
+            "step": _TASK.step_count,
+            "tactile": _sim_get_tactile_data(),
+        }
+
+    _record_frame(f"move_reflexive:tag={tag}:before")
+
+    # --- motion with reflex evaluation --------------------------------------
+    # Each attempt installs a FRESH detector (the digest reflects the
+    # attempt that actually ran) and restores the hook in a finally.  A
+    # terminated motion breaks the loop: re-executing it at a smaller scale
+    # would re-run the same contact.  Between attempts plan_success is
+    # restored explicitly — move() sets it False on a planning failure and
+    # the next attempt's entry guard would otherwise return False without
+    # planning anything.
+    success = False
+    ctx = ReflexContext()
+    detector: Any = None
+    for scale in [1.0, 0.5, 0.25]:
+        if scale < 1.0:
+            logger.warning(
+                "_sim_move_reflexive: retrying with scale=%.0f%% (was %s)",
+                scale * 100,
+                {"dx": dx, "dy": dy, "dz": dz, "drx": drx, "dry": dry, "drz": drz},
+            )
+            scaled_dx, scaled_dy, scaled_dz = dx * scale, dy * scale, dz * scale
+            scaled_drx, scaled_dry, scaled_drz = drx * scale, dry * scale, drz * scale
+
+            # Skip if the scaled delta is below the minimum
+            if (abs(scaled_dx) < MIN_TRANS * 0.5 and abs(scaled_dy) < MIN_TRANS * 0.5
+                    and abs(scaled_dz) < MIN_TRANS * 0.5
+                    and abs(scaled_drx) < MIN_ROT * 0.5 and abs(scaled_dry) < MIN_ROT * 0.5
+                    and abs(scaled_drz) < MIN_ROT * 0.5):
+                logger.warning("_sim_move_reflexive: scaled delta too small, skipping retry")
+                continue
+
+            if coord == "ee":
+                target = ee_pose.add_bias([scaled_dx, scaled_dy, scaled_dz],
+                                          coord="local")
+                if any([scaled_drx, scaled_dry, scaled_drz]):
+                    target = target.add_rotation(
+                        euler=[scaled_drx, scaled_dry, scaled_drz], coord="local")
+            else:
+                target = ee_pose.add_bias([scaled_dx, scaled_dy, scaled_dz],
+                                          coord="world")
+                if any([scaled_drx, scaled_dry, scaled_drz]):
+                    target = target.add_rotation(
+                        euler=[scaled_drx, scaled_dry, scaled_drz], coord="world")
+
+            scaled_target_z = float(target.p[2])
+            if scaled_target_z < 0.01:
+                continue
+            attempt_tag = tag + f"_retry{int((1-scale)*100)}"
+        else:
+            target = new_pose
+            attempt_tag = tag
+
+        detector = tactile_reflex.TactileEventDetector(stop_on=stop_on)
+        ctx = ReflexContext()
+        _install_reflex(detector, stop_on, ctx)
+        try:
+            success = _TASK.move(
+                [Action(action="move", target_pose=target)],
+                tag=attempt_tag,
+                delay=True,
+                is_save=False,
+            )
+        except Exception as exc:
+            logger.error("_TASK.move() reflexive move raised exception: %s", exc)
+            success = False
+        finally:
+            _uninstall_reflex(ctx)
+
+        if ctx.triggered:
+            break  # terminated motions are never re-executed at a smaller scale
+        if success:
+            break
+        _TASK.plan_success = True  # next scale must not hit move()'s entry guard
+
+    # Unconditional restore: a triggered motion leaves plan_success=False
+    # (the freeze), which would otherwise no-op the NEXT move() at its
+    # entry guard — the exact stale-flag leak this branch used to cause
+    # for the trigger path (only non-triggered failures were restored).
+    _TASK.plan_success = True
+
+    tactile_data = _sim_get_tactile_data()
+    _record_frame(f"move_reflexive:tag={tag}:after")
+
+    ok = success or ctx.triggered
+    if ctx.triggered:
+        message = f"OK (reflex: {ctx.reason} @ step {ctx.step})"
+    else:
+        message = "OK" if success else "Motion planning failed"
+    digest = {
+        **detector.summary,
+        "terminated_by": ctx.reason,
+        "steps": ctx.step or _TASK.step_count,
+        "callback_error": ctx.error,
+    }
+    return {
+        "success": ok,
+        # Reflex termination is a SUCCESS outcome and the restore is
+        # unconditional — a stale False would no-op the next move_delta at
+        # its entry guard and freeze every subsequent _step.
+        "plan_success": True,
+        "message": message,
+        "step": _TASK.step_count,
+        "tactile": tactile_data,
+        "terminated_by": ctx.reason,
+        "event": digest,
+    }
+
+
 def _sim_gripper(action: str, force_threshold: float | None,
-                 use_adaptive_grasp: bool | None = None) -> dict:
+                 use_adaptive_grasp: bool | None = None,
+                 position: float | None = None) -> dict:
     """Open or close gripper.  Uses adaptive grasp for closing (tactile feedback).
 
     Matches the expert's ``atom.close_gripper()`` / ``atom.open_gripper()``
@@ -755,39 +1176,78 @@ def _sim_gripper(action: str, force_threshold: float | None,
     ``use_adaptive_grasp`` — when explicitly provided in the request it
     overrides the task-level ``use_adaptive_grasp`` config.  This lets the
     tactile API enable adaptive grasp while the motion API disables it,
-    even though both share the same task instance.
+    even though both share the same task instance.  Honouring that override
+    takes more than resolving the threshold here: ``_base_task.move()`` picks
+    the adaptive branch from ``self.cfg.use_adaptive_grasp``, so the config
+    itself is flipped for the duration of this one action (see the
+    try/finally around the move below).  Without that flip a task shipping
+    ``use_adaptive_grasp = False`` — ViTaForge's weight_classify — silently
+    ignored ``force_threshold`` and every close slammed to full force.
+
+    ``position`` — gripper opening as a percentage, 0.0 = fully closed and
+    1.0 = fully open.  This is the primitive grip lever: it commands the
+    finger separation directly, so on a rigid object it sets the squeeze
+    force without depending on the depth servo landing where it was asked.
+    None keeps the historical full close (0.0) / full open (1.0).
+
+    Args:
+        action: "open" or "close".
+        force_threshold: gel-depth target in mm for a tactile-stopped close.
+        use_adaptive_grasp: per-request override of the task-level config.
+        position: gripper opening percentage, 0.0-1.0.
+
+    Returns:
+        dict with the action result, final gripper state and tactile data.
     """
     global _TASK
 
     from envs.utils.atom import Action
 
+    _use_adaptive = (
+        use_adaptive_grasp
+        if use_adaptive_grasp is not None
+        else _TASK.cfg.use_adaptive_grasp
+    )
     if action == "open":
-        target_pos = 1.0
+        target_pos = 1.0 if position is None else float(position)
         depth_threshold = None  # open never uses adaptive threshold
+        # Opens keep whatever control law the task itself uses.
+        adaptive_for_action = bool(_TASK.cfg.use_adaptive_grasp)
     else:
-        target_pos = 0.0
+        target_pos = 0.0 if position is None else float(position)
         # Resolve adaptive-grasp threshold (matches atom.close_gripper logic)
-        _use_adaptive = (
-            use_adaptive_grasp
-            if use_adaptive_grasp is not None
-            else _TASK.cfg.use_adaptive_grasp
-        )
-        if _use_adaptive:
-            depth_threshold = (
+        adaptive_for_action = bool(_use_adaptive)
+        depth_threshold = (
+            (
                 force_threshold
                 if force_threshold is not None
                 else _TASK.cfg.adaptive_grasp_depth_threshold
             )
-        else:
-            depth_threshold = None
+            if adaptive_for_action
+            else None
+        )
 
     # Capture frame before the gripper action
     _record_frame(f"gripper:{'open' if action == 'open' else 'close'}:before")
 
+    # ``_base_task.move()`` selects the adaptive branch from the task config,
+    # not from the request, so a request-level override only takes effect if
+    # the config says so for the duration of this call.  Flip it here and
+    # restore it below: the task instance is shared with the motion APIs,
+    # which must keep the task's own setting.
+    _cfg_adaptive_before = _TASK.cfg.use_adaptive_grasp
+    _TASK.cfg.use_adaptive_grasp = adaptive_for_action
+
     try:
+        # grasp_servo=True (LOCAL 2026-09-09): explicit force_threshold closes
+        # land precisely on the requested depth (servo mode in
+        # adaptive_set_gripper) instead of overshooting by 2-4 mm.  Closes
+        # without a threshold keep the historical behaviour, so default firm
+        # grasps everywhere else are untouched.
         success = _TASK.move(
             [Action(action="gripper", target_gripper_pos=target_pos,
-                    gripper_depth_threshold=depth_threshold)],
+                    gripper_depth_threshold=depth_threshold,
+                    grasp_servo=(action == "close" and force_threshold is not None))],
             tag="gripper",
             delay=True,
             is_save=False,
@@ -795,11 +1255,50 @@ def _sim_gripper(action: str, force_threshold: float | None,
     except Exception as exc:
         logger.error("_TASK.move() gripper raised exception: %s", exc)
         success = False
+    finally:
+        # Restore the task's own setting: the instance is shared with every
+        # other action, and only this one action asked for the override.
+        _TASK.cfg.use_adaptive_grasp = _cfg_adaptive_before
 
     # If the gripper action failed, reset plan_success so subsequent
     # actions are not blocked by a stale failure flag.
     if not success:
         _TASK.plan_success = True
+
+    # adaptive_set_gripper silently stops at max_steps if the target is
+    # never reached (e.g. a full-range open), and move() does not propagate
+    # that — verify the final state so the client learns the truth.
+    final_qpos = _TASK._robot_manager.get_gripper_qpos()
+    if action == "open":
+        target_qpos = _TASK._robot_manager.gripper_percent2qpos(target_pos)
+        reached = final_qpos >= 0.95 * target_qpos
+        detail = f"qpos={final_qpos:.4f}"
+    else:
+        depth = float(_TASK._tactile_manager.get_min_depth().min())
+        if adaptive_for_action and depth_threshold is not None:
+            # Tactile-stopped close ends at the contact qpos, not zero:
+            # accept if the gel deformation reached the depth threshold.
+            # The threshold must be the one this request asked for, not the
+            # task config's: with a request-level force_threshold the task
+            # config usually holds None, and the check below would then
+            # reject a close that landed exactly as instructed.
+            reached = depth < depth_threshold + 1.0
+        else:
+            # Position close: the fingers stop on the commanded qpos — or
+            # earlier, when the object blocks them — so demand only that the
+            # gripper closed as far as the target, or at least halfway when
+            # the target is (near) fully closed.
+            target_qpos = _TASK._robot_manager.gripper_percent2qpos(target_pos)
+            halfway = 0.5 * _TASK._robot_manager.gripper_percent2qpos(1.0)
+            reached = final_qpos <= max(target_qpos, halfway)
+        detail = f"qpos={final_qpos:.4f} depth={depth:.2f}mm"
+    if not reached:
+        logger.warning(
+            "Gripper %s did not reach its target state (%s) — "
+            "adaptive_set_gripper likely exhausted max_steps",
+            action, detail,
+        )
+        success = False
 
     tactile_data = _sim_get_tactile_data()
     _record_frame(f"gripper:{'open' if action == 'open' else 'close'}:after")
@@ -877,7 +1376,13 @@ def _sim_get_tactile_data() -> dict:
             return _MARKER_REFERENCE.get(side)
 
         def _marker_stats(marker, ref):
-            """Per-marker displacement stats relative to a reference frame."""
+            """Per-marker displacement stats relative to a reference frame.
+
+            The last two values are the coherent shear direction (mean
+            displacement vector) in the sensor's UV pixel frame — the
+            direction signal the tactile API exposes as
+            *_marker_shear_dx/dy.
+            """
             base = ref if ref is not None else marker[0]
             delta = (marker[1] - base).float()          # [M, 2]
             mag = delta.pow(2).sum(-1).sqrt()           # [M] per-marker L2
@@ -886,28 +1391,33 @@ def _sim_get_tactile_data() -> dict:
             coherence = (
                 float(torch.norm(mean_vec) / mean_mag) if mean_mag > 1e-6 else 0.0
             )
-            return mean_mag, float(mag.max()), float(mag.std()), coherence
+            return (mean_mag, float(mag.max()), coherence,
+                    float(mean_vec[0]), float(mean_vec[1]))
 
         left_displacement = 0.0
         right_displacement = 0.0
         left_coherence = 0.0
         right_coherence = 0.0
-        left_std_px = 0.0
-        right_std_px = 0.0
+        left_shear_dx = 0.0
+        left_shear_dy = 0.0
+        right_shear_dx = 0.0
+        right_shear_dy = 0.0
         if left_marker is not None:
             base = _ref("left")
             left_displacement = float(
                 (left_marker[1] - (base if base is not None else left_marker[0]))
                 .abs().mean()
             )
-            _, _, left_std_px, left_coherence = _marker_stats(left_marker, base)
+            (_, _, left_coherence,
+             left_shear_dx, left_shear_dy) = _marker_stats(left_marker, base)
         if right_marker is not None:
             base = _ref("right")
             right_displacement = float(
                 (right_marker[1] - (base if base is not None else right_marker[0]))
                 .abs().mean()
             )
-            _, _, right_std_px, right_coherence = _marker_stats(right_marker, base)
+            (_, _, right_coherence,
+             right_shear_dx, right_shear_dy) = _marker_stats(right_marker, base)
 
         try:
             truth = getattr(_TASK, "choice", None)
@@ -921,10 +1431,10 @@ def _sim_get_tactile_data() -> dict:
                 ("L", "left", left_marker), ("R", "right", right_marker)
             ):
                 if marker is not None and _ref(key) is not None:
-                    m, mx, sd, coh = _marker_stats(marker, _ref(key))
+                    m, mx, coh, _, _ = _marker_stats(marker, _ref(key))
                     parts.append(
                         f"{side}_mean={m:.3f} {side}_max={mx:.3f} "
-                        f"{side}_std={sd:.3f} {side}_coh={coh:.3f}"
+                        f"{side}_coh={coh:.3f}"
                     )
             with open(TACTILE_CALIBRATION_LOG, "a") as _f:
                 _f.write(" ".join(parts) + f" L_depth={ld:.1f} R_depth={rd:.1f}\n")
@@ -942,8 +1452,12 @@ def _sim_get_tactile_data() -> dict:
             "right_marker_displacement_px": round(right_displacement, 4),
             "left_marker_coherence": round(left_coherence, 4),
             "right_marker_coherence": round(right_coherence, 4),
-            "left_marker_std_px": round(left_std_px, 4),
-            "right_marker_std_px": round(right_std_px, 4),
+            "left_marker_anisotropy": _rgb_tensor_anisotropy(left_rgb),
+            "right_marker_anisotropy": _rgb_tensor_anisotropy(right_rgb),
+            "left_marker_shear_dx": round(left_shear_dx, 4),
+            "left_marker_shear_dy": round(left_shear_dy, 4),
+            "right_marker_shear_dx": round(right_shear_dx, 4),
+            "right_marker_shear_dy": round(right_shear_dy, 4),
             "left_rgb_base64": left_rgb_b64,
             "right_rgb_base64": right_rgb_b64,
             "left_depth_base64": left_depth_b64,
@@ -961,13 +1475,125 @@ def _sim_get_tactile_data() -> dict:
             "right_marker_displacement_px": 0.0,
             "left_marker_coherence": 0.0,
             "right_marker_coherence": 0.0,
-            "left_marker_std_px": 0.0,
-            "right_marker_std_px": 0.0,
+            "left_marker_anisotropy": None,
+            "right_marker_anisotropy": None,
+            "left_marker_shear_dx": 0.0,
+            "left_marker_shear_dy": 0.0,
+            "right_marker_shear_dx": 0.0,
+            "right_marker_shear_dy": 0.0,
             "left_rgb_base64": "",
             "right_rgb_base64": "",
             "left_depth_base64": "",
             "right_depth_base64": "",
         }
+
+
+# ---------------------------------------------------------------------------
+# Reflexive motion (fast loop) — event model lives in tactile_reflex.py
+# ---------------------------------------------------------------------------
+
+_MISSING = object()
+
+
+def _noop_arm(*args, **kwargs):
+    """Instance-attribute stand-in for RobotManager.set_arm.
+
+    Freezes the arm: refuses to write the commanded joint positions into
+    the simulation.  ``set_arm`` calls ``set_dof_positions(force=True)``
+    which teleports the arm kinematically (Isaac Lab writes straight into
+    PhysX), so ``plan_success=False`` alone cannot stop a trajectory —
+    the write must be neutralised here as well.
+    """
+    pass
+
+
+class ReflexContext:
+    """Per-attempt state of the reflexive-motion hook."""
+
+    def __init__(self) -> None:
+        self.triggered: bool = False
+        self.reason: str | None = None
+        self.step: int | None = None
+        self.error: str | None = None
+        self.saved_callback: Any = _MISSING
+        self.arm_patched: bool = False
+
+
+def _read_tactile_features(obs: dict) -> tuple[Any, Any]:
+    """Extract left/right SideFeatures from an observation dict.
+
+    Marker tensors are measured against the reset-time reference
+    (_MARKER_REFERENCE) so displacement and shear are counted from the
+    no-contact baseline; the sim-internal "initial" frame carries a
+    constant per-finger offset and cannot serve as the baseline.
+    """
+    tactile = obs.get("tactile", {})
+    far_plane = float(_TASK.cfg.robot.tactile_far_plane)
+    ref = _MARKER_REFERENCE or {}
+    left = tactile_reflex.extract_side_features(
+        tactile.get("left_tactile", {}).get("marker"),
+        ref.get("left"),
+        tactile.get("left_tactile", {}).get("depth"),
+        far_plane,
+    )
+    right = tactile_reflex.extract_side_features(
+        tactile.get("right_tactile", {}).get("marker"),
+        ref.get("right"),
+        tactile.get("right_tactile", {}).get("depth"),
+        far_plane,
+    )
+    return left, right
+
+
+def _install_reflex(detector: Any, stop_on: dict | None, ctx: ReflexContext) -> None:
+    """Install the per-step reflex callback on the task instance.
+
+    ``_step`` calls ``self._step_callback(status_dict)`` at the end of
+    every step (envs/_base_task.py), and instance attributes shadow class
+    attributes, so assigning the closure here intercepts every step.  The
+    previous value (the class staticmethod, or an instance attr installed
+    earlier) is saved on the context and restored by _uninstall_reflex.
+    """
+    ctx.saved_callback = _TASK.__dict__.get("_step_callback", _MISSING)
+
+    def _reflex_callback(status: dict) -> str:
+        """One fast-loop evaluation; runs at the end of every _step."""
+        if ctx.error:
+            return "reflex"  # latched failure: no-op the rest of the motion
+        try:
+            # Collect mode + save_frequency=0: the sensor's data.output is
+            # only refreshed by a render, so force one every step (~2 FPS).
+            _TASK._update_render()
+            obs = _TASK._get_observations()
+            left, right = _read_tactile_features(obs)
+            detector.update(left, right)
+            triggered, reason = tactile_reflex.evaluate(stop_on, detector)
+            if triggered and not ctx.triggered:
+                ctx.triggered, ctx.reason, ctx.step = True, reason, _TASK.step_count
+                _TASK.plan_success = False        # freeze physics + skip delay()
+                _TASK._robot_manager.set_arm = _noop_arm
+                ctx.arm_patched = True
+        except Exception as exc:
+            ctx.error = str(exc)
+            logger.error("tactile_reflex callback error: %s", traceback.format_exc())
+        return "reflex"
+
+    _TASK._step_callback = _reflex_callback
+
+
+def _uninstall_reflex(ctx: ReflexContext) -> None:
+    """Restore the task's original _step_callback and set_arm binding."""
+    if ctx.saved_callback is _MISSING:
+        _TASK.__dict__.pop("_step_callback", None)
+    else:
+        _TASK.__dict__["_step_callback"] = ctx.saved_callback
+    if ctx.arm_patched:
+        # Deleting the instance attribute restores the class-method binding;
+        # assigning the unbound function back would break ``self``.
+        try:
+            del _TASK._robot_manager.set_arm
+        except AttributeError:
+            pass
 
 
 def _sim_get_observation() -> dict:
@@ -1057,9 +1683,349 @@ def _sim_check_success() -> dict:
         return {"completed": False, "check_early_stop": False, "detail": None}
 
 
+def _jsonable(value):
+    """Best-effort conversion of sim state into JSON-serializable values.
+
+    ``_measure()`` mixes numpy arrays, numpy scalars, nested dicts and plain
+    Python types.  This is a debug surface, so it must degrade to ``repr``
+    rather than fail on whichever field happens to be exotic.
+    """
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return repr(value)
+
+
+def _sim_force_state() -> dict:
+    """Return the force-task acceptance state.
+
+    Tasks built on ViTaForge's force-task contract keep their verdict in
+    ``self.measured`` / ``self.held_steps`` and gate ``check_success()``
+    behind an explicit submission, so ``/check_success`` alone shows nothing
+    about physical progress.  Returns ``available: False`` for tasks that are
+    not force tasks instead of raising.
+    """
+    global _TASK
+    if not hasattr(_TASK, "measured"):
+        return {"available": False,
+                "message": f"task '{_TASK_NAME}' exposes no force-task state"}
+    try:
+        measured = _TASK._measure() if hasattr(_TASK, "_measure") else _TASK.measured
+        spec = getattr(_TASK, "thread_spec", None)
+        return {
+            "available": True,
+            "phase": _jsonable(getattr(_TASK, "phase", None)),
+            "failure": _jsonable(getattr(_TASK, "failure", None)),
+            "held_steps": int(getattr(_TASK, "held_steps", 0)),
+            "probe_physical_complete": bool(
+                getattr(_TASK, "_probe_physical_complete", False)),
+            "submission_requested": bool(
+                getattr(_TASK, "_submission_requested", False)),
+            # The END gesture counts consecutive stationary steps and submits
+            # at 180 (bulb_tightening.py:1739).  It restarts from zero whenever
+            # the 8-dim command moves by more than 0.005 rad, so this counter
+            # is the difference between a hold that is about to submit and one
+            # that is chattering against its own anchor.
+            "submission_stationary_steps": int(
+                getattr(_TASK, "_submission_stationary_steps", 0)),
+            "submission_stationary_needed": 180,
+            "accepted_result": _jsonable(getattr(_TASK, "_accepted_result", None)),
+            "monitor_active": bool(getattr(_TASK, "_monitor_bulb", False)),
+            "reset_grip_released": bool(
+                getattr(_TASK, "_reset_grip_released", False)),
+            "plan_success": bool(getattr(_TASK, "plan_success", False)),
+            "step_count": int(getattr(_TASK, "step_count", 0)),
+            # Privileged: the hidden thread specification the task samples per
+            # seed.  This is what a privileged oracle would read instead of
+            # inferring it from the reversible probe.
+            "thread_spec": None if spec is None else {
+                "handedness": int(spec.handedness),
+                "lead_m": float(spec.lead_m),
+                "initial_depth_m": float(spec.initial_depth_m),
+                "nominal_free_travel_m": float(spec.nominal_free_travel_m),
+            },
+            "params": _jsonable(dict(getattr(_TASK, "params", {}))),
+            "measured": _jsonable(dict(measured)),
+        }
+    except Exception as exc:
+        logger.warning("force_state failed: %s", traceback.format_exc())
+        return {"available": False, "message": f"force_state failed: {exc}"}
+
+
+def _sim_submit_episode() -> dict:
+    """Submit a force-task episode for scoring, then report the verdict.
+
+    The force-task contract scores only after an explicit submission
+    (``_finish_bulb_episode``).  Its two in-tree callers are ``take_action``
+    (8-dim joint command held still for 180 ticks) and the expert
+    ``_play_once``; this server drives tasks through the atom API and calls
+    neither, so without this hook ``check_success()`` returns False forever.
+    Its verdict reaches the LLM through ``check_success_detail`` when the task
+    defines one — ``bulb_tightening`` did not until 2026-09-26, so before that
+    its submission answered with a bare ``False`` and a ``detail`` of None.
+    """
+    global _TASK
+    if not hasattr(_TASK, "_finish_bulb_episode"):
+        return {"completed": False, "check_early_stop": False, "detail": None,
+                "message": f"task '{_TASK_NAME}' has no force-task submission"}
+    try:
+        _TASK._finish_bulb_episode()
+        return _sim_check_success()
+    except Exception as exc:
+        logger.warning("submit_episode failed: %s", traceback.format_exc())
+        return {"completed": False, "check_early_stop": False, "detail": None,
+                "message": f"submit_episode failed: {exc}"}
+
+
+# Feed mode (lead-coupled helix).  One servo iteration is the env's own
+# granularity -- 1.5 deg per iteration at efficient_wrist_motion
+# (bulb_tightening.py:1979, 120 iterations per pi of segment_angle).  The pad
+# guard sits below the task's own glass_break_force_N (135 N) because a
+# fracture is terminal for the whole process: it must not be reached to be
+# observed.
+_FEED_MAX_STEPS = 800
+_FEED_SAMPLE_EVERY = 2
+_FEED_PAD_ABORT_N = 128.0
+# Command scale once the seat takes load, mirroring the profile's
+# progressive_seating_speed (bulb_tightening.py:2006-2011).  The admissible
+# torque band is target +/- tolerance -- 0.108..0.132 Nm at the reference
+# profile -- while over_torque_Nm is 0.15, so the approach has to be slow or a
+# single sample can jump clean out of the band into the failure.
+_FEED_SEATING_SCALE = 0.2
+# The helix commands the pose itself, so nothing else records a frame while it
+# turns -- the Jacobian path (_sim_rotate_gripper) logs its own rotate:step
+# frames, and this one logged none, which left the episode video showing the
+# re-grasps and none of the insertion.  A coarser stride than
+# _FEED_SAMPLE_EVERY on purpose: _capture_frame forces a full render that this
+# loop otherwise never pays for, so the stride is the wall-clock dial.  Every
+# 5th iteration is 7.5 deg of twist (1.5 deg per iteration at
+# efficient_wrist_motion), which reads as turning at the video's 10 fps.  A
+# hold is a constant pose and records nothing: the twist that seated it
+# already put that state in the video.
+_FEED_FRAME_EVERY = 5
+_FEED_TRACE_KEYS = (
+    "rotation_deg", "signed_world_rotation_deg", "formal_net_turns",
+    "formal_advance_m", "advance_m", "phase_error_m",
+    "torque_Nm", "signed_torque_Nm", "seat_force_N", "seat_compression_m",
+    "bulb_z_m", "center_drift_m", "tilt_deg", "peak_pad_normal_force_N",
+    "angular_speed_deg_s", "axial_speed_m_s",
+)
+
+
+def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
+                      lead_m: float) -> dict:
+    """Twist while feeding along the thread's own lead, using the env's servo.
+
+    Rotation and axial advance stay rigidly coupled at ``lead_m`` per full
+    turn -- the relation ``bulb_tightening`` scores against
+    (``expected_advance``, bulb_tightening.py:614) and the one a cuRobo
+    trajectory cannot hold, because a plan is resolved before contact
+    exists.  Each of the ``steps`` iterations is exactly one
+    ``_ik_to_center`` call: one differential-IK step plus two physics ticks,
+    recomputed from the live gripper-centre pose, so the helix follows the
+    bulb rather than a precomputed path.
+
+    Ends on the task's own two terminal conditions, reported separately
+    because they mean opposite things.  ``reached`` is the finished job:
+    sensed torque at ``target_torque`` with the seat loaded, which is exactly
+    ``_screw_segment``'s own stop (bulb_tightening.py:2001) and the state
+    ``held_steps`` then scores.  Stopping on seat force alone would land with
+    a torque far below the band that ``check_success`` requires, so the two
+    are checked together.  ``aborted`` is a physical overload or a lost grip,
+    and a run that stops that way is ``success: False`` because the stop *is*
+    the finding.
+
+    Once the seat takes load the command is scaled by
+    ``_FEED_SEATING_SCALE`` and sampled every iteration instead of every
+    ``_FEED_SAMPLE_EVERY``: at the nominal cadence one sample is 0.064 mm of
+    feed, against a whole 3 N -> 180 N window only ~1.3 mm wide.
+
+    Physics is sampled every ``_FEED_SAMPLE_EVERY`` iterations and a frame is
+    recorded every ``_FEED_FRAME_EVERY``, both plus the last iteration; the
+    frame lands on the first sample of each pair, so the pose it shows is the
+    one that sample measured.  The frames are worth their cost here for a
+    reason the trace rows are not: ``_FEED_TRACE_KEYS`` holds no marker-shear
+    key, so the gel's numbers can only be read between primitives -- but the
+    composite's tactile panels are the marker image itself, and during a
+    twist these frames are the only record of it.
+
+    Args:
+        object_name: The name of the object being held (reporting only).
+        total_angle_rad: Signed total twist, wound the world-z axis.
+        steps: Servo iterations.  One iteration is one IK step; 120 covers
+            180 deg at the env's granularity.  Clamped to
+            ``_FEED_MAX_STEPS`` so a careless call cannot pin the main thread.
+        lead_m: Axial advance per full turn, in metres.  The thread's own
+            lead: the bulb advances this far per 2*pi of twist.
+    """
+    global _TASK
+    step_count = int(getattr(_TASK, "step_count", 0))
+
+    if not hasattr(_TASK, "_ik_to_center"):
+        return {"success": False,
+                "plan_success": bool(getattr(_TASK, "plan_success", False)),
+                "message": f"task '{_TASK_NAME}' has no _ik_to_center servo",
+                "step": step_count, "tactile": _sim_get_tactile_data()}
+
+    import transforms3d as t3d
+
+    from envs.utils.transforms import Pose
+
+    steps = max(1, min(int(steps), _FEED_MAX_STEPS))
+    magnitude = abs(float(total_angle_rad))
+    spin = 1.0 if float(total_angle_rad) >= 0.0 else -1.0
+    # A zero twist is a constant-pose hold, not an approach.  The two share
+    # this loop, and their stopping conditions are opposite: the approach ends
+    # when the thread reaches torque, while the hold *starts* from exactly that
+    # state and has to sit there until the END gesture fires.  Without this the
+    # hold would sample at iteration 0, see torque already at target with the
+    # seat loaded, declare itself reached, and never hold at all.
+    holding = magnitude <= 1e-9
+    start = _TASK._robot_manager.get_gripper_center_pose()
+    params = getattr(_TASK, "params", None) or {}
+    target_torque = float(getattr(_TASK, "target_torque", 0.12))
+    over_torque = float(params.get("over_torque_Nm", 0.15))
+
+    trace: list[dict[str, Any]] = []
+    aborted: str | None = None
+    reached: str | None = None
+    submitted: str | None = None
+    completed = 0
+    step_angle = magnitude / steps
+    angle = 0.0
+    scale = 1.0
+    seating = False
+    for index in range(steps):
+        angle += step_angle * scale
+        # Wound about world z from the pose the segment started at, descended
+        # by the matched feed -- the same curve _screw_segment builds
+        # (bulb_tightening.py:1984-1988), minus its image-shear servo, which
+        # needs the expert's tactile reference frames.
+        quat = t3d.quaternions.qmult(
+            t3d.quaternions.axangle2quat([0.0, 0.0, 1.0], spin * angle), start.q)
+        center = Pose(
+            start.p - np.array([0.0, 0.0, lead_m * angle / (2.0 * np.pi)]), quat)
+        steps_before = int(getattr(_TASK, "step_count", 0))
+        if not _TASK._ik_to_center(center):
+            aborted = (f"IK servo refused at {np.rad2deg(angle):.1f} deg "
+                       f"(task failure: {getattr(_TASK, 'failure', None)})")
+            break
+        completed = index + 1
+        if int(getattr(_TASK, "step_count", 0)) == steps_before:
+            # A frozen step_count means the command was never stepped.  There
+            # are two causes and only one of them is a fault:
+            #
+            #  * The episode already ended.  take_action returns *before*
+            #    super().take_action once _accepted_result is set
+            #    (bulb_tightening.py:1721), and take_force_task_action does the
+            #    same once eval_success is set or the step budget is spent
+            #    (_force_task_utils.py:834).  This is the expected end of a
+            #    hold -- including, and especially, the successful one, where
+            #    the END gesture has just fired.
+            #  * Nothing ended and nothing moved: the silent spent-budget
+            #    no-op, the same shape as move_delta's MIN_TRANS.
+            #
+            # step_count, not take_action_cnt: _ik_to_center reaches
+            # take_action only on its PHASE_POLICY branch (:1944) and drives
+            # _step directly on the other, so the action counter is blind
+            # whenever the task sits outside that phase -- while _step advances
+            # step_count on both branches.
+            if (getattr(_TASK, "_accepted_result", None) is not None
+                    or bool(getattr(_TASK, "eval_success", False))):
+                submitted = (f"episode ended at iteration {index} of {steps} "
+                             f"(accepted={getattr(_TASK, '_accepted_result', None)})")
+                break
+            aborted = (f"servo is a no-op: step_count stayed at {steps_before} "
+                       f"(take_action_cnt "
+                       f"{getattr(_TASK, 'take_action_cnt', None)}, step_lim "
+                       f"{getattr(_TASK.cfg, 'step_lim', None)})")
+            break
+        if getattr(_TASK, "failure", None):
+            aborted = f"task failure: {_TASK.failure}"
+            break
+        if (not holding and (index % _FEED_FRAME_EVERY == 0
+                             or index == steps - 1)):
+            # Sampled after the IK step, so the frame at steps - 1 is the
+            # fully commanded block angle -- the pose the trace row recorded
+            # just below was measured at.  Skipped on the breaks above, and
+            # in a hold: a frame costs a forced render, and a constant pose
+            # is not worth one.
+            _record_frame("rotate:feed")
+        if seating or index % _FEED_SAMPLE_EVERY == 0 or index == steps - 1:
+            row = _TASK._measure()
+            seat_n = float(row.get("seat_force_N", 0.0))
+            torque_nm = float(row.get("torque_Nm", 0.0))
+            pad = max((row.get("pad_normal_force_N") or {}).values(), default=0.0)
+            trace.append({
+                "step": int(_TASK.step_count),
+                "angle_deg": float(np.rad2deg(angle)),
+                "pad_max_N": float(pad),
+                # Stationary-step progress toward the END gesture.  Only moves
+                # on a hold; on an approach it stays at 0 because the command
+                # keeps changing.
+                "stationary": int(getattr(_TASK, "_submission_stationary_steps", 0)),
+                **_jsonable({k: row[k] for k in _FEED_TRACE_KEYS if k in row}),
+            })
+            if not seating and (torque_nm > target_torque / 3.0 or seat_n > 2.0):
+                seating = True
+                scale = _FEED_SEATING_SCALE
+            if not holding and torque_nm >= target_torque and seat_n > 3.0:
+                reached = (f"torque {torque_nm:.4f} Nm at the {target_torque:.3f} Nm "
+                           f"target with {seat_n:.2f} N on the seat")
+                break
+            if pad >= _FEED_PAD_ABORT_N:
+                aborted = (f"pad force {pad:.1f} N reached the "
+                           f"{_FEED_PAD_ABORT_N:.0f} N guard")
+                break
+            if torque_nm > over_torque:
+                aborted = (f"torque {torque_nm:.3f} Nm over the "
+                           f"{over_torque:.3f} Nm over-torque limit")
+                break
+            if seat_n > 180.0:
+                aborted = (f"seat force {seat_n:.1f} N over "
+                           f"the 180 N axial limit")
+                break
+            if (float(row.get("center_drift_m", 0.0)) > 0.004
+                    or float(row.get("tilt_deg", 0.0)) > 10.0):
+                aborted = "grasp or alignment lost"
+                break
+
+    return {
+        "success": aborted is None,
+        "plan_success": bool(getattr(_TASK, "plan_success", False)),
+        "message": (f"Helix seated after {completed}/{steps} iterations: {reached}"
+                    if reached else
+                    f"Hold ended after {completed}/{steps} iterations: {submitted}"
+                    if submitted else
+                    "OK" if aborted is None else
+                    f"Helix stopped after {completed}/{steps} iterations: {aborted}"),
+        "step": int(getattr(_TASK, "step_count", step_count)),
+        "tactile": _sim_get_tactile_data(),
+        "feed_lead_m": float(lead_m),
+        "requested": int(steps),
+        "completed": int(completed),
+        "grip_released": bool(getattr(_TASK, "_reset_grip_released", False)),
+        "aborted": aborted,
+        "reached": reached,
+        "submitted": submitted,
+        "trace": trace,
+    }
+
+
 def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
-                       steps: int = 4) -> dict:
+                       steps: int = 4, feed_lead_m: float | None = None) -> dict:
     """Rotate the gripper holding an object, mimicking expert gripper_rotate.
+
+    When ``feed_lead_m`` is given the call takes the lead-coupled helix path
+    (``_sim_gripper_feed``) instead, and ``steps`` counts servo iterations
+    rather than planner sub-moves.
 
     Captures the object's orientation before and after the rotation sequence
     and verifies that at least 30 % of the requested angular change was
@@ -1068,6 +2034,9 @@ def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
     object — the orientation check catches this.
     """
     global _TASK
+    if feed_lead_m is not None:
+        return _sim_gripper_feed(object_name, total_angle_rad, steps, feed_lead_m)
+
     actor = _find_actor(object_name)
     if actor is None:
         return {"success": False, "plan_success": False,
@@ -1079,7 +2048,7 @@ def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
 
     # --- execute rotation -----------------------------------------------------
     angle_per_step = total_angle_rad / steps
-    for i in range(steps):
+    for _ in range(steps):
         _TASK.gripper_rotate(actor, angle_per_step, steps=1, is_save=False)
         _record_frame("rotate:step")
 
@@ -1136,6 +2105,13 @@ def _sim_get_grasp_pose(object_name: str) -> dict:
     calls (a re-grasp after the object slipped out) return ``object_pose +
     offset`` so the pose tracks the object wherever it now lies, instead of
     returning the EE's current (possibly far-from-object) pose.
+
+    NOTE: the cache is keyed by object name but seeded by the EE pose at the
+    first call — only the object that ``pre_move`` anchored (EE directly
+    above it) is reliable.  For any other object the cached offset is
+    ``EE_now - object`` and returns a pose at the EE's current location
+    (e.g. above a previously filled slot), which is why the API docs tell
+    agents to construct such grasps from a measured offset instead.
 
     Returns ``{"position": None, ...}`` when the object cannot be found.
     """
@@ -1196,12 +2172,38 @@ def _find_actor(object_name: str):
         if name.startswith(object_name) or object_name in name:
             candidates.append(a)
     if not candidates:
-        return None
+        # Task-defined role fallback (e.g. tactile_memory_match): its actors
+        # are per-class variants ("candidate_variant_0"..) chosen randomly
+        # each episode, so a role query like "candidate_left" can never match
+        # an actor name.  Tasks expose role -> actor via _resolve_public_
+        # object_name + public_actor_map; use them when plain name matching
+        # fails so role names stay addressable.
+        return _find_public_role_actor(object_name)
     if len(candidates) == 1:
         return candidates[0]
     # Pick the actor closest to the workspace centre
     best = min(candidates, key=lambda a: np.linalg.norm(a.get_pose().p - _WORKSPACE_CENTER))
     return best
+
+
+def _find_public_role_actor(object_name: str):
+    """Resolve a task-defined role name to its physical actor, if any.
+
+    Tasks that re-role per-class actors (random variant each episode)
+    expose ``_resolve_public_object_name`` (alias folding) and a
+    ``public_actor_map``; a query that matched no actor name falls back to
+    those maps so roles like "reference_object" / "candidate_left" work
+    exactly like actor names.  Returns None when the task has no such map.
+    """
+    global _TASK
+    resolve = getattr(_TASK, "_resolve_public_object_name", None)
+    if resolve is None:
+        return None
+    key = resolve(object_name)
+    if key is None:
+        return None
+    public_actors = getattr(_TASK, "public_actor_map", {}) or {}
+    return public_actors.get(key)
 
 
 def _sim_get_object_pose(object_name: str, return_bbox_extent: bool = False) -> dict:
@@ -1311,8 +2313,7 @@ def _try_get_bbox_extent(actor) -> list[float] | None:
 def _extent_from_prim(prim) -> list[float] | None:
     """Compute world-space extent from a USD prim object."""
     try:
-        from pxr import UsdGeom, Usd
-        boundable = UsdGeom.Boundable(prim)
+        from pxr import Usd, UsdGeom
         bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(),
                                         ['default', 'render', 'proxy'])
         bound = bbox_cache.ComputeWorldBound(prim)
@@ -1347,7 +2348,15 @@ def reset(req: ResetRequest):
         action_log.log_action("reset", {"seed": req.seed}, ok=False,
                               msg="Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
-    result = _run_action("reset", {"seed": req.seed}, 300.0, _sim_reset,
+    # 600 s, not 300: a clean bulb_tightening reset measures ~251 s and the
+    # client waits the same 300 s, so the two timers used to race on every
+    # trial.  Which one wins decides the failure mode -- the client's read
+    # timeout is retried by runner.py:338, but this endpoint's own 500 is an
+    # HTTPError, which is not a Timeout, so it re-raises out of
+    # _run_trial_with_retries and takes the whole batch with it.  A wound-up
+    # arm from a partial screw-in is exactly the state that overruns, and it
+    # is this task's normal failure mode.
+    result = _run_action("reset", {"seed": req.seed}, 600.0, _sim_reset,
                          req.seed, detail_prefix="Reset failed")
     return ResetResponse(**result)
 
@@ -1411,6 +2420,30 @@ def move_delta(req: MoveDeltaRequest):
     return ActionResponse(**result)
 
 
+@app.post("/move_reflexive", response_model=MoveReflexiveResponse)
+def move_reflexive(req: MoveReflexiveRequest):
+    """Move by a small delta, stopping early on the first tactile event.
+
+    Fast loop: while the motion runs, a per-step callback evaluates the
+    tactile events (contact / hard_depth / shear_spike / slip / plateau /
+    asymmetry — see tactile_reflex.py); the first enabled one freezes the
+    arm and the response carries the event digest.  ``stop_on=None`` runs
+    the motion to completion and reports the digest only.
+    """
+    if _TASK is None:
+        action_log.log_action("move_reflexive", req.model_dump(), ok=False,
+                              msg="Task not initialized")
+        raise HTTPException(status_code=503, detail="Task not initialized")
+    result = _run_action(
+        "move_reflexive", req.model_dump(), _MOTION_TIMEOUT,
+        _sim_move_reflexive, req.dx, req.dy, req.dz, req.drx, req.dry, req.drz,
+        req.coord, req.tag,
+        req.stop_on.model_dump() if req.stop_on else None,
+        detail_prefix="Move reflexive failed",
+    )
+    return MoveReflexiveResponse(**result)
+
+
 @app.post("/gripper", response_model=ActionResponse)
 def gripper(req: GripperRequest):
     """Open or close the gripper."""
@@ -1421,6 +2454,7 @@ def gripper(req: GripperRequest):
     result = _run_action(
         "gripper", req.model_dump(), _MOTION_TIMEOUT,
         _sim_gripper, req.action, req.force_threshold, req.use_adaptive_grasp,
+        req.position,
         detail_prefix="Gripper action failed",
     )
     return ActionResponse(**result)
@@ -1471,6 +2505,56 @@ def check_success():
             "Simulation busy — returned completed=False without checking",
         )
         return SuccessResponse(completed=False, check_early_stop=False)
+
+
+# The two endpoints below are the force-task port's contract, kept deliberately
+# (decided 2026-09-26 after the feasibility spike).  ViTaForge's force tasks keep
+# their verdict in ``self.measured``/``self.held_steps`` and gate
+# ``check_success()`` behind an explicit submission, so neither ``/check_success``
+# nor any motion endpoint can show physical progress or score an episode without
+# them.  They are additive and touch no existing path.
+@app.get("/force_state")
+def force_state():
+    """Force-task acceptance state (see _sim_force_state)."""
+    if _TASK is None:
+        action_log.log_query_failure("force_state", "Task not initialized")
+        raise HTTPException(status_code=503, detail="Task not initialized")
+    try:
+        return _run_on_main(_sim_force_state, timeout=30.0)
+    except TimeoutError:
+        action_log.log_query_failure("force_state",
+                                     "Simulation busy — retry in a few seconds")
+        raise HTTPException(status_code=503,
+                            detail="Simulation busy — retry in a few seconds")
+
+
+@app.post("/submit_episode")
+def submit_episode():
+    """Submit a force-task episode for scoring (see _sim_submit_episode)."""
+    if _TASK is None:
+        action_log.log_action("submit_episode", {}, ok=False,
+                              msg="Task not initialized")
+        raise HTTPException(status_code=503, detail="Task not initialized")
+    try:
+        # 550 s, not 60 s: _finish_bulb_episode ends in a terminal review of 120
+        # steps when rejected, 180 when fractured, and **300 steps plus 150 IK
+        # solves on the accepted branch** (bulb_tightening.py:1781/1786/1793 vs
+        # :1795) — the longest of the three, and the one that decides the port.
+        # A measured rejected review took 38.8 s, so 60 s covers only the
+        # shortest case and would strand a success.  Matches this file's own
+        # _MOTION_TIMEOUT convention and its client read timeout
+        # (univtac_api._READ_TIMEOUT, 1800 s).
+        # NOTE: a 503 here is recoverable anyway — _finish_bulb_episode sets
+        # _accepted_result before the review and returns early on re-entry, so a
+        # retry after the review lands returns the verdict immediately.  That
+        # early return is read from source, not measured: the one submission run
+        # so far answered 200 on its first attempt and never exercised the retry.
+        return _run_on_main(_sim_submit_episode, timeout=_MOTION_TIMEOUT)
+    except TimeoutError:
+        action_log.log_action("submit_episode", {}, ok=False,
+                              msg="Simulation busy — retry in a few seconds")
+        raise HTTPException(status_code=503,
+                            detail="Simulation busy — retry in a few seconds")
 
 
 # NOTE: operator/internal-only — ground-truth prim pose.  The agent line
@@ -1529,9 +2613,13 @@ def get_grasp_pose(object_name: str):
     return PoseResponse(**result)
 
 
-@app.post("/rotate_gripper", response_model=ActionResponse)
+@app.post("/rotate_gripper", response_model=RotateGripperResponse)
 def rotate_gripper(req: RotateGripperRequest):
-    """Rotate the gripper while holding an object (expert gripper_rotate)."""
+    """Rotate the gripper while holding an object (expert gripper_rotate).
+
+    With ``feed_lead_m`` set, twists along a lead-coupled helix instead --
+    see ``_sim_gripper_feed``.
+    """
     if _TASK is None:
         action_log.log_action("rotate_gripper", req.model_dump(), ok=False,
                               msg="Task not initialized")
@@ -1539,9 +2627,10 @@ def rotate_gripper(req: RotateGripperRequest):
     result = _run_action(
         "rotate_gripper", req.model_dump(), _MOTION_TIMEOUT,
         _sim_rotate_gripper, req.object_name, req.angle_rad, req.steps,
+        req.feed_lead_m,
         detail_prefix="Rotate failed",
     )
-    return ActionResponse(**result)
+    return RotateGripperResponse(**result)
 
 
 @app.get("/episode_video")
@@ -1581,6 +2670,44 @@ def get_episode_video():
     }
 
 
+@app.get("/video_frames")
+def get_video_frames(clear: bool = True):
+    """Return the frames recorded since the last call, base64-PNG encoded.
+
+    The eval harness (``capx/envs/launch.py``) calls this once per trial,
+    after the last step, and assembles the trial video itself into its own
+    output directory (``outputs/<model>/univtac_<task>/``).  Each frame is
+    returned at most once (``clear=True`` semantics, always draining).
+
+    The first call also switches the recorder to harness mode: from then
+    on ``finalize()`` stops writing ``episode.mp4``/``index.json`` into the
+    agent recording root (``outputs/agent``), so eval runs don't pollute
+    the agent output directory.  The agent path never calls this endpoint
+    and keeps its self-finalized episodes as before.
+    """
+    if clear:
+        _RECORDER.set_harness_mode()
+    frames = _RECORDER.drain_frames()
+    return {"frames": [base64.b64encode(f).decode("ascii") for f in frames]}
+
+
+@app.post("/recording/mode")
+def set_recording_mode(req: RecordingModeRequest):
+    """Switch the server into harness mode (the eval harness announces
+    itself before its first reset, so even the startup episode is not
+    self-finalized into the agent recording root).
+
+    In harness mode the recorder stops assembling episode.mp4 into the
+    agent recording root and the action log stops writing entirely —
+    ``outputs/agent`` stays untouched during evals.  The agent path never
+    calls this endpoint and keeps both behaviors.
+    """
+    if req.mode == "harness":
+        _RECORDER.set_harness_mode()
+        action_log.set_harness_mode()
+    return {"mode": req.mode, "harness_mode": _RECORDER.harness_mode}
+
+
 @app.get("/tasks")
 def list_tasks():
     """List available tasks."""
@@ -1592,21 +2719,199 @@ def list_tasks():
 # ---------------------------------------------------------------------------
 
 
+def _activate_backing_root(root: Path) -> None:
+    """Make ``root`` the first place ``import envs.*`` resolves from.
+
+    UniVTAC and ViTaForge each ship a top-level ``envs/`` with no
+    ``__init__.py``, so both are PEP 420 namespace *portions* of the same
+    ``envs`` package whenever both roots are on sys.path.  ``import
+    envs.weight_classify`` then succeeds, but its ``from ._base_task import *``
+    silently binds UniVTAC's ``_base_task`` instead — yielding a chimera with
+    the wrong ``ASSETS_ROOT`` that only fails much later, deep inside
+    ``add_from_usd_file``, looking like a missing asset.  Import *order*
+    (sys.path position) is what decides, so pin the wanted root at the front
+    and drop the cached modules that were resolved against the old one.
+
+    The root is left on sys.path permanently: ``_sim_move`` imports
+    ``envs.utils.atom`` lazily on first use, long after this returns, and a
+    scoped try/finally would let that import fall back to UniVTAC.
+    """
+    import importlib
+
+    roots = {UNIVTAC_ROOT.resolve(), VITAFORGE_ROOT.resolve()}
+    sys.path[:] = [p for p in sys.path if Path(p).resolve() not in roots]
+    sys.path.insert(0, str(root.resolve()))
+
+    for name in [m for m in sys.modules if m == "envs" or m.startswith("envs.")]:
+        del sys.modules[name]
+    # /mnt/nas is NFS: FileFinder caches directory listings, so a stale cache
+    # can resurrect the portion we just removed.
+    importlib.invalidate_caches()
+    logger.info("Backing root active: %s", root.resolve())
+
+
+# The four packages ViTaForge forks under third_party/TacEx/source.  ``uipc``
+# itself is NOT among them: it is the PyPI ``pyuipc`` wheel, shared by both
+# repos, so only the Python side differs.
+_TACEX_PACKAGES = ("tacex", "tacex_assets", "tacex_tasks", "tacex_uipc")
+
+
+def _prefer_vitforge_tacex(root: Path) -> None:
+    """Run ViTaForge's ``envs/`` against ViTaForge's TacEx fork.
+
+    ViTaForge ships its own TacEx and its install docs are explicit that the
+    public one must not be used — "some internal APIs have been adapted for
+    ViTaForge's tactile sensor pipeline" (docs/Installation.md).  Both repos
+    install *editable* into the same conda env under the same four package
+    names, so the mapping can only ever point at one of them; here it points at
+    UniVTAC's.  ViTaForge's ``envs/`` would therefore run on UniVTAC's TacEx —
+    the same kind of chimera ``_activate_backing_root`` already guards against,
+    one level deeper.
+
+    It stays invisible until a force task measures anything: the missing piece
+    is the ``vertex_positions`` property that ViTaForge's ``UipcObject`` adds
+    and UniVTAC's lacks, which ``envs/utils/actor.Actor`` inherits and
+    ``bulb_tightening._measure`` calls.  The symptom is an AttributeError deep
+    inside ``_measure``, not an import error.
+
+    An editable install is a finder *appended* to ``sys.meta_path``, i.e. it
+    runs behind ``PathFinder``, so a ``sys.path`` entry takes precedence without
+    reinstalling anything — which matters because one environment has to serve
+    both repos' tasks.
+
+    Scoped by the caller to force-task profiles: those have never been runnable
+    under this server, so this is purely additive.  Tasks that already run keep
+    their measured behaviour until that is decided separately.
+    """
+    import importlib
+
+    source = root.resolve() / "third_party" / "TacEx" / "source"
+    staged = [source / name for name in _TACEX_PACKAGES
+              if (source / name / name / "__init__.py").is_file()]
+    if not staged:
+        logger.warning("No ViTaForge TacEx fork under %s — leaving the "
+                       "environment's editable install in place", source)
+        return
+
+    staged_paths = {str(p) for p in staged}
+    sys.path[:] = [p for p in sys.path if p not in staged_paths]
+    sys.path[:0] = [str(p) for p in staged]
+
+    # Drop only modules that resolved against the *other* fork; re-importing a
+    # package that is already correctly bound would create duplicate classes and
+    # break the isinstance checks in envs/.
+    for name in [m for m in sys.modules
+                 if m.split(".")[0] in _TACEX_PACKAGES]:
+        path = getattr(sys.modules[name], "__file__", None) or ""
+        if not any(path.startswith(str(p)) for p in staged):
+            del sys.modules[name]
+    importlib.invalidate_caches()
+    logger.info("TacEx fork active: %s", ", ".join(str(p) for p in staged))
+
+
+def _apply_cfg_override(env_cfg: Any, spec: str) -> None:
+    """Apply one ``KEY=VALUE`` override to ``env_cfg`` (VALUE parsed as YAML).
+
+    Unknown keys are fatal.  A typo that silently no-ops would be diagnosed
+    only after a ~330 s reset cycle, so failing at startup is much cheaper.
+    """
+    import yaml
+
+    key, sep, raw = spec.partition("=")
+    key = key.strip()
+    if not sep:
+        raise SystemExit(f"--cfg-override expects KEY=VALUE, got {spec!r}")
+    if not hasattr(env_cfg, key):
+        raise SystemExit(
+            f"--cfg-override: TaskCfg has no field {key!r} "
+            f"(available: {sorted(env_cfg.__dataclass_fields__)})"
+        )
+    value = yaml.safe_load(raw)
+    setattr(env_cfg, key, value)
+    logger.info("cfg override: %s = %r", key, value)
+
+
+def _apply_task_config(env_cfg: Any, task_config: dict) -> None:
+    """Copy task_config.yaml values into ``env_cfg``.
+
+    This is a deliberate *whitelist*, not a passthrough.  Fields the YAML sets
+    but serving must not honor:
+
+    * ``save_frequency`` / ``video_frequency`` — forced to 0 below.  The
+      VideoHandler opens an ffmpeg pipe per reset that is never closed, so any
+      nonzero value leaks orphaned subprocesses; the server captures its own
+      frames instead (see ``_record_frame``).  ViTaForge's configs and cfg
+      defaults both say 2, so letting the YAML win would reintroduce the leak.
+    * ``skip_pre_move`` / ``save_pre_move`` (ViTaForge's gelsight.yml) — the
+      former would skip the pre_move hook that positions the arm, the latter
+      just pickles every episode to disk.
+    """
+    env_cfg.decimation = task_config.get("decimation", env_cfg.decimation)
+    env_cfg.render_frequency = task_config.get("render_frequency", 0)
+    env_cfg.obs_data_type = task_config.get("observations", {})
+    env_cfg.random_texture = task_config.get("random_texture", False)
+
+
+def _log_actor_densities() -> None:
+    """Log the mass density requested for each actor.
+
+    Nothing downstream can read an object's mass back out (UIPC exposes no mass
+    accessor and the PhysX view is unused for these bodies — the
+    ``modify_mass_properties`` warnings at spawn are expected), so this log line
+    is the only place the per-actor density is visible.  It matters for the
+    weight-sensing tasks: "the sensor cannot resolve the difference" and "the
+    density override never took effect" look identical from outside.
+
+    Reports the density from the actor's own cfg, not from the UIPC geometry:
+    ``AffineBodyConstitution.apply_to(mesh, k, mass_density=...)`` does not
+    leave a read-back attribute behind, so ``mesh.instances()`` has nothing to
+    find.  This line therefore proves the value *reaches* the constitution call,
+    not that the solver honoured it.
+    """
+    try:
+        actors = _TASK._actor_manager.actors
+        parts = []
+        for name, actor in actors.items():
+            mesh = getattr(actor, "uipc_meshes", None) or [None]
+            parts.append(f"{name}={actor.cfg.mass_density} (meshes={len(mesh)})")
+        logger.info("Actor mass densities: %s", ", ".join(parts))
+    except Exception as exc:  # diagnostic only — never block startup
+        logger.warning("Could not read actor densities: %s", exc)
+
+
 def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
-              seed: int = 0) -> None:
+              seed: int = 0, cfg_overrides: list[str] | None = None) -> None:
     """Initialize the UniVTAC task. Must be called after Isaac Sim app is ready."""
     global _TASK, _TASK_NAME
 
     import importlib
+
     import yaml
 
+    backing = _backing_for(task_name)
+    # Defensive: the authoritative call is in main(), before AppLauncher.  This
+    # one covers any other entry point into init_task.
+    _activate_backing_root(backing.root)
+
     # Load task config
-    config_path = TASK_CONFIG_DIR / "contact.yml"
+    config_path = backing.root / "task_config" / backing.config_file
     with open(config_path) as f:
         task_config = yaml.safe_load(f)
 
+    # Must happen before ``import envs.*`` — once envs.utils.actor is bound, its
+    # UipcObject base class is fixed for the life of the process.  Keyed on the
+    # config rather than the task name so the gate is a property of the profile:
+    # a ``task_parameters`` block is what marks a force-task config, and
+    # ViTaForge's other profiles (gelsight.yml) do not have one.
+    if "task_parameters" in task_config:
+        _prefer_vitforge_tacex(backing.root)
+
     # Import task module
     task_module = importlib.import_module(f"envs.{task_name}")
+    # Which repo's envs/ actually won.  B2's failure mode is silent for ~330 s
+    # and then surfaces as a bogus "missing asset", so print it every startup.
+    logger.info("envs package resolved: %s -> %s",
+                task_name, sys.modules["envs._base_task"].__file__)
 
     # Build env config
     env_cfg = task_module.TaskCfg()
@@ -1616,16 +2921,40 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # save_frequency=0.  Serving never replays those dumps (the process
     # keeps first_frame in memory), so keep them out of the repo.
     env_cfg.save_dir = Path(tempfile.gettempdir()) / "univtac_server" / task_name
-    env_cfg.decimation = task_config.get("decimation", env_cfg.decimation)
+    _apply_task_config(env_cfg, task_config)
+    # ViTaForge's four force tasks (envs/_force_task_utils.py) read their
+    # parameters through task_parameters(), which returns {} unless either
+    # ``cfg.force_task_parameters`` exists or VITAFORGE_TASK_CONFIG is
+    # exported — neither holds for serving.  Bind them here, with the same
+    # helper collect_data.py uses, from the backing's own config file.
+    #
+    # Exporting VITAFORGE_TASK_CONFIG is not a substitute: task_parameters()
+    # forwards only the YAML's task_parameters block plus physics_seed, while
+    # ``workspace`` is *derived* inside the binder from save_dir and cannot be
+    # written into a YAML.  Task.__init__ reads it unconditionally, so that
+    # route dies with KeyError: 'workspace'.  Binding here also drops the
+    # dependency on an env var the operator can silently forget — in which
+    # case the task runs on code defaults instead of the shipped profile.
+    try:
+        from envs._force_task_utils import FINAL_TASKS, prepare_force_task_config
+    except ImportError:  # UniVTAC-backed task: no force-task contract
+        pass
+    else:
+        if task_name in FINAL_TASKS:
+            # skip_pre_move stays serving's decision, not the YAML's — see
+            # _apply_task_config.  It is false in every force-task profile
+            # today, so this only preserves the documented invariant.
+            binder_config = {k: v for k, v in task_config.items() if k != "skip_pre_move"}
+            prepare_force_task_config(env_cfg, binder_config, config_path, seed=seed)
+            logger.info(
+                "Bound force-task parameters from %s (physics_seed=%s, workspace=%s)",
+                config_path, seed, env_cfg.force_task_parameters["workspace"])
     # Never write UniVTAC's own video/save outputs during serving.  The
     # VideoHandler opens an ffmpeg pipe per reset that is never closed (an
     # orphaned-subprocess leak), and the server already captures its own
     # frames (see _record_frame).  Force both to 0 regardless of task_config.
     env_cfg.save_frequency = 0
     env_cfg.video_frequency = 0
-    env_cfg.render_frequency = task_config.get("render_frequency", 0)
-    env_cfg.obs_data_type = task_config.get("observations", {})
-    env_cfg.random_texture = task_config.get("random_texture", False)
     env_cfg.scene.num_envs = 1
     # First reset in a fresh process runs the full scene init (UIPC build,
     # render-target creation) and has been observed at ~330 s on a loaded
@@ -1644,6 +2973,15 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     if device:
         env_cfg.sim.device = device
 
+    # Registry overrides first, then the command line, so an explicit
+    # --cfg-override always wins.  Both must land before Task(...) below:
+    # Task.__init__ validates these fields and bakes friction into the sim.
+    for key, value in backing.cfg_overrides:
+        setattr(env_cfg, key, value)
+        logger.info("task backing override: %s = %r", key, value)
+    for spec in cfg_overrides or ():
+        _apply_cfg_override(env_cfg, spec)
+
     logger.info("Creating task '%s' (sensor=%s, device=%s)...", task_name, sensor_type, device)
     # Use "collect" mode — avoids per-step _update_render() overhead
     # that makes "eval" mode unusably slow (~2 FPS vs ~25 FPS).
@@ -1657,8 +2995,11 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # ``target_pose``, which check_success() reads, and it initialises the
     # render targets that collect mode needs (previously the eval framework's
     # first POST /reset did this; that is no longer possible).
-    _sim_reset(seed=seed)
+    _sim_reset(seed=seed, log=False)  # no action-log episode yet (see _sim_reset)
     logger.info("Startup reset complete (seed=%s).", seed)
+
+    # Diagnostic, after the reset so the actors are guaranteed to exist.
+    _log_actor_densities()
 
 
 # ---------------------------------------------------------------------------
@@ -1689,18 +3030,42 @@ def main() -> None:
     parser.add_argument("--sensor-type", type=str, default="gsmini",
                         choices=["gsmini", "gf225", "xensews"],
                         help="Tactile sensor type")
-    parser.add_argument("--watchdog-grace", type=float, default=180.0,
-                        help="seconds of /health silence before the freeze watchdog SIGKILLs this server")
+    parser.add_argument("--watchdog-grace", type=float, default=120.0,
+                        help="seconds of /health silence before the freeze watchdog SIGKILLs this server "
+                             "(120 << the client's 1800 s read timeout so a freeze is always killed, "
+                             "never a silently-recovering half-dead server).  /health does not run on "
+                             "the main thread, so a long _MOTION_TIMEOUT op does not trip this.")
     parser.add_argument("--no-watchdog", action="store_true",
                         help="disable the external freeze watchdog")
     parser.add_argument("--seed", type=int, default=0,
                         help="Scene-randomization seed for the startup reset "
                              "(drives pre_move noise, e.g. grasp offset)")
+    parser.add_argument("--cfg-override", action="append", default=[], metavar="KEY=VALUE",
+                        help="override a TaskCfg field for this run (repeatable; "
+                             "VALUE is parsed as YAML).  Unknown keys abort startup.")
     # Let AppLauncher add its own args (--headless, --livestream, --device, etc.)
     AppLauncher.add_app_launcher_args(parser)
 
     # Parse combined args
     cli = parser.parse_args()
+
+    # Claim the port before the expensive Isaac Sim startup. Passing this
+    # socket to Uvicorn below keeps the check race-free: no other server can
+    # claim the address between the check and Uvicorn's listen call.
+    try:
+        listener_socket = _reserve_listener(cli.host, cli.port)
+    except OSError as exc:
+        logger.error(
+            "Cannot start UniVTAC server: %s:%d is already in use (%s)",
+            cli.host,
+            cli.port,
+            exc,
+        )
+        sys.exit(1)
+
+    # Pin the task's backing repo before anything imports envs.*: AppLauncher
+    # below pulls in isaaclab, and init_task imports the task module.
+    _activate_backing_root(_backing_for(cli.task).root)
 
     # Set defaults that UniVTAC tasks expect — must match scripts/eval_policy.py
     cli.enable_cameras = True
@@ -1740,9 +3105,11 @@ def main() -> None:
     try:
         # Use AppLauncher's --device for GPU selection (already parsed as cli.device)
         device = getattr(cli, "device", "cuda:0")
-        init_task(cli.task, device, cli.sensor_type, seed=cli.seed)
+        init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
+                  cfg_overrides=cli.cfg_override)
     except Exception:
         logger.error("Failed to initialize task: %s", traceback.format_exc())
+        listener_socket.close()
         simulation_app.close()
         sys.exit(1)
 
@@ -1763,9 +3130,24 @@ def main() -> None:
         import asyncio as _asyncio
         loop = _asyncio.new_event_loop()
         _asyncio.set_event_loop(loop)
-        loop.run_until_complete(server.serve())
+        loop.run_until_complete(server.serve(sockets=[listener_socket]))
 
-    _threading.Thread(target=_run_uvicorn, daemon=True).start()
+    uvicorn_thread = _threading.Thread(target=_run_uvicorn, daemon=True)
+    uvicorn_thread.start()
+
+    # ``Server.started`` becomes true only after Uvicorn has adopted the
+    # pre-bound socket and finished application startup. Do not report ready
+    # or spawn a watchdog until then: otherwise a bind/start failure leaves a
+    # healthy-looking main process that the watchdog kills only after grace.
+    startup_deadline = _time.monotonic() + 15.0
+    while not server.started and uvicorn_thread.is_alive() and _time.monotonic() < startup_deadline:
+        _time.sleep(0.05)
+    if not server.started:
+        logger.error("Uvicorn failed to start on %s:%d", cli.host, cli.port)
+        server.should_exit = True
+        listener_socket.close()
+        simulation_app.close()
+        sys.exit(1)
 
     logger.info("UniVTAC API server ready on %s:%d", cli.host, cli.port)
 
@@ -1785,11 +3167,11 @@ def main() -> None:
                 "--pid", str(os.getpid()),
                 "--host", str(cli.host),
                 "--port", str(cli.port),
-                "--grace", str(getattr(cli, "watchdog_grace", 180.0)),
+                "--grace", str(getattr(cli, "watchdog_grace", 120.0)),
             ]
         )
         logger.info("Freeze watchdog spawned (pid=%d, grace=%.0fs)",
-                    watchdog_proc.pid, getattr(cli, "watchdog_grace", 180.0))
+                    watchdog_proc.pid, getattr(cli, "watchdog_grace", 120.0))
 
     # Main-thread dispatch loop: poll _cmd_queue, execute sim operations
     # synchronously.  Exits cleanly on SIGINT (Ctrl+C) or SIGTERM.
@@ -1804,8 +3186,6 @@ def main() -> None:
     # remains blocked until the process is restarted.  This is an
     # acceptable trade-off: the physics engine works correctly, and cuRobo
     # hangs are rare in practice.
-    import time as _time
-
     while not _shutdown_flag.is_set():
         try:
             fn, args, kwargs, result_holder, done_event = _cmd_queue.get(timeout=0.1)
@@ -1816,8 +3196,18 @@ def main() -> None:
         # Consume internal kwargs (not passed through to the function).
         kwargs.pop("_op_timeout", _QUERY_TIMEOUT)
 
+        # Per-op duration log: contact-heavy sim ops occasionally grind for
+        # tens of seconds (once observed > 150 s with /health still alive —
+        # the client outwaits them at 600 s).  Log any op over 2 s so the
+        # server console shows how long each slow op actually took; that
+        # distribution decides whether the 550/600 s ceilings are right.
         inner_result: dict = {}
+        _op_t0 = _time.perf_counter()
         _exec_wrapper(fn, args, kwargs, inner_result)
+        _op_dur = _time.perf_counter() - _op_t0
+        if _op_dur >= 2.0:
+            logger.warning("Sim op '%s' took %.1fs",
+                           getattr(fn, "__name__", str(fn)), _op_dur)
         result_holder["result"] = inner_result.get("result")
         result_holder["error"] = inner_result.get("error")
         if result_holder["error"] is not None:
@@ -1844,6 +3234,9 @@ def main() -> None:
 
     # Cleanup on exit
     logger.info("Shutting down...")
+    server.should_exit = True
+    uvicorn_thread.join(timeout=5.0)
+    listener_socket.close()
     _RECORDER.finalize()  # assemble the final episode's video
     _TASK.close()
     simulation_app.close()

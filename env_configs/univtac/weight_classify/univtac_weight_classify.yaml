@@ -1,0 +1,31 @@
+# ViTaForge: weight_classify
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/weight_classify/univtac_weight_classify.yaml
+#
+# The server must be started BEFORE this, on the same port:
+#   bash scripts/launch_univtac_server.sh weight_classify 8120 2 0
+# (weight_classify lives in the ViTaForge repo, not UniVTAC — the server
+# picks the backing root from its task registry.)
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_weight_classify.UniVTACWeightClassifyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/weight_classify/low_level_weight_classify.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+# Informational only: UniVTACStubEnv hard-codes 127.0.0.1:8120, and the server
+# must already be listening (a free port here would spawn a child that fails
+# instantly and stall the run for 120 s).
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: weight_classify
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_weight_classify
+
+trials: 100
+num_workers: 1  # Isaac Sim is not parallel-safe

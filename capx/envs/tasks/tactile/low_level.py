@@ -33,6 +33,7 @@ class UniVTACStubEnv(BaseEnv):
         )
         self._obs: dict[str, Any] = {}
         self._last_success: bool = False
+        self._harness_announced: bool = False
 
         # Minimal observation/action spaces
         self.observation_space = gym.spaces.Dict(
@@ -47,10 +48,29 @@ class UniVTACStubEnv(BaseEnv):
     def reset(
         self, seed: int | None = None, options: dict | None = None
     ) -> tuple[dict, dict]:
+        # Announce harness mode before the first reset: the server then
+        # stops self-finalizing episodes into the agent recording root
+        # (outputs/agent) — the eval harness fetches the frames itself and
+        # assembles the trial videos into its own output directory.
+        if not self._harness_announced:
+            try:
+                requests.post(
+                    f"{self._server}/recording/mode",
+                    json={"mode": "harness"},
+                    timeout=10,
+                )
+            except Exception:
+                pass
+            finally:
+                self._harness_announced = True
+        # Must stay above the server's own reset budget (launch_univtac_server
+        # _run_action("reset", ..., 600.0)); at equal values the two timers
+        # race, and losing that race means an HTTPError, which runner.py does
+        # not treat as retryable.
         r = requests.post(
             f"{self._server}/reset",
             json={"seed": seed or 0},
-            timeout=300,
+            timeout=660,
         )
         r.raise_for_status()
         self._last_success = False

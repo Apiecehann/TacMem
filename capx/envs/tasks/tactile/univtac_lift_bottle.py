@@ -22,3 +22,6 @@ open_gripper()
 class UniVTACLiftBottleCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
+    # Optional API-doc sections this task's LLM needs; the rest of the
+    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
+    api_doc_sections = ()

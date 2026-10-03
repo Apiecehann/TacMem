@@ -102,6 +102,13 @@ class CodeExecutionEnvBase(Env):
         )  # type: ignore[assignment]
         # Create APIs once; maximize sharing inside a worker via lru_cache in get_api
         self._apis: dict[str, ApiBase] = {n: get_api(n)(self.low_level_env) for n in cfg.apis}
+        # A task may declare which of the API doc's optional sections its LLM
+        # needs (e.g. only the tasks that measure weight want the weight
+        # recipe).  None, the default, delivers every section.
+        allowed = getattr(self, "api_doc_sections", None)
+        if allowed is not None:
+            for api in self._apis.values():
+                api.doc_sections = frozenset(allowed)
         # for api in self._apis.values():
         #     api.set_env(self.low_level_env)
         self._executor = SimpleExecutor(self.low_level_env, self._apis)

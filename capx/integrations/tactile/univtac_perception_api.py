@@ -26,6 +26,16 @@ from capx.integrations.vision.sam3 import init_sam3
 # wrist camera is close to the gripper (better for small objects / insertion).
 _DEFAULT_CAMERA = "head"
 
+# Mask plausibility thresholds for _perceive_once.  A segmented mask must
+# back-project to between this many valid depth points to be trusted:
+# fewer is a sliver (background blob / part of the robot arm), more is a
+# whole viewport region (camera pointed at a wall or its own arm) —
+# neither is the queried object.  Back-projected points within
+# _NEAR_CAMERA_M of the camera are the robot's own arm, not the object.
+_MIN_POINTS = 30
+_MAX_POINTS = 10000
+_NEAR_CAMERA_M = 0.05
+
 
 class UniVTACPerceptionApi(UniVTACTactileApi):
     """UniVTAC tactile API where object poses come from SAM3 + depth."""
@@ -55,22 +65,39 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
             camera:  Which camera to perceive from, "head" (whole workspace) or
                 "wrist" (near the gripper). Default is "head".
 
+        Perception is heuristic and can fail: a mask must back-project to
+        between 30 and 10000 valid depth points, and must not be dominated
+        by points within 5 cm of the camera (the robot's own arm), to be
+        trusted.  Queries that pass nothing plausible raise RuntimeError
+        after one automatic re-fetch — usually the object is out of view:
+        move the gripper for a better vantage and re-query, or fall back
+        to the fixed layout described in the prompt.
+
         Returns:
             position: (3,) XYZ in meters (median of the back-projected points).
             quaternion_wxyz: (4,) WXYZ unit quaternion (identity; unreliable).
             bbox_extent: (3,) XYZ in meters (full side length, not half-length
                 extent). If return_bbox_extent is False, returns None.
         """
-        points_world = self._perceive_once(object_name, camera)
+        points_world, rejections = self._perceive_once(object_name, camera)
         if points_world.shape[0] == 0:
-            # The best mask back-projected to no valid depth (e.g. one bad
-            # depth frame).  Transient — re-fetch /observation and re-segment
-            # once before giving up.
-            print(f"No valid depth points for '{object_name}' on attempt 1/2 — "
+            # Every candidate mask was rejected (bad depth frame, tiny
+            # background sliver, or a giant self-occlusion blob).  Transient
+            # frame problems clear on a re-fetch — re-observe once before
+            # giving up.
+            print(f"Perception for '{object_name}' from '{camera}' rejected "
+                  f"on attempt 1/2 ({rejections or 'no valid depth'}) — "
                   f"re-fetching /observation and re-segmenting")
-            points_world = self._perceive_once(object_name, camera)
+            points_world, rejections = self._perceive_once(object_name, camera)
         if points_world.shape[0] == 0:
-            raise RuntimeError(f"No valid depth points for '{object_name}'")
+            raise RuntimeError(
+                f"Perception for '{object_name}' from camera '{camera}' "
+                f"rejected on both attempts ({rejections or 'no valid depth'}). "
+                f"The object is likely out of view, or the prompt matched the "
+                f"robot arm / a large background region.  Move the gripper for "
+                f"a better vantage and re-query, or fall back to the known "
+                f"layout."
+            )
 
         position = np.median(points_world, axis=0)
         quaternion_wxyz = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
@@ -82,13 +109,14 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
             bbox = np.ptp(points_world, axis=0)  # full axis-aligned extent
         return position, quaternion_wxyz, bbox
 
-    def _perceive_once(self, object_name: str, camera: str) -> np.ndarray:
+    def _perceive_once(self, object_name: str, camera: str) -> tuple[np.ndarray, str]:
         """One fetch-and-segment cycle.
 
         Pulls /observation (decoded by ``get_observation``), runs SAM3 on the
         text prompt, and back-projects the highest-scoring mask into world
         points.  Raises on camera calibration or empty results; returns a
-        possibly-empty point cloud.
+        possibly-empty point cloud plus a short human-readable rejection
+        reason ("" when a mask was accepted).
         """
         obs = self.get_observation(include_depth=True)
 
@@ -113,20 +141,37 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
         results = self._sam3_seg_fn(rgb, text_prompt=object_name)
         if not results:
             raise RuntimeError(f"SAM3 found no object matching '{object_name}'")
-        # Pick the highest-scoring mask that back-projects to at least one
-        # valid depth point.  Raw top-score selection can land on tiny
-        # background blobs whose pixels all have invalid depth (SAM3 scores
-        # are close and flip nondeterministically), which used to surface as
-        # "No valid depth points" even though a usable mask was ranked just
-        # below.
+        # Pick the highest-scoring mask that back-projects to a plausible
+        # point cloud.  Raw top-score selection can land on tiny background
+        # blobs whose pixels all have invalid depth (SAM3 scores are close
+        # and flip nondeterministically), which used to surface as "No
+        # valid depth points" even though a usable mask was ranked just
+        # below.  Masks that back-project to implausible point counts are
+        # rejected outright — too few (a sliver of background or of the
+        # robot arm) or too many (a whole viewport region: the camera
+        # looking at a wall or its own arm) — as are clouds dominated by
+        # points within _NEAR_CAMERA_M of the camera (the arm, not the
+        # queried object).
+        rejections = []
         for r in sorted(results, key=lambda r: r.get("score", 0.0), reverse=True):
             mask = np.asarray(r["mask"], dtype=bool)
             points = self._mask_to_world_points(
                 mask, depth, intrinsics, pos_w, quat_w_ros
             )
-            if points.shape[0] > 0:
-                return points
-        return np.zeros((0, 3), dtype=np.float64)
+            n = points.shape[0]
+            if n == 0:
+                rejections.append("no valid depth")
+                continue
+            if n < _MIN_POINTS or n > _MAX_POINTS:
+                rejections.append(f"n={n}")
+                continue
+            if (
+                np.linalg.norm(points - pos_w[None, :], axis=1) < _NEAR_CAMERA_M
+            ).mean() > 0.5:
+                rejections.append(f"n={n} near-camera")
+                continue
+            return points, ""
+        return np.zeros((0, 3), dtype=np.float64), "; ".join(rejections)
 
     # ---- helpers ----
 

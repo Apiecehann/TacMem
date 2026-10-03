@@ -31,6 +31,30 @@ TASKS=(
 )
 
 RESULTS_FILE="univtac_results_$(date +%Y%m%d_%H%M%S).txt"
+SERVER_PID=""
+
+stop_server() {
+    if [ -z "$SERVER_PID" ]; then
+        return
+    fi
+
+    # The server launcher starts a shell supervisor, Isaac/Python server, and
+    # a watchdog. They run in this dedicated session, so stop the whole
+    # process group; killing only the wrapper shell leaves a port-holding
+    # Python child behind for the next task.
+    kill -- -"$SERVER_PID" 2>/dev/null || true
+    for _ in $(seq 1 5); do
+        kill -0 "$SERVER_PID" 2>/dev/null || break
+        sleep 1
+    done
+    kill -9 -- -"$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=""
+}
+
+trap stop_server EXIT
+trap 'stop_server; exit 130' INT
+trap 'stop_server; exit 143' TERM
 
 echo "UniVTAC Batch Evaluation" | tee -a "$RESULTS_FILE"
 echo "Model: $MODEL" | tee -a "$RESULTS_FILE"
@@ -46,7 +70,9 @@ for task in "${TASKS[@]}"; do
 
     # Start UniVTAC server for this task
     echo "[1/3] Starting UniVTAC server..." | tee -a "$RESULTS_FILE"
-    bash scripts/launch_univtac_server.sh "$task" "$PORT" "$GPU" > /tmp/univtac_server_${task}.log 2>&1 &
+    # ``setsid`` gives each task a distinct process group, so stop_server can
+    # reliably clean up the supervisor, server, and watchdog together.
+    setsid bash scripts/launch_univtac_server.sh "$task" "$PORT" "$GPU" > /tmp/univtac_server_${task}.log 2>&1 &
     SERVER_PID=$!
     echo "  Server PID: $SERVER_PID" | tee -a "$RESULTS_FILE"
 
@@ -64,7 +90,7 @@ for task in "${TASKS[@]}"; do
 
     if [ "$READY" -eq 0 ]; then
         echo "  ERROR: Server did not become ready. Skipping $task." | tee -a "$RESULTS_FILE"
-        kill $SERVER_PID 2>/dev/null || true
+        stop_server
         continue
     fi
 
@@ -85,10 +111,7 @@ for task in "${TASKS[@]}"; do
 
     # Stop server
     echo "  Stopping server..." | tee -a "$RESULTS_FILE"
-    kill $SERVER_PID 2>/dev/null || true
-    sleep 5
-    # Force kill if still running
-    kill -9 $SERVER_PID 2>/dev/null || true
+    stop_server
 
     echo "" | tee -a "$RESULTS_FILE"
 done

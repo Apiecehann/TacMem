@@ -1,0 +1,4 @@
+# Stub low-level env for UniVTAC tasks.
+# The actual sim runs in the UniVTAC API server process.
+_target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+task_name: tactile_transfer_rearrange_clean

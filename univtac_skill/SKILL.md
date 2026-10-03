@@ -45,8 +45,8 @@ Import from `robo`:
 ```python
 from robo import (
     health,
-    goto_pose, move_delta, open_gripper, close_gripper, rotate_gripper,
-    get_tactile_data, detect_contact, detect_slip,
+    goto_pose, move_delta, move_reflexive, open_gripper, close_gripper, rotate_gripper,
+    get_tactile_data, get_tactile_image, detect_contact, detect_slip,
     get_object_pose, sample_grasp_pose,
     get_observation, get_ee_pose, check_success, episode_video,
 )
@@ -140,7 +140,6 @@ view. Match the view to the question:
 | `*_depth_mm` | distance to contact surface; **~34 mm = far plane (no contact), DECREASES as contact hardens** (~27 mm light grasp, ~20 mm hard jam) |
 | `*_marker_displacement_px` | mean marker motion since the no-contact reset — rises with ANY gel deformation (contact, insertion, slip), so NOT a clean slip signal on its own |
 | `*_marker_coherence` | 0–1 uniformity of marker motion — **high = markers move together (shear/slip), low = incoherent (compression/tracking loss)**; combine with displacement for slip |
-| `*_marker_std_px` | per-marker spread |
 
 Stopping on contact (the standard pattern for contact-critical moves):
 
@@ -152,6 +151,50 @@ while not fb["left_contact"] and not fb["right_contact"]:
 
 Slip detection (grasp hold test): `detect_slip()` once to set the baseline,
 then move, then call again — True means the object sheared.
+
+## Two-loop control (`move_reflexive`, preferred for contact)
+
+Tactile is a fast signal and you are a slow loop; polling between small moves
+wastes wall-clock and reacts a step late. `move_reflexive` evaluates the
+tactile events INSIDE the motion — the server freezes the arm the moment the
+first enabled condition fires, and you read a digest of what it felt:
+
+```python
+r = move_reflexive(dz=-0.005, stop_on={"contact": True})   # approach until touch
+print(r["terminated_by"], r["event"])                      # "contact", digest
+```
+
+**Pick `stop_on` conditions per motion** (all ORed; absent keys stay off;
+definitions/defaults/digest schema: `robo.api_doc()` → `move_reflexive`):
+
+- approach until first touch → `{"contact": True}`
+- insert/seat until seated → `{"plateau": {"mm": 0.5, "steps": 5}}` — press
+  goes flat (jammed or seated)
+- press with jam protection → `{"hard_depth": 20}` (mm)
+- grasp hold test → `{"slip": 30}` (direction-aware) or `{"shear_spike": 2}`
+  (magnitude)
+- yaw misalignment → `{"asymmetry": 3}` (mm, |L−R| depth gap)
+- safety net → `{"max_steps": 50}`
+
+Rules that matter:
+
+- `success=True` may mean "stopped on a condition", not "reached the target"
+  — check `terminated_by` before reasoning about position.
+- Read the digest, not just the flag: `terminated_by`, `min_depth_mm` (press
+  hardness), `asymmetry_mm` (lopsided?), `shear_dir_deg` (which way the
+  surface pulled — plugged vs jammed shear differently), `events` (order).
+- A triggered motion is never retried internally; it is not a failure.
+- `move_reflexive` replaces the slow while-loop contact pattern above for
+  one-shot descents; keep the loop only when each step needs an image or a
+  non-reflexive decision.
+- Cost: ~2 FPS (each step renders for fresh tactile) — keep deltas ≤ 0.05 m.
+  After a reflex stop, back off and re-plan, do not hammer.
+
+Slow loop (decision points only): after a reflex stop — or any moment you
+must reason about touch — `get_tactile_data()` for scalars and
+`get_tactile_image(side)` for the raw GelSight marker view, saved to
+scratch/ and inspected like a camera image. NEVER fetch either mid-motion:
+every call is a full render, and the reflex loop already renders each step.
 
 ## Reusable helpers (`tools/`, preferred)
 
@@ -188,13 +231,16 @@ observe the scene and verify motion yourself in small first steps.
 
 1. The scene starts in the server's initial state; there is no `reset()`.
 2. Ensure valid warmup memory.
-3. **Before each action chunk**: `get_observation()` and reason from the
-   camera images; `get_tactile_data()` when contact is involved.
+3. **Re-observe between actions — mandatory**: after every action and
+   before the next one, call `get_observation()` (EE pose + cameras +
+   tactile in one render, each call is a full render) and reason from it;
+   never chain two actions on the state carried in the previous action's
+   response. `get_tactile_data()` additionally when contact is involved.
+   Fetch only between actions — never mid-motion (the reflex loop already
+   renders each step).
 4. Prefer small, safe chunks: at most 0.05 m / 0.3 rad per `move_delta`
    call, and split large motions into waypoints.
-5. After every action: read the feedback and verify the result before
-   continuing.
-6. **Grasp protocol**: first confirm the hand is empty — `get_tactile_data()`
+5. **Grasp protocol**: first confirm the hand is empty — `get_tactile_data()`
    reads the far plane (~34 mm) with no contact. If it already reads contact
    (depth well below far plane), the gripper is holding something: do NOT
    open it as the first move; confirm with `get_observation()` what is held
@@ -211,7 +257,7 @@ observe the scene and verify motion yourself in small first steps.
    while high above the surface — do NOT correct tilt with world-frame
    `move_delta(dr*)`, and do NOT rotate near the target (the object will
    catch on contact).
-7. End the episode with `check_success()` to confirm, then call
+6. End the episode with `check_success()` to confirm, then call
    `episode_video()` and report the returned `mp4` path in your summary so the
    operator can replay your run. The video lives on the server side (under
    `outputs/agent/`); report the path only, do **not** read files under it

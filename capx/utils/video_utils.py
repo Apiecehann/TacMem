@@ -4,7 +4,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, TypeVar, Union
 
 import cv2
 import numpy as np

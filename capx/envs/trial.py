@@ -19,20 +19,25 @@ import io
 import json
 import os
 import time
-from typing import Any
+
+# Use TYPE_CHECKING to avoid circular imports for type hints only
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image
 
-from capx.envs.configs.instantiate import instantiate
 from capx.envs.tasks.base import CodeExecutionEnvBase
-
 from capx.llm.client import (
-    VLM_MODELS,
-    is_vlm_model,
     ModelQueryArgs,
+    is_vlm_model,
+)
+from capx.llm.client import (
     query_model as _query_model,
+)
+from capx.llm.client import (
     query_model_ensemble as _query_model_ensemble,
+)
+from capx.llm.client import (
     query_single_model_ensemble as _query_single_model_ensemble,
 )
 from capx.utils.launch_utils import (
@@ -46,9 +51,6 @@ from capx.utils.launch_utils import (
 )
 from capx.utils.video_utils import _encode_video_base64, _write_video
 
-# Use TYPE_CHECKING to avoid circular imports for type hints only
-from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
     from capx.envs.launch import LaunchArgs
 
@@ -58,7 +60,18 @@ MULTITURN_LIMIT = 10  # default, overridden by --multiturn-limit
 # Wall-clock execution budget armed after env.reset() (see _run_single_trial).
 # This REPLACES the runner's configured trial timeout, so a SIGALRM raised
 # while executed code runs (e.g. mid HTTP request) is this arm firing.
-TRIAL_EXEC_ALARM_SECONDS = 1000
+# 2026-09-07: raised 1000 -> 2400 s.  Contact-heavy sim ops occasionally
+# grind for minutes each (server _MOTION_TIMEOUT 1500 s / client 1800 s now
+# let them finish); a healthy run ~1000 s plus two such grinds no longer
+# fits in 1000 s.  The runner's --trial-timeout wall clock still bounds it.
+#
+# A single default cannot fit every task: bulb_tightening's insertion is 1.2-3
+# turns that must be done in ~180 deg segments with a release/unwind/regrasp
+# between each (measured 213 s per segment + 493 s per gap), so its episode is
+# 1900-4000 s depending on the seed's thread lead.  Such a task sets
+# ``exec_alarm_seconds`` in its YAML and gets a longer budget; every config
+# that does not set it keeps the value below.
+TRIAL_EXEC_ALARM_SECONDS = 2400
 
 # ---------------------------------------------------------------------------
 # Shared formatting helpers
@@ -667,7 +680,10 @@ def _run_single_trial(
     import signal
     remaining = signal.alarm(0)  # cancel current alarm
     if remaining > 0:
-        signal.alarm(TRIAL_EXEC_ALARM_SECONDS)  # restart fresh from now
+        # A task whose ops are structurally long (see EXEC_ALARM_SECONDS) may
+        # raise its own budget from its YAML; everything else keeps the default.
+        budget = config.get("exec_alarm_seconds") or TRIAL_EXEC_ALARM_SECONDS
+        signal.alarm(budget)  # restart fresh from now
     obs["full_prompt"] = copy.deepcopy(obs["full_prompt"])
     _patch_libero_goal(env, obs)
 
@@ -960,7 +976,7 @@ def _run_single_trial(
         try:
             from capx.skills import SkillLibrary
 
-            skill_lib_path = config.get("skill_library_path", None)
+            skill_lib_path = config.get("skill_library_path")
             skill_lib = SkillLibrary(path=skill_lib_path)
             task_name = config.get("task_name", f"trial_{trial}")
             new_skills = skill_lib.extract_from_code(final_code, task_name=task_name)
@@ -999,7 +1015,7 @@ def _patch_libero_goal(env: CodeExecutionEnvBase, obs: dict[str, Any]) -> None:
         hasattr(handle, "task_language")
         and "libero_environment_goal" in obs["full_prompt"][-1]["content"][0]["text"]
     ):
-        goal = getattr(handle, "task_language")
+        goal = handle.task_language
         obs["full_prompt"][-1]["content"][0]["text"] = (
             obs["full_prompt"][-1]["content"][0]["text"].format(
                 libero_environment_goal=goal

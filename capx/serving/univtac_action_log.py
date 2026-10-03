@@ -41,6 +41,21 @@ _OUTPUTS_AGENT = _REPO_ROOT / "outputs" / "agent"
 _LOG_PATH: Path | None = None
 _TASK: str | None = None
 _EPISODE: str | None = None
+_HARNESS_MODE = False  # eval harness announced itself — stop logging
+
+
+def set_harness_mode() -> None:
+    """Stop writing the action log.
+
+    The log is the agent-path debugging record (one file per agent
+    episode, mirroring the video layout).  During cap-x evals the harness
+    announces itself (``POST /recording/mode``) before its first reset —
+    from then on nothing is appended and no episode directories are
+    created in ``outputs/agent``.  One-way, like the recorder's own
+    harness mode.
+    """
+    global _HARNESS_MODE
+    _HARNESS_MODE = True
 
 
 def _default_path(task: str, ep: str) -> Path:
@@ -50,6 +65,8 @@ def _default_path(task: str, ep: str) -> Path:
 
 def _append(rec: dict) -> None:
     """Write one JSON line, timestamped.  Never raises."""
+    if _HARNESS_MODE:
+        return
     rec.setdefault("t_ms", int(time.time() * 1000))
     if _LOG_PATH is None:  # before the first reset — nothing to attach to yet
         return

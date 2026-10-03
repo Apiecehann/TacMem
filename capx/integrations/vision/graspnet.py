@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
-import logging
 import os
-import sys
-import time
 from typing import Any
 
 import numpy as np
@@ -140,8 +137,6 @@ def init_contact_graspnet(device: str = "cuda", checkpoint_path: str | None = No
             z_range = [0.2, 2.0]
         # num_viewpoints = 5 # default to 5 viewpoints, and not passed as a parameter
         # max_angle_deg = 10.0 # default to 60 degrees, and not passed as a parameter
-
-        num_viewpoints = 40 # default to 10 viewpoints, and not passed as a parameter
 
         payload = {
             "depth_base64": _numpy_to_base64(depth),

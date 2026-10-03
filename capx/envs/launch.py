@@ -55,8 +55,12 @@ class LaunchArgs:
     temperature: float = 1.0
     """Sampling temperature for code generation (higher = more random)."""
 
-    max_tokens: int = 2048 * 10
-    """Maximum number of tokens to generate in the model response."""
+    max_tokens: int = 2048 * 32
+    """Maximum number of tokens to generate in the model response.
+
+    NOTE: for reasoning models (e.g. kimi-k3) this budget is shared between
+    the always-on thinking trace and the visible code output — 20k is tight
+    and the code part gets cut mid-expression (2026-09-06 trial_03)."""
 
     reasoning_effort: str = "medium"
     """Effort level for reasoning models (if applicable). Options: minimal, low, medium, high."""
@@ -192,6 +196,7 @@ def _ensure_frontend_built() -> None:
 def _run_web_ui(args: LaunchArgs, config: dict[str, Any]) -> None:
     """Start the interactive web UI server."""
     import uvicorn
+
     from capx.web.server import create_app
 
     _ensure_frontend_built()

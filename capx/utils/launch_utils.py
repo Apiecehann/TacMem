@@ -6,7 +6,6 @@ import base64
 import copy
 import io
 import json
-import logging
 import multiprocessing
 import os
 import time
@@ -14,10 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import fastapi
 import numpy as np
-import requests
-import uvicorn
 from PIL import Image
 
 from capx.envs.configs.instantiate import instantiate
@@ -36,9 +32,17 @@ from capx.llm.client import (  # noqa: F401
     _completions_to_responses_convert_prompt,
     collapse_text_image_inputs,
     is_openrouter_model,
+)
+from capx.llm.client import (  # noqa: F401
     query_model as _query_model,
-    query_model_streaming as _query_model_streaming,
+)
+from capx.llm.client import (  # noqa: F401
     query_model_ensemble as _query_model_ensemble,
+)
+from capx.llm.client import (  # noqa: F401
+    query_model_streaming as _query_model_streaming,
+)
+from capx.llm.client import (  # noqa: F401
     query_single_model_ensemble as _query_single_model_ensemble,
 )
 
@@ -157,6 +161,10 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
         if getattr(args, "web_ui_port", None) is not None
         else configs_dict.get("web_ui_port", 8200),
         "save_multiturn_prompts": configs_dict.get("save_multiturn_prompts", False),
+        # Per-task override of trial.py's post-reset execution alarm, for tasks
+        # whose ops are structurally too long for the 2400 s default.  None
+        # means "use the default", so configs that omit it are unaffected.
+        "exec_alarm_seconds": configs_dict.get("exec_alarm_seconds", None),
     }
 
     return env_factory, merged_config, api_servers
@@ -524,7 +532,6 @@ def _print_and_save_summary(
         git_commit = "unknown"
         is_dirty = False
 
-    import time
 
     elapsed_time = time.time() - start_time
     print("\nSummary Statistics:")

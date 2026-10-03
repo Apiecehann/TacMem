@@ -1,8 +1,6 @@
-import itertools
-import json
 import logging
 from pathlib import Path
-from typing import List, Literal, Optional, Union
+from typing import Literal
 
 import tyro
 import uvicorn
@@ -10,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI, OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

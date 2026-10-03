@@ -8,54 +8,55 @@ hot-swappable for code execution environments.
 from __future__ import annotations
 
 import os
-from typing import Any, Tuple, List
-import numpy as np
 from collections import deque
+from typing import Any
+
+import numpy as np
+
+# from base_env import BaseEnv
+import yaml
 
 from capx.envs.base import BaseEnv
-# from base_env import BaseEnv
 
-import sys
-import yaml
 try:
     import omnigibson as og
 except Exception as e:  # pragma: no cover - optional dependency
     raise ModuleNotFoundError(
         "Behaviour not available; add submodule."
     ) from e
-from omnigibson.macros import gm
+import json
+import math
+import random
+import time
+
+import matplotlib.pyplot as plt
+import mediapy as media
+import torch
+from omnigibson.action_primitives.action_primitive_set_base import (
+    ActionPrimitiveError,
+)
+from omnigibson.action_primitives.curobo import (
+    holonomic_base_command_in_world_frame,
+)
+
 # here = os.path.dirname(os.path.abspath(__file__))
 # vendor_root = os.path.normpath(os.path.join(here, "..", "third_party", "BEHAVIOR-1K"))
 # if os.path.isdir(vendor_root) and vendor_root not in sys.path:
 #     sys.path.append(vendor_root)
 from omnigibson.action_primitives.starter_semantic_action_primitives import (
     StarterSemanticActionPrimitives,
-    StarterSemanticActionPrimitiveSet,
 )
-from omnigibson.utils.transform_utils import euler2quat, quat_multiply, quat2mat
-from omnigibson.object_states.toggle import ToggledOn
-import torch
-import mediapy as media
-from omnigibson.utils.asset_utils import get_task_instance_path
-from omnigibson.utils.python_utils import recursively_convert_to_torch
-import json
-import math
-from omnigibson.action_primitives.curobo import (
-    holonomic_base_command_in_world_frame,
-)
-from omnigibson.action_primitives.action_primitive_set_base import (
-    ActionPrimitiveError,
-)
-from scipy.spatial.transform import Rotation as R
-from omnigibson.sensors.vision_sensor import VisionSensor
-from scipy.spatial import ConvexHull
-import matplotlib.pyplot as plt
-import time
-import random
 from omnigibson.learning.utils.eval_utils import (
     TASK_NAMES_TO_INDICES,
 )
-from omnigibson.metrics import MetricBase, AgentMetric, TaskMetric
+from omnigibson.macros import gm
+from omnigibson.metrics import AgentMetric, MetricBase, TaskMetric
+from omnigibson.object_states.toggle import ToggledOn
+from omnigibson.sensors.vision_sensor import VisionSensor
+from omnigibson.utils.asset_utils import get_task_instance_path
+from omnigibson.utils.python_utils import recursively_convert_to_torch
+from omnigibson.utils.transform_utils import euler2quat, quat2mat, quat_multiply
+from scipy.spatial import ConvexHull
 
 # Make sure object states are enabled
 gm.ENABLE_OBJECT_STATES = True
@@ -124,7 +125,7 @@ class R1ProBehaviourLowLevel(BaseEnv):
     ) -> None:
         super().__init__()
         config_filename =  os.path.join(og.example_config_path, controller_cfg)
-        self.controller_cfg = yaml.load(open(config_filename, "r"), Loader=yaml.FullLoader)
+        self.controller_cfg = yaml.load(open(config_filename), Loader=yaml.FullLoader)
         if activity_name is not None:
             self.controller_cfg['task']['activity_name'] = activity_name
             # Load all rooms so any task can find its required objects
@@ -148,7 +149,7 @@ class R1ProBehaviourLowLevel(BaseEnv):
             "left_eef_displacement": [],
             "right_eef_displacement": [],
         }
-        with open(os.path.join(gm.DATA_PATH, "2025-challenge-task-instances", "metadata", "episodes.jsonl"), "r") as f:
+        with open(os.path.join(gm.DATA_PATH, "2025-challenge-task-instances", "metadata", "episodes.jsonl")) as f:
             episodes = [json.loads(line) for line in f]
         for episode in episodes:
             if episode["episode_index"] // 1e4 == task_idx:
@@ -191,7 +192,7 @@ class R1ProBehaviourLowLevel(BaseEnv):
         self._record_frames = False
         self.step_num = 0
     
-    def load_metrics(self) -> List[MetricBase]:
+    def load_metrics(self) -> list[MetricBase]:
         """
         Load agent and task metrics.
         """
@@ -226,7 +227,7 @@ class R1ProBehaviourLowLevel(BaseEnv):
                 f"json/{scene_model}_task_{self.env.task.activity_name}_instances/{tro_filename}-tro_state.json",
             )
             
-        with open(tro_file_path, "r") as f:
+        with open(tro_file_path) as f:
             tro_state = recursively_convert_to_torch(json.load(f))
         for tro_key, tro_state in tro_state.items():
             if tro_key == "robot_poses":
@@ -317,7 +318,6 @@ class R1ProBehaviourLowLevel(BaseEnv):
         obs, reward, terminated, truncated, info = self.env.step(action)
         # self.observation_buffer.append(obs)
         self.cur_observation = obs
-        success = info['done']['success']
         obs_keys = list(obs.keys())
         robot_key = [key for key in obs_keys if 'robot' in key][0]
         if self.save_video:
@@ -347,7 +347,6 @@ class R1ProBehaviourLowLevel(BaseEnv):
         """
         table_obj = self.env.scene.object_registry("name", "coffee_table_koagbh_0")
         table_pose, table_quat = table_obj.get_position_orientation()
-        table_height = table_pose[-1]
         grasp_obj = self.env.scene.object_registry("name", "radio_89")
         radio_pos, radio_quat = grasp_obj.get_position_orientation()
         if self.controller._get_obj_in_hand() == grasp_obj and radio_pos[2] > self.initial_radio_pose[2] + 0.005:
@@ -438,7 +437,6 @@ class R1ProBehaviourLowLevel(BaseEnv):
     
     
     def update_torso(self, torso_joint_name: str, angle: float, max_steps=50):
-        torso_joint = self.controller.robot.joints[torso_joint_name]
         torso_idx = self.torso_idx_map[torso_joint_name]
         
         # current_torso_joint_goal = angle
@@ -900,9 +898,6 @@ def oracle_solution():
         radio_pose = radio_state[0]
         initial_radio_pose = radio_state[0].clone()
         
-        robot_pos, robot_quat = env.robot.get_position_orientation()
-        cur_robot_yaw = quat2yaw(robot_quat)
-        
         grasp_obj = env.env.scene.object_registry("name", "radio_89")
         pregrasp_pose, grasp_pose = env.controller._sample_grasp_pose(grasp_obj)
         
@@ -925,7 +920,7 @@ def oracle_solution():
             robot_target = (long_side_center[0] + buffer_dist, radio_pose[1], np.pi)
             
         
-        navigation_success = env._navigate_to_pose(robot_target)
+        env._navigate_to_pose(robot_target)
         robot_pos, robot_quat = env.robot.get_position_orientation()
         radio_pos, radio_quat = grasp_obj.get_position_orientation()
         if np.linalg.norm(np.array(robot_pos[:2]) - np.array(radio_pos[:2])) < 0.3:
@@ -951,7 +946,6 @@ def oracle_solution():
             if torch.allclose(current_joint_positions, target_joint_positions, atol=0.005):
                 break
         
-        table_height = table_pose[-1]
         radio_pos, radio_quat = grasp_obj.get_position_orientation()
         if env.controller._get_obj_in_hand() == grasp_obj and radio_pos[2] > initial_radio_pose[2] + 0.01:
             reward += 1/3

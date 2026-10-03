@@ -1,46 +1,29 @@
+import os
 import pathlib
-import time
-from typing import Any, Tuple
-import math
-import torch
+from typing import Any
 
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import open3d as o3d
+import torch
+import viser
 import viser.transforms as vtf
 from PIL import Image, ImageDraw
-from scipy.spatial.transform import Rotation as SciRotation
 
-from capx.envs.base import (
-    BaseEnv,
-)
 from capx.envs.simulators.r1pro_b1k import R1ProBehaviourLowLevel
-from capx.integrations.motion import pyroki_snippets as pks  # type: ignore
 from capx.integrations.base_api import ApiBase
+from capx.integrations.motion import pyroki_snippets as pks  # type: ignore
+from capx.integrations.motion.pyroki_context import get_pyroki_context  # type: ignore
+from capx.integrations.r1pro.utils import *
 from capx.integrations.vision.graspnet import init_contact_graspnet
+from capx.integrations.vision.molmo import init_molmo
 from capx.integrations.vision.owlvit import init_owlvit
-from capx.integrations.motion.pyroki import init_pyroki
 
 # from capx.integrations.motion.pyroki_context import get_pyroki_context  # type: ignore
 from capx.integrations.vision.sam2 import init_sam2
-from capx.integrations.vision.molmo import init_molmo
-from capx.integrations.vision.sam3 import init_sam3, visualize_sam3_results, init_sam3_point_prompt
-from capx.utils.depth_utils import depth_color_to_pointcloud, depth_to_pointcloud, depth_to_rgb
-
-from scipy.spatial import ConvexHull
-from torchvision.transforms.functional import to_pil_image
-from omnigibson.sensors.vision_sensor import VisionSensor
-import matplotlib.pyplot as plt
-import viser
-import numpy.typing as npt
-from capx.integrations.r1pro.utils import *
-
-
-from capx.integrations.motion import pyroki_snippets as pks
-from capx.integrations.motion.pyroki_context import get_pyroki_context  # type: ignore
-from viser.extras import ViserUrdf
-import os
+from capx.integrations.vision.sam3 import init_sam3, init_sam3_point_prompt, visualize_sam3_results
 from capx.utils.video_utils import _write_video
-import jax.numpy as jnp
 
 # pyroki:
 # ('torso_joint1', 'torso_joint2', 'torso_joint3', 'torso_joint4', 'left_arm_joint1', 'left_arm_joint2', 'left_arm_joint3', 'left_arm_joint4', 'left_arm_joint5', 'left_arm_joint6', 'left_arm_joint7', 'right_arm_joint1', 'right_arm_joint2', 'right_arm_joint3', 'right_arm_joint4', 'right_arm_joint5', 'right_arm_joint6', 'right_arm_joint7')
@@ -483,7 +466,6 @@ class R1ProControlApi(ApiBase):
             raise ValueError("No sam3 detections")
         scores = [result["score"] for result in results]
         
-        box = results[np.argmax(scores)]["box"]
         mask = results[np.argmax(scores)]["mask"]
         
         return mask.sum()
@@ -540,7 +522,6 @@ class R1ProControlApi(ApiBase):
             if np.max(scores) < self.sam3_score_threshold:
                 return None, None, None, None, None
             
-            idxs = np.where(mask.flatten() & binary_map_nan_is_zero.flatten().astype(bool))
         else:
             dets = self.owl_vit_det_fn(rgb, texts=[[object_name]])
 
@@ -569,12 +550,6 @@ class R1ProControlApi(ApiBase):
             queried_instance_idx, seg_crop = self._select_instance_from_box(segmentation, box)
             if self.debug:
                 self._save_segmentation_debug(seg_crop, pathlib.Path("seg_crop_image.jpg"))
-
-            # idxs = np.where(segmentation.flatten() == queried_instance_idx) # Old assumes there are no Nans in the depth map (happens in real ZED returns)
-            idxs = np.where(
-                segmentation.flatten()[binary_map_nan_is_zero.flatten().astype(bool)]
-                == queried_instance_idx
-            )
 
         obj_mask = mask & binary_map_nan_is_zero
         
@@ -648,7 +623,6 @@ class R1ProControlApi(ApiBase):
                 print(f"No sam3 detections for {object_name} and no grasp poses found")
                 return None, None
 
-            box = results[np.argmax(scores)]["box"]
             mask = results[np.argmax(scores)]["mask"]
             segmentation = mask[:, :, None]
 
@@ -660,7 +634,6 @@ class R1ProControlApi(ApiBase):
                     output_dir=pathlib.Path("."),
                     show=False,
                 )
-            idxs = np.where(segmentation.flatten() & binary_map_nan_is_zero.flatten().astype(bool))
             queried_instance_idx = 1
         
 
@@ -714,18 +687,8 @@ class R1ProControlApi(ApiBase):
         pregrasp_pos = grasp_pos - approach_dir * 0.1
         grasp_quat = quat_multiply(grasp_quat, torch.tensor([1.0, 0.0, 0.0, 0.0]))
         
-        theta = np.pi / 2
-        qz = np.array([0, 0, np.sin(theta/2), np.cos(theta/2)])
-        grasp_quat_90 = quat_multiply(grasp_quat, torch.tensor(qz, dtype=torch.float32))
-        
-        pregrasp_pose = (pregrasp_pos.numpy(), grasp_quat.numpy())
-        grasp_pose = (grasp_pos.numpy(), grasp_quat.numpy())
-        
         pregrasp_pose_topdown = (pregrasp_pos.numpy(), np.array([1.0, 0.0, 0.0, 0.0]))
         grasp_pose_topdown = (grasp_pos.numpy(), np.array([1.0, 0.0, 0.0, 0.0]))
-        
-        pregrasp_pose_90 = (pregrasp_pos.numpy(), grasp_quat_90.numpy())
-        grasp_pose_90 = (grasp_pos.numpy(), grasp_quat_90.numpy())
 
         if self.debug:
         # if True:
@@ -842,7 +805,7 @@ class R1ProControlApi(ApiBase):
         self.open_gripper(arm=arm)
         
         joints = self.solve_ik(grasp_pose[0]+np.array([0.0, 0.0, -0.02]), grasp_pose[1][[3,0,1,2]], arm=arm, offset_translation=np.array([0.0, 0.0, -0.02]))
-        success = self.move_to_joint_positions(joints, max_steps=200, settle_steps=5)
+        self.move_to_joint_positions(joints, max_steps=200, settle_steps=5)
         self._env._settle_robot()
         current_eef_pose = self.get_current_eef_pose(arm=arm)[0]
         if np.linalg.norm(current_eef_pose - grasp_pose[0]) > 0.03:
@@ -850,7 +813,7 @@ class R1ProControlApi(ApiBase):
             diff[-1] = 0.08
             new_grasp_pose = grasp_pose[0] - diff
             joints = self.solve_ik(new_grasp_pose, grasp_pose[1][[3,0,1,2]], arm=arm, offset_translation=np.array([0.0, 0.0,0.0]))
-            success = self.move_to_joint_positions(joints, max_steps=200, settle_steps=5)
+            self.move_to_joint_positions(joints, max_steps=200, settle_steps=5)
             self._env._settle_robot()
       
                 
@@ -985,9 +948,6 @@ class R1ProControlApi(ApiBase):
                 axes_radius=0.015,
             )
         
-        qy = np.array([0, 1.0, 0.0, 0.0]) 
-        fk_eef_y = quat_multiply(torch.from_numpy(np.array(gripper_pose[:4]))[[1,2,3,0]], torch.tensor(qy, dtype=torch.float32))
-        
         y_tra = vtf.SE3.from_rotation_and_translation(
             rotation=vtf.SO3(wxyz=np.array([0.0, 0, 1.0, 0.0 ])),
             translation=np.array([0.0, -0.0, -0.05]),
@@ -1014,7 +974,7 @@ class R1ProControlApi(ApiBase):
                 axes_radius=0.015,
             )
         
-        success = self.move_to_joint_positions(solved_joints)
+        self.move_to_joint_positions(solved_joints)
         
         cur_eef_pose_post = self.get_current_eef_pose(arm=arm)
         self.viser_server.scene.add_frame(
@@ -1333,7 +1293,6 @@ class R1ProControlApi(ApiBase):
         cur_yaw = quat2yaw(robot_quat)
         delta_yaw = 0.5
         num_idx = 2*np.pi // delta_yaw
-        obs = self._env.get_observation()
         for idx in range(int(num_idx)):
             
             robot_pos, robot_quat = self._env.robot.get_position_orientation()
@@ -1400,8 +1359,6 @@ class R1ProControlApi(ApiBase):
         all_keys = list(obs.keys())
         robot_key = [key for key in all_keys if 'robot' in key][0]
         ego_camera = self._env.robot.sensors[f'{robot_key}:zed_link:Camera:0']
-        side_camera = self._env.robot.sensors[f'{robot_key}:left_realsense_link:Camera:0']
-        side_intrinsic_matrix = side_camera.intrinsic_matrix
         ego_intrinsic_matrix = ego_camera.intrinsic_matrix
         return ego_intrinsic_matrix.detach().numpy()
     
@@ -1418,7 +1375,7 @@ class R1ProControlApi(ApiBase):
         return np.array(robot_pos), np.array(robot_quat), np.array(robot_yaw)
 
     
-    def convert_eef_world_pose_to_robot_base_pose(self, eef_world_pose: Tuple[np.ndarray, np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+    def convert_eef_world_pose_to_robot_base_pose(self, eef_world_pose: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
         """
         Convert the end-effector world pose to the robot base pose.
         Args:

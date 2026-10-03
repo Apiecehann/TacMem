@@ -6,25 +6,19 @@ import io
 import logging
 import os
 import sys
-import time
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any
 
 import numpy as np
-import torch
 import tyro
 import uvicorn
 import viser.transforms as vtf
 import yaml
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from capx.utils.graspnet_utils import camera_so3_looking_at_origin, sample_hemisphere_viewpoint, sample_random_camera_viewpoint, sample_hemisphere_viewpoints_evenly
 
 from capx.utils.graspnet_utils import (
-    camera_so3_looking_at_origin,
     sample_cone_viewpoints_evenly,
-    sample_hemisphere_viewpoint,
-    sample_hemisphere_viewpoints_evenly,
     sample_random_camera_viewpoint,
 )
 

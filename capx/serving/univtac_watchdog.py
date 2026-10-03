@@ -57,14 +57,21 @@ def main() -> None:
     parser.add_argument(
         "--grace",
         type=float,
-        default=180.0,
-        help="seconds of /health silence before SIGKILL (default 180)",
+        default=120.0,
+        help=(
+            "seconds of /health silence before SIGKILL (default 120).  Must be "
+            "shorter than the client's 600 s read timeout: a freeze is then "
+            "always killed (never a half-dead server that silently recovers "
+            "mid-trial), and the client sees a fast connection reset instead "
+            "of a full 600 s hang.  Normal sim actions finish in well under "
+            "120 s, so this cannot misfire."
+        ),
     )
     parser.add_argument(
         "--interval",
         type=float,
-        default=10.0,
-        help="seconds between /health probes (default 10)",
+        default=5.0,
+        help="seconds between /health probes (default 5)",
     )
     args = parser.parse_args()
 

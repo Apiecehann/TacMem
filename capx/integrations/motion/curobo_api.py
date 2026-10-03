@@ -6,12 +6,10 @@ from typing import Any
 
 import numpy as np
 import torch
-from scipy.spatial.transform import Rotation as R_scipy
 import trimesh
-
 from curobo.cuda_robot_model.cuda_robot_model import CudaRobotModel
 from curobo.geom.sphere_fit import SphereFitType
-from curobo.geom.types import Cuboid, Mesh, WorldConfig
+from curobo.geom.types import Mesh, WorldConfig
 from curobo.types.base import TensorDeviceType
 from curobo.types.camera import CameraObservation
 from curobo.types.math import Pose
@@ -26,6 +24,7 @@ from curobo.wrap.reacher.motion_gen import (
     MotionGenPlanConfig,
     PoseCostMetric,
 )
+from scipy.spatial.transform import Rotation as R_scipy
 
 # Franka panda_hand to gripper fingertip center (along hand z), from franka_description/panda.urdf
 # panda_finger_joint1 origin xyz="0 0.04 0.0584" -> center between fingers is (0, 0, 0.0584) in hand frame
@@ -665,9 +664,6 @@ def plan_to_grasp_poses(
     """
     if tensor_args is None:
         tensor_args = TensorDeviceType()
-    device = tensor_args.device
-    dtype = tensor_args.dtype
-
     robot_path = join_path(get_robot_configs_path(), robot_file)
     robot_dict = load_yaml(robot_path)
     if robot_collision_sphere_buffer is not None:
@@ -807,17 +803,17 @@ def plan_to_grasp_poses(
                 # - Others expose robot_cfg.cspace.joint_names (config)
                 joint_names = None
                 try:
-                    joint_names = getattr(robot_cfg.kinematics, "joint_names")
+                    joint_names = robot_cfg.kinematics.joint_names
                 except Exception:
                     joint_names = None
                 if joint_names is None:
                     try:
-                        joint_names = getattr(robot_cfg, "cspace").joint_names
+                        joint_names = robot_cfg.cspace.joint_names
                     except Exception:
                         joint_names = None
                 if joint_names is None:
                     try:
-                        joint_names = getattr(robot_cfg.kinematics, "cspace").joint_names
+                        joint_names = robot_cfg.kinematics.cspace.joint_names
                     except Exception:
                         joint_names = None
                 if joint_names is None:
@@ -1151,9 +1147,6 @@ def plan_with_grasped_object(
     """
     if tensor_args is None:
         tensor_args = TensorDeviceType()
-    device = tensor_args.device
-    dtype = tensor_args.dtype
-
     robot_path = join_path(get_robot_configs_path(), robot_file)
     robot_dict = load_yaml(robot_path)
     if robot_collision_sphere_buffer is not None:
@@ -1304,7 +1297,7 @@ def plan_with_grasped_object(
                     exclude_obstacle_names=[object_name],
                 )
             else:
-                print(f"[plan_with_grasped_object] IK failed for debug mesh; skipping end state debug mesh.")
+                print("[plan_with_grasped_object] IK failed for debug mesh; skipping end state debug mesh.")
         except Exception as e:
             print(f"[plan_with_grasped_object] Warning: failed to compute IK and save end debug mesh: {e}")
 
@@ -1316,4 +1309,3 @@ if __name__ == "__main__":
     print("curobo_api is a library.")
     print("To test CuRobo on saved data, run: uv run python scripts/curobo_test.py")
     raise SystemExit(0)
-

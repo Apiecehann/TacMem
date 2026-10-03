@@ -1,29 +1,27 @@
-import pathlib
 import time
 from typing import Any
 
 import numpy as np
 import open3d as o3d
 import viser.transforms as vtf
-from PIL import Image, ImageDraw
+from PIL import Image
 from scipy.spatial.transform import Rotation as SciRotation
 
 from capx.envs.base import (
     BaseEnv,
 )
 from capx.integrations.base_api import ApiBase
-from capx.integrations.vision.graspnet import init_contact_graspnet, init_contact_graspnet_point_clouds
+from capx.integrations.motion.pyroki import init_pyroki
+from capx.integrations.vision.graspnet import (
+    init_contact_graspnet,
+    init_contact_graspnet_point_clouds,
+)
 from capx.integrations.vision.molmo import init_molmo
 from capx.integrations.vision.sam2 import init_sam2_point_prompt
 from capx.integrations.vision.sam3 import init_sam3, init_sam3_point_prompt
-from capx.utils.camera_utils import obs_get_rgb
 from capx.utils.depth_utils import (
-    deproject_pixel_to_camera,
-    depth_color_to_pointcloud,
     depth_to_pointcloud,
-    depth_to_rgb,
 )
-from capx.integrations.motion.pyroki import init_pyroki
 
 _curobo_api = None
 
@@ -35,6 +33,7 @@ def _get_curobo_api():
         _curobo_api = _mod
     return _curobo_api
 from sklearn.cluster import DBSCAN
+
 
 # ------------------------------- Control API ------------------------------
 class FrankaLiberoApi(ApiBase):
@@ -192,25 +191,6 @@ class FrankaLiberoApi(ApiBase):
             object query; (None, None) if parsing failed.
         """
         return self.molmo_point_fn(Image.fromarray(image), objects=[text_prompt])
-
-    def get_oriented_bounding_box_from_3d_points(self, points: np.ndarray) -> dict[str, Any]:
-        """Get the oriented bounding box from 3D points.
-
-        Args:
-            points: np.ndarray: The 3D points to get the oriented bounding box from.
-                Shape: (N, 3), dtype float64.
-
-        Returns:
-            dict[str, Any]: The oriented bounding box. The dictionary contains the following keys:
-                - "center": np.ndarray: The center of the oriented bounding box in point cloud frame.
-                - "extent": np.ndarray: The extent of the oriented bounding box.
-                - "R": np.ndarray: The rotation matrix of the oriented bounding box in point cloud frame.
-
-        Example:
-            >>> points = np.random.randn((100, 3))
-            >>> obb = get_oriented_bounding_box_from_3d_points(points)
-        """
-        return _get_obb(points)
 
     def goto_pose(
         self, position: np.ndarray, quaternion_wxyz: np.ndarray, z_approach: float = 0.0

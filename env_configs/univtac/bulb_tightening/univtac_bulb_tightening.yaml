@@ -1,0 +1,100 @@
+# ViTaForge: bulb_tightening
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/bulb_tightening/univtac_bulb_tightening.yaml
+#
+# The server must be started BEFORE this, on the same port, AND WITH THE SEED
+# THAT MATCHES THE TRIAL:
+#   bash scripts/launch_univtac_server.sh bulb_tightening 8120 <gpu> <seed>
+#                                                                     ^ seed = trial id
+#
+# ONE PROCESS SERVES EXACTLY ONE SEED, so five trials are five rounds of
+# (start the server on that seed, run this config, kill the server).  The task
+# raises on any other combination:
+#   bulb_tightening.py:1458  "Create one force-task process per seed so physical
+#                             rest geometry/materials are sampled before UIPC
+#                             initialization"
+# physics_seed is baked in when the server process starts, and trial id IS the
+# seed, so a second trial on a different seed would raise on reset.
+#
+# Trial id IS the seed, and runner.py:143-145 runs range(resume_idx,
+# total_trials + 1) - so trials == resume_idx is how a single seed is selected,
+# and the two lines must agree with the server's --seed argument.  Mind the
+# constraint they have to satisfy: trials must be >= resume_idx, or that range
+# is empty and the run silently does nothing.
+#
+# --- What one trial costs, per seed -------------------------------------------
+#
+# The thread lead is drawn per seed: lead = 0.0123 / nominal_turns with
+# nominal_turns ~ U(1.12, 2.88) from default_rng(seed + 71823), so nominal_turns
+# IS the number of turns the insertion takes.  Turning is therefore fixed by the
+# seed and cannot be optimised away; the oracle turns 30 deg per block at
+# 120 deg per grasp, with a 30 deg over-feed probe in front.  Fitted to the
+# seed-3 run (570 deg, 19 blocks, 5 grasps, 465 servo iterations, 3216.62 s
+# measured):
+#
+#     T ~= 2.06 s x iterations + 493 s x (grasps - 1) + 286 s
+#
+# which reproduces seed 3 to 1.3%.  Across 1..20 it gives 3134 s (seed 9, the
+# shortest insertion) to 6464 s (seed 1, the longest), i.e. 52 to 108 minutes:
+#
+#     seed   1     2     3     4     5     6     7     8     9    10
+#     lead   4.36  5.19  9.43  4.69  9.91  4.48  5.17  6.04 10.95  6.56
+#     min   108    87    54    97    54   107    87    76    52    75
+#
+#     seed  11    12    13    14    15    16    17    18    19    20
+#     lead   4.48  7.65  7.17  6.00  7.51  4.58  5.15  9.69  7.37  9.33
+#     min   107    65    65    76    65    98    96    54    65    54
+#
+# The short-lead seeds are the expensive ones and the risky ones at once: more
+# blocks, more grasps, and a probe slide closest to the marker-lattice budget.
+#
+# --- Budget -------------------------------------------------------------------
+#
+# 14000 s, not the 2400 s default (trial.py:67), not the 5400 s this file used to
+# carry, and not the 9000 s it carried until 2026-10-02.  TRIAL_EXEC_ALARM_SECONDS
+# is the wall clock for everything after reset and it REPLACES the runner's
+# TRIAL_TIMEOUT_SECONDS rather than stacking with it, so it is the only bound -
+# and a whole oracle is a single env.step().  5400 s killed six of the twenty
+# seeds outright (1, 4, 6, 11, 16, 17 - all short-lead), including two of seeds
+# 1..5: seed 1 at ~6464 s and seed 4 at ~5847 s.  9000 s cleared the worst of
+# those but not a loaded machine: 2026-10-02 seed 1 reached the seat at 11.908 mm
+# of 11.91 and was cut 15 s later with ~7-14 min of torque-and-hold still to run
+# (sim ran 2.4 s/step at load 250 vs 1.25 s/step at load 21).  14000 s leaves
+# that headroom and still bounds a genuine hang.  The key is whitelisted per task
+# in launch_utils.py (merged_config) - without that line it is silently dropped.
+# Only this config sets it; the 2400 s default is unchanged for the other 33.
+exec_alarm_seconds: 14000
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_bulb_tightening.UniVTACBulbTighteningCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/bulb_tightening/low_level_bulb_tightening.yaml
+    # Inert for UniVTAC: base.py:248 only consults this when low_level is a
+    # gym-registry string, not a YAML path.  Every other univtac config sets
+    # false for the same reason.  What makes this task privileged is the API
+    # class below - UniVTACTactileApi reads /object_pose, the simulator's
+    # ground truth, whereas UniVTACPerceptionApi would segment the head camera
+    # with SAM3 instead.
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 (override with
+# UNIVTAC_SERVER_URL), and the server must already be listening (a free port
+# here would spawn a child that fails instantly and stall the run for 120 s).
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: bulb_tightening
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_bulb_tightening
+
+# One trial: range(1, 2) -> seed 1 only.  The thread lead is drawn per seed, so
+# a run here says nothing about any seed but this one - and the server serving
+# it cannot reset to another.  Move both numbers together AND restart the server
+# on the same seed for each of the five rounds.
+trials: 1
+resume_idx: 1
+num_workers: 1  # Isaac Sim is not parallel-safe

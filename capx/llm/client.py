@@ -191,7 +191,7 @@ def _completions_to_responses_convert_prompt(prompt: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
+def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     """Query vLLM server for code generation.
 
     Args:
@@ -222,11 +222,17 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
                 "messages": prompt,
             }
     elif is_openrouter_model(args.model):
+        # reasoning_effort matters far more than max_tokens here: left unset,
+        # reasoning models deliberate until the whole budget is gone, so the
+        # request returns finish_reason="length" with content=None and the
+        # whole trial dies (2026-09-13, glm-5.3-flash: 47.8k reasoning tokens
+        # / 390 s unset, vs 693 tokens / 28 s at "medium").
         payload = {
             "model": args.model,
             "messages": prompt,
             "temperature": args.temperature,
             "max_tokens": args.max_tokens,
+            "reasoning_effort": args.reasoning_effort,
         }
     elif args.model in CLAUDE_MODELS:
         payload = {
@@ -298,7 +304,7 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> str:
 
 
 def query_model_streaming(
-    args: "LaunchArgs | ModelQueryArgs",
+    args: LaunchArgs | ModelQueryArgs,
     prompt: list[dict],
 ) -> Iterable[dict]:
     """Query model with streaming enabled, yielding partial responses.
@@ -454,7 +460,7 @@ def query_model_streaming(
 
 
 def query_model_ensemble(
-    args: "LaunchArgs | ModelQueryArgs",
+    args: LaunchArgs | ModelQueryArgs,
     prompt: list[dict],
     synthesis_model: str = "openai/gpt-5.4",
     is_multiturn = False
@@ -604,7 +610,7 @@ def query_model_ensemble(
 
 
 def query_single_model_ensemble(
-    args: "LaunchArgs | ModelQueryArgs",
+    args: LaunchArgs | ModelQueryArgs,
     prompt: list[dict],
     model: str,
     is_multiturn = False,

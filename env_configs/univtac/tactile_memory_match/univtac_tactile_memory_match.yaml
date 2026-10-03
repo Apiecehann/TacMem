@@ -1,0 +1,38 @@
+# UniVTAC: tactile_memory_match (privileged)
+# Tactile memory matching: probe the reference can, probe both identical
+# candidates, place the twin (closest tactile + weight feel) on the pad.
+# Object poses come from the simulator's ground-truth /object_pose.
+#
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_tactile_memory_match.UniVTACTactileMemoryMatchCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/tactile_memory_match/low_level_tactile_memory_match.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: tactile_memory_match
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_tactile_memory_match
+
+trials: 22
+num_workers: 1  # Isaac Sim is not parallel-safe
+# seed = trial id, and the balanced schedule maps it through
+# ORDERED_CLASS_PAIRS[seed % 56], so trial 7 is a HARDNESS-ONLY pair
+# (light_smooth_soft vs light_smooth_rigid) -- the dimension Phase C added
+# an axis for.  runner.py runs range(resume_idx, total_trials + 1), so
+# trials == resume_idx is how a single seed is selected.
+#
+# These two lines are per-seed scratch state: scripts/run_mm_oracle_seeds.sh
+# rewrites them before each launch (launch.py has no CLI flag for resume_idx)
+# and leaves them pointing at whichever seed ran last.  Edit them by hand only
+# to run one seed on its own.
+resume_idx: 17

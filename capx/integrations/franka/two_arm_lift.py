@@ -1,25 +1,19 @@
-import pathlib
-import time
 from typing import Any
 
 import numpy as np
-import open3d as o3d
 import viser.transforms as vtf
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation as SciRotation
 
 from capx.envs.base import BaseEnv
 from capx.integrations.base_api import ApiBase
+from capx.integrations.motion.pyroki_context import get_pyroki_context
 from capx.integrations.vision.graspnet import init_contact_graspnet
 from capx.integrations.vision.owlvit import init_owlvit
-from capx.integrations.motion.pyroki_context import get_pyroki_context
 from capx.integrations.vision.sam2 import init_sam2
 from capx.utils.camera_utils import obs_get_rgb
 from capx.utils.depth_utils import (
-    deproject_pixel_to_camera,
-    depth_color_to_pointcloud,
     depth_to_pointcloud,
-    depth_to_rgb,
 )
 
 
@@ -239,8 +233,6 @@ class FrankaTwoArmLiftApi(ApiBase):
             grasp_quaternion_wxyz: (4,) WXYZ quaternion of grasp pose
             bbox_center_position: (3,) XYZ position of bounding box center in world coordinates
         """
-        start_time = time.time()
-
         # Always get a fresh observation to avoid stale data from previous calls
         obs = self._env.get_observation()
 
@@ -303,7 +295,6 @@ class FrankaTwoArmLiftApi(ApiBase):
         seg_flat = (
             segmentation[:, :, 0].flatten() if segmentation.ndim == 3 else segmentation.flatten()
         )
-        depth_flat = depth_2d.flatten()
         valid_mask = (binary_map_nan_is_zero.flatten().astype(bool)) & (
             seg_flat == queried_instance_idx
         )

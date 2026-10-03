@@ -1,0 +1,552 @@
+# UniVTAC: tactile_memory_match (non-privileged / perception)
+# Object poses come from SAM3 text-prompt segmentation + metric depth
+# back-projection (UniVTACPerceptionApi) instead of the simulator's
+# ground-truth /object_pose endpoint.
+#
+# Scene visual facts (updated 2026-09-19):
+#   - OCCLUSION IS OFF.  `occlusion_enabled = False` (UniVTAC/envs/
+#     tactile_memory_match.py:134); the 2026-09-15 upstream sync
+#     (3ef9add, feat/composable-tactile-slots) turned the cover box back
+#     off, reversing the 2026-09-02 default it was added under.  The box
+#     constants are still declared on the class and `_create_occlusion_box`
+#     is still CALLED unconditionally (create_actors, :180), but the guard
+#     is the method's own first statement (`if not
+#     self.occlusion_enabled: self.occlusion_walls = []; return`, :523), so
+#     nothing is built.  All three cans and the
+#     pad are therefore VISIBLE from the head camera.  Everything this file
+#     used to say about blind localization / a black cover box was written
+#     against the 09-02 world and is dead — the prompt block below no longer
+#     claims it.  (The `oracle_code` block still carries the occluded-era
+#     `perceive()`/`blind_grasp()`; it only runs under --use-oracle-code.)
+#   - Fixed layout spots, re-placed to within ~2 mm every reset: reference
+#     ~[0.68, 0.24], candidate_left ~[0.60, -0.345], candidate_right
+#     ~[0.60, -0.175], match pad ~[0.42, 0.00].  Use them as the fallback
+#     when a perception query looks wrong or fails.
+#   - Grasp attempts are self-confirming — a close that reads firm contact
+#     depths (~25 mm both sides) means a can is in the fingers; 34 mm (far
+#     plane) on both sides means an empty grab.
+#   - sample_grasp_pose takes a task role name ("reference_object") and is
+#     simulator ground truth even here; the diagonal pre-grasp it returns
+#     is valid for the reference only.  Build candidate grasps from the
+#     reference's measured grasp offset instead (identical cylinders).
+#
+# The world is 8 classes (2 textures x 2 weights x 2 hardnesses) since the
+# same 2026-09-15 sync; the twin is identical in ALL THREE.  The prompt
+# block below was rewritten 2026-09-19 to match — it had still described the
+# 4-class world (texture x weight only) and told the model the twin shares
+# "texture and weight", which is false on the 8 hardness-only pairs
+# (seed 0 7 16 23 32 39 48 55).
+#
+# Note this file's `prompt:` block OVERRIDES the class-level PROMPT in
+# capx/envs/tasks/tactile/univtac_tactile_memory_match.py (base.py:116:
+# cfg.prompt wins when set), so edits to that constant do NOT reach a
+# non-privileged run.
+#
+# Servers are started manually (Isaac's main() cannot take kwargs, so the
+# runner's spawn path fails — see _start_api_servers):
+#   bash scripts/launch_sam3_server.sh 1 8114     # SAM3 (GPU 1; GPU 0 = Isaac)
+#   bash scripts/launch_univtac_server.sh tactile_memory_match 8120 0 <seed>
+# Usage: uv run --offline capx/envs/launch.py --config-path env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match_non_privileged.yaml
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_tactile_memory_match.UniVTACTactileMemoryMatchCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/tactile_memory_match/low_level_tactile_memory_match.yaml
+    privileged: false
+    apis:
+      - UniVTACPerceptionApi
+
+    prompt: |
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Task: tactile memory matching.  Three identical orange cans (4 cm diameter,
+      8 cm long, lying flat on the table) sit in a line: one REFERENCE can at the
+      back (~[0.68, 0.24]), two CANDIDATE cans in front of it, left at
+      ~[0.60, -0.345] and right at ~[0.60, -0.175].  A green MATCH PAD lies at
+      ~[0.42, 0.00].
+
+      The cans look exactly the same but differ physically in three independent
+      ways: 2 surface textures x 2 weights x 2 hardnesses (one rigid, one
+      compliant).  One candidate is the reference's "twin" (identical in all
+      three); the other differs in at least one of them.  Your job:
+
+        1. Grasp the reference can and read all three properties by touch —
+           texture, weight (lift it gently), and hardness (how much the can
+           yields when you squeeze it) — then return it to the table.
+        2. Probe both candidates with the exact same protocol.
+        3. Place on the MATCH PAD the candidate whose feel is closest to the
+           reference.  Vision cannot tell them apart — decide ONLY from the
+           tactile measurements.
+
+      Object poses come from SAM3 visual perception, not the simulator:
+      get_object_pose() returns the centroid of the segmented pixels — a noisy
+      estimate (a few mm), NOT the exact origin, and the quaternion is
+      unreliable. Treat every position as an estimate; never over-correct.
+
+      Localization:
+      - The three cans and the pad sit at FIXED layout spots, re-placed to
+        within ~2 mm every reset: reference ~[0.68, 0.24], candidate_left
+        ~[0.60, -0.345], candidate_right ~[0.60, -0.175], match pad
+        ~[0.42, 0.00].  Fly to the spot and descend over it.  A vision query
+        that looks wrong, or one that fails outright, falls back to these —
+        do not let a bad query walk the grasp off the can.
+      - A grasp is self-confirming: a close that reads firm contact depths
+        (~25 mm both sides) means a can is in the fingers; 34 mm on both
+        sides (the far plane) means an empty grab — reposition and retry,
+        never force a lower descend.
+      - sample_grasp_pose("reference_object") is simulator ground truth and
+        returns the reference's grasp pose — reliable for the reference
+        only.  Grasp each candidate at its nominal centre plus the
+        reference's measured grasp offset (the cans are identical
+        cylinders).  The held can hangs at that offset from the EE — when
+        placing, target the pad position plus the same offset.
+      - Do not re-localize the green match pad: release the can on its fixed
+        spot, and whether the placement counted is judged automatically once
+        the program ends.
+
+      Key rules:
+      - Every API call can fail, time out, or report a failed motion (a
+        wedged close, a rejected move, a slow server op).  Wrap every call
+        in try/except and treat a failure as "this attempt missed", never
+        as the end of your program — a crashed trial scores 0 exactly like
+        a wrong answer.  After a failed close or a long grind, release,
+        re-query the pose, and re-grasp at a different point along the can
+        axis; do not hammer the same spot.
+      - Move between grasp sites HIGH: hoist to z ~0.28 before travelling
+        laterally, and descend only over the destination.  The motion
+        planner does NOT avoid the cans — an open gripper swept near table
+        height knocks them out of place (a z_approach is only a soft path
+        bias, not safety).
+      - Grasp cans by their side (they lie flat; a vertical grip does not
+        seat them).  The gripper closes until fingertip contact is detected.
+      - Release only a can that already rests flat on the pad: lower it in
+        small (~5 mm) steps, watching the held can's own height with the
+        wrist camera over the pad (wide views cannot isolate it).  The
+        moment its height stops decreasing the can is supported — never
+        press further; instead back the EE up ~5 mm (one step, taking the
+        fingers' weight off the can) and only then open.  Opening while the
+        fingers still press the can into the pad tips and wedges it;
+        opening from a hover ~1 cm or more above rest drops it crooked.  If
+        an open leaves it tipped or wedged, lift ~3 cm, re-grasp and
+        re-place.
+      - After releasing a can, keep executing small moves until it has
+        settled — a placement is counted only once it rests stably, so do
+        not end while it is still falling.
+      - Read tactile data only when the robot is still (not mid-motion),
+        and always at the same grasp force so measurements stay comparable.
+      - A probe is INVALID unless it comes from a true side grip, and
+        invalid probes must never decide the match: an empty grasp (34 mm
+        far plane = nothing in the grip; may also arrive as an exception)
+        or a shallow one — the fingers caught an edge or end cap, both gel
+        depths clearly shallower than a real side grip while the markers
+        barely move.  Discard invalid probes: release, shift a few cm along
+        the can axis, re-grasp and re-measure.  This includes the
+        reference: never match against a template reading that does not
+        look like a real side grip — re-grasp it until it does.
+      - Judge "two-sided hold" by the contact flags and by BOTH gel depths
+        being clearly below the far plane — NOT by the two pads showing
+        similar marker displacement.  Displacement scales with local gel
+        deformation and is commonly one-sided even on a real hold; demanding
+        symmetric displacement rejects almost every reading and leaves you
+        with no data to match on.
+      - If after several tries you still have NO valid reading for one or
+        both candidates, do NOT pick a side anyway so the script "completes"
+        — that is a coin flip and scores 0.  Re-probe from a different grasp
+        point until you get at least one confirmed two-sided reading; if only
+        one candidate ever reads valid, place it rather than guessing between
+        two invalid ones.
+      - A grip is only as good as what the can does: after closing, test it
+        with a small lift before reading or travelling — the held can's
+        height (object_pose) must follow the EE upward.  A grip the can
+        slides out of on the lift, however deep and firm the gel readings
+        look, is not a real hold: lower it back to rest, re-query its pose,
+        re-grasp and re-measure.
+      - Held still, cans of the same weight read almost alike — gel depth
+        follows grip force, not surface texture.  When two readings feel
+        close, separate the cans by how they behave under load: one may slip
+        or shift in the fingers on a small lift where the other holds.  Weigh
+        that difference; never let a resting reading alone decide the match.
+      - Decide ONLY from tactile measurements; vision cannot tell the cans
+        apart.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+    oracle_code: |
+      import numpy as np
+
+      # Fixed layout priors (task design):
+      #   reference  ~[0.68, 0.24];  candidate_left  [0.60, -0.345];
+      #   candidate_right [0.60, -0.175];  match pad  [0.42, 0.00] (top z 0.011)
+      # Can: 4 cm diameter, 8 cm long, LYING flat, origin at the centre.
+      # Table rest: centre z = 0.021; top surface z = 0.041.
+      PAD_XY = np.array([0.42, 0.00])
+      PAD_TOP_Z = 0.011
+      CAN_RADIUS = 0.02
+      PROBE_LIFT = 0.018        # weight probe lift (env's own weight_probe_lift_height)
+      WEIGHT_GRIP_MM = 27.7     # light grip for weighing
+      WEIGHT_MID_MM = 27.70     # calibrated REALIZED landing for that grip.  The
+                                # servo does NOT land where it is told: measured
+                                # realized landings run 27.6-28.0 for a 27.7
+                                # request and drift through a session.  Where it
+                                # ACTUALLY landed - read back from the close
+                                # feedback - decides the reading.
+      CREEP_SCALE = 0.03        # weight axis scale: pad-coherence SPREAD across
+                                # the weighing jitter, taken on the SMALLER of
+                                # the two pads.  A 300 g can is carried rigidly
+                                # on both (min spread 0.006-0.045), a 650 g one
+                                # keeps sliding on both (~0.078-0.092); measured
+                                # 2026-09-10, where the old binary held/slipped
+                                # readout was blind (both cans rode the lift).
+      DISP_SCALE = 0.05         # marker-flow spread, same jitter, same min:
+                                # light 0.048-0.073, heavy 0.111-0.121 (weaker)
+      WEIGHT_TOL_MM = 0.05      # acceptable realized-depth error before correcting
+      WEIGHT_MIN_MM = 27.35     # correction clamp: below this the grip is firm
+                                # enough to hide the weight
+      WEIGHT_MAX_MM = 27.95     # above this even a light can slips out
+      FAR_DEPTH_MM = 34.0       # tactile no-contact far plane
+      CANDIDATES = ["candidate_left", "candidate_right"]
+      REGIONS = {
+          "reference_object": np.array([0.68, 0.24]),
+          "candidate_left": np.array([0.60, -0.345]),
+          "candidate_right": np.array([0.60, -0.175]),
+      }
+      HOVER_Z = 0.17            # wrist-camera hover height above a region
+      CRUISE_Z = 0.28           # inter-can travel height: above cans + open fingers
+      CAN_CENTRE_Z = 0.021      # can resting centre height (can lies on the table)
+
+
+      def _op(fn, *a, **k):
+          """Run one API call; any failure/timeout is returned as None
+          instead of raising - a jammed op becomes a miss to retry, never a
+          crash."""
+          try:
+              return fn(*a, **k)
+          except Exception:
+              return None
+
+
+      def contacts_ok(fb):
+          return fb["left_contact"] and fb["right_contact"]
+
+
+      def light_close(target_mm=WEIGHT_GRIP_MM, retries=2):
+          """Close at the weighing depth and CORRECT for where the servo
+          landed.  Read the realized depth back from the close feedback (the
+          deeper pad, i.e. the smaller of the two) and, when it missed the
+          calibrated band, release and re-close at target - (realized -
+          target): the servo's landing error repeats for the same target, so
+          one correction cancels it.  Returns the feedback of the final
+          close (or the empty-grab one) or None if a close could not run."""
+          fb = _op(close_gripper, force_threshold=float(target_mm))
+          if fb is None:
+              return None
+          for _ in range(retries):
+              if not contacts_ok(fb):
+                  return fb
+              d = min(float(fb["left_depth_mm"]), float(fb["right_depth_mm"]))
+              if abs(d - WEIGHT_MID_MM) <= WEIGHT_TOL_MM:
+                  return fb
+              _op(open_gripper)
+              nxt = float(min(max(target_mm - (d - WEIGHT_MID_MM),
+                                  WEIGHT_MIN_MM), WEIGHT_MAX_MM))
+              fb = _op(close_gripper, force_threshold=nxt)
+              if fb is None:
+                  return None
+          return fb
+
+
+      def perceive(name):
+          """Localize a can's centre.  The REFERENCE sits outside the cover
+          box: hover over its spot and query the wrist camera (top - radius).
+          CANDIDATES sit under the opaque cover box — no camera can see
+          them — so return their nominal layout centre (each reset places
+          them within ~2 mm of it)."""
+          xy = REGIONS[name]
+          if name != "reference_object":
+              centre = np.array([xy[0], xy[1], CAN_CENTRE_Z], dtype=float)
+              print(f"[perceive {name}] occluded: nominal centre "
+                    f"{np.round(centre, 3)}")
+              return centre
+          # Route the hover through the high cruise height first: any
+          # lateral travel near table height with the gripper open scatters
+          # cans.  Descend vertically only once over the spot.
+          q_flat = np.array([1.0, 0, 0, 0])
+          goto_pose(np.array([xy[0], xy[1], CRUISE_Z]), q_flat, z_approach=0.0)
+          goto_pose(np.array([xy[0], xy[1], HOVER_Z]), q_flat, z_approach=0.0)
+          top, _, _ = get_object_pose("orange can", camera="wrist")
+          centre = np.asarray(top, dtype=float) - np.array([0.0, 0.0, CAN_RADIUS])
+          print(f"[perceive {name}] top={np.round(top, 3)} -> centre={np.round(centre, 3)}")
+          return centre
+
+
+      def blind_grasp(name, offset, quat, force_threshold=None):
+          """Grasp a can blind (candidates are hidden under the cover box):
+          nominal centre + offset, with empty-grab fallbacks that shift a
+          couple of cm ALONG the can axis (x).  A close only succeeds when
+          both fingertips feel contact."""
+          centre = perceive(name)
+          if grasp_at(centre + offset, quat, force_threshold=force_threshold):
+              return True
+          for dx in (0.012, -0.012, 0.024, -0.024):
+              if grasp_at(centre + offset + np.array([dx, 0.0, 0.0]), quat,
+                          force_threshold=force_threshold):
+                  return True
+          return False
+
+
+      def grasp_at(grasp_pos, quat, z_approach=0.06, retries=4,
+                   force_threshold=None):
+          """Route every grasp through a high hover (the planner does not
+          avoid the cans; an open gripper swept near table height scatters
+          them), then descend and close with a tactile fallback: descend a
+          few mm and retry while the fingers did not contact anything.  A
+          close that fails or times out (wedged) counts as a miss for the
+          caller to shift and retry, after opening the gripper to break the
+          contact."""
+          grasp_pos = np.asarray(grasp_pos, dtype=float)
+          if _op(goto_pose, np.array([grasp_pos[0], grasp_pos[1], CRUISE_Z]),
+                 quat, z_approach=0.0) is None:
+              return False
+          if _op(goto_pose, grasp_pos, quat, z_approach=z_approach) is None:
+              return False
+          fb = (_op(light_close, target_mm=force_threshold)
+                if force_threshold is not None else _op(close_gripper))
+          if fb is None:
+              _op(open_gripper)
+              return False
+          for _ in range(retries):
+              if contacts_ok(fb):
+                  return True
+              _op(open_gripper)
+              _op(move_delta, dz=-0.003)
+              fb = (_op(light_close, target_mm=force_threshold)
+                    if force_threshold is not None else _op(close_gripper))
+              if fb is None:
+                  _op(open_gripper)
+                  return False
+          return contacts_ok(fb)
+
+
+      def probe(name, offset, quat):
+          """Weigh the can, then read its texture signature, then release.
+
+          The order matters: only a can's FIRST close of the episode reads its
+          weight - a can already squeezed firmly at the grasp depth slips at
+          the light grip even when it is light.  So the fresh light close goes
+          first, then the 2 cm lift: a light can stays in the fingers (gel
+          depth still ~27-28 mm) while a heavy one slides out (pads back at
+          the 34 mm far plane).  The candidates are hidden from the cameras,
+          so the weight readout is tactile only.  Returns the feature dict
+          used for the memory match, or None when the can was never actually
+          grasped (blind attempts can miss) - an invalid reading must never
+          decide or pollute the match."""
+          ok = blind_grasp(name, offset, quat, force_threshold=WEIGHT_GRIP_MM)
+          if not ok:
+              print(f"[probe {name}] GRASP FAILED - measurement invalid, "
+                    f"score excluded")
+              _op(open_gripper)
+              return None
+          try:
+              # ---- weight phase: fresh light close, lift, then the same
+              # net-zero jitter the privileged side runs, sampling the FULL
+              # tactile at every step.  A light can is carried rigidly and the
+              # pads barely move against it; a heavy one keeps sliding through
+              # the fingers, so the contact pattern walks under the jitter and
+              # the gel coherence / marker flow spread out.  That spread - not
+              # any single reading - is the weight axis: a single reading is
+              # blind whenever the session's landing lets both weights ride.
+              tw = [get_tactile_data()]
+              move_delta(dz=PROBE_LIFT)
+              for _ in range(3):
+                  move_delta(dz=0.002)
+                  tw.append(get_tactile_data())
+                  move_delta(dz=-0.002)
+                  tw.append(get_tactile_data())
+              # ---- set the can back down before letting go: lower by the
+              # lift it just made (plus a margin) so it is at rest, never
+              # dropped from a hover
+              for _ in range(6):        # exactly the 18 mm lift back down
+                  move_delta(dz=-0.003)
+              _op(open_gripper)
+              # ---- texture phase: fresh firm close from open, read at rest
+              # and after a lift
+              ok2 = blind_grasp(name, offset, quat)
+              if not ok2:
+                  print(f"[probe {name}] texture grasp failed - "
+                        f"measurement invalid, score excluded")
+                  _op(open_gripper)
+                  return None
+              t0 = get_tactile_data()
+              move_delta(dz=PROBE_LIFT)
+              move_delta(dz=0.002)
+              move_delta(dz=-0.002)
+              t1 = get_tactile_data()
+              feats = tactile_features(t0, t1, tw)
+              for _ in range(6):        # exactly the 18 mm lift back down
+                  move_delta(dz=-0.003)
+          except Exception:
+              # Any hiccup mid-measure -> discard this reading, never crash.
+              _op(open_gripper)
+              return None
+          _op(open_gripper)
+          _op(move_delta, dz=0.05)
+          print(f"[probe {name}] ok={ok} depth_delta_mm={feats['depth_delta_mm']:+.2f} "
+                f"disp_delta_px={feats['disp_delta_px']:+.2f} "
+                f"coh_creep={feats['coh_creep']:.3f} "
+                f"disp_creep={feats['disp_creep']:.3f} "
+                f"contact_lost={feats['contact_lost']}")
+          return feats
+
+
+      def tactile_features(t0, t1, tw):
+          """Tactile-only weight/slip readout (perception is too noisy for
+          mm-level z-follow): gel depth change under load (deeper compression
+          = can pushing back = heavier) and marker slip between the two
+          texture readings, plus the WEIGHT axis - how far the contact pattern
+          wanders across the weighing jitter (tw = the full tactile sampled at
+          every jitter step), taken on the pad that wandered LESS.  A light can
+          rides rigidly on both pads, so its coherence and marker flow barely
+          spread (min coh 0.006-0.045, min disp 0.048-0.073); a heavy one keeps
+          sliding through the fingers on both (min coh ~0.078-0.092, min disp
+          ~0.111-0.121).  Depth units are mm; depth DECREASES with harder
+          contact.  The binary held/slid readout is gone: it goes blind on any
+          session whose landing lets both weights ride."""
+          def side_mean(data, key, sides=("left", "right")):
+              vals = [data.get(f"{s}_{key}") for s in sides]
+              vals = [v for v in vals if v is not None]
+              return float(np.mean(vals)) if vals else 0.0
+
+          def spread(key, sides=("left", "right")):
+              # the SMALLER pad's spread.  Real slipping drags on BOTH pads,
+              # while a one-sided grasp artifact (a marginally seated light
+              # can popping loose under one finger) inflates only one side and
+              # must not read as weight - so a full-creep reading has to show
+              # on both pads, and the weaker pad is the honest one.
+              vals = []
+              for s in sides:
+                  series = [d.get(f"{s}_{key}") for d in tw
+                            if d.get(f"{s}_{key}") is not None]
+                  if len(series) >= 2:
+                      vals.append(float(np.max(series) - np.min(series)))
+              return float(np.min(vals)) if vals else 0.0
+
+          indent0 = FAR_DEPTH_MM - side_mean(t0, "depth_mm")
+          indent1 = FAR_DEPTH_MM - side_mean(t1, "depth_mm")
+          return {
+              "depth_delta_mm": indent1 - indent0,
+              "disp_delta_px": side_mean(t1, "marker_displacement_px")
+                                - side_mean(t0, "marker_displacement_px"),
+              "contact_lost": bool(side_mean(t0, "contact") and not side_mean(t1, "contact")),
+              "coh_creep": spread("marker_coherence"),           # weight axis
+              "disp_creep": spread("marker_displacement_px"),    # weight axis (weak)
+              "light_depth_mm": side_mean(tw[-1], "depth_mm"),   # coarse: slid out?
+          }
+
+
+      def signature_distance(ref, cand):
+          features = [
+              ("depth_delta_mm", 6.0, 1.0),
+              ("disp_delta_px", 4.0, 0.75),
+              # weight axes: contact-pattern spread across the weighing jitter
+              ("coh_creep", CREEP_SCALE, 1.0),
+              ("disp_creep", DISP_SCALE, 0.5),
+          ]
+          dist = 0.0
+          wsum = 0.0
+          for key, scale, weight in features:
+              r, c = float(ref[key]), float(cand[key])
+              dist += weight * ((c - r) / scale) ** 2
+              wsum += weight
+          if cand["contact_lost"] != ref["contact_lost"]:
+              dist += 1.0
+          return float(np.sqrt(dist / wsum))
+
+
+      # ---- Reference: GT grasp pose, offset measured against its
+      # perceived centre (per-query noise mostly cancels for candidates) ----
+      ref_grasp, quat = sample_grasp_pose("reference_object")
+      ref_centre = perceive("reference_object")
+      offset = np.asarray(ref_grasp, dtype=float) - ref_centre
+      print(f"reference grasp={np.round(ref_grasp, 3)} offset={np.round(offset, 3)}")
+      ref_feats = None
+      for _ in range(3):
+          ref_feats = probe("reference_object", offset, quat)
+          if ref_feats is not None:
+              break
+      if ref_feats is None:
+          print("reference probe invalid after retries - cannot proceed")
+          raise SystemExit(1)
+
+      cand_feats = {}
+      for name in CANDIDATES:
+          # Same retry policy as the reference: an invalid reading is
+          # discarded and re-measured - never left to decide the match.
+          feats = None
+          for _ in range(3):
+              feats = probe(name, offset, quat)
+              if feats is not None:
+                  break
+          cand_feats[name] = feats
+
+      # Invalid (None) measurements never decide the match: exclude them
+      # from selection with an infinite distance.
+      scores = {
+          name: (signature_distance(ref_feats, cand_feats[name])
+                 if cand_feats[name] is not None else float("inf"))
+          for name in CANDIDATES
+      }
+      for name in CANDIDATES:
+          print(f"[score] {name}: {scores[name]:.4f}")
+
+      # ---- Place the closest-feeling candidate on the match pad ----
+      picked = min(scores, key=scores.get)
+      margin = sorted(scores.values())[1] - scores[picked]
+      print(f"picked={picked} margin={margin:.4f}")
+
+      ok = blind_grasp(picked, offset, quat)
+      print(f"final grasp {picked} ok={ok}")
+      move_delta(dz=0.10)
+
+      # Transport over the pad, then descend on a fixed budget (the held can
+      # competes with the other cans for the SAM3 top-1 mask, so height
+      # monitoring is unreliable): hover ~can z 0.111, 24 steps x 3 mm ->
+      # can z ~0.039 just above resting (pad rest 0.031), then release.
+      hover_ee = np.array([PAD_XY[0] + offset[0], PAD_XY[1] + offset[1],
+                           PAD_TOP_Z + offset[2] + 0.10])
+      goto_pose(hover_ee, quat, z_approach=0.05)
+      for _ in range(24):
+          move_delta(dz=-0.003)
+      move_delta(dz=0.005)          # unload before opening: if the can met the pad
+                                    # early the last steps pressed it in, and
+                                    # opening under pressure tips/wedges it
+      open_gripper()
+      move_delta(dz=0.08)           # retreat: sim keeps stepping while it settles
+
+      # The env only marks a placement after ~10 stable steps of the can
+      # resting on the pad — keep the sim stepping with tiny moves.
+      for _ in range(40):
+          if check_success():
+              break
+          move_delta(dz=-0.001)
+          move_delta(dz=0.001)
+
+      print(f"Success: {check_success()}")
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: tactile_memory_match
+    port: 8120
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_tactile_memory_match_non_privileged
+
+trials: 100
+num_workers: 1  # Isaac Sim is not parallel-safe

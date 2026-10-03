@@ -10,9 +10,12 @@ texture is rough or smooth, and gently place it on the matching pad:
   - Smooth texture → green pad
 
 Key rules:
-- Classify texture from get_tactile_data's marker-flow coherence: rough
-  surfaces give LOW coherence, smooth surfaces give HIGH coherence (see the
-  API docs for the value ranges).  Read coherence once the grasp is stable.
+- Classify texture from the gel's marker-image anisotropy (get_tactile_data):
+  a rough surface imprints the gel with horizontal banding, so the row/column
+  gradient ratio climbs as the grip firms, while a smooth surface stays near
+  isotropic.  How far it climbs depends on how hard the gel is pressed, so
+  read it at two COMMANDED grip depths and compare the two — see the API docs
+  for the calibrated numbers.
 - Compute the placement height from the object poses/extents: prism and pads
   have their origin at the bottom face and bbox_extent is the full size, so
   rest the prism with position[2] = pad_pos[2] + pad_ext[2]. Verify the
@@ -26,13 +29,23 @@ Write ONLY executable Python code (no code fences). Import numpy if needed.
 ORACLE_CODE = """
 import numpy as np
 
+def aniso(fb):
+    # A dropped render makes one pad read None; fall back to the other, and to
+    # isotropic (the plain side) if both are gone, rather than raising.
+    v = [fb["left_marker_anisotropy"], fb["right_marker_anisotropy"]]
+    v = [x for x in v if x is not None]
+    return sum(v) / len(v) if v else 1.0
+
+def depth(fb):
+    return 0.5 * (fb["left_depth_mm"] + fb["right_depth_mm"])
+
 def contacts_ok(fb):
     return fb["left_contact"] and fb["right_contact"]
 
-# --- Grasp (retry harder if the first close missed) ---
+# --- Grasp at a light commanded grip (retry firmer if the first close missed) ---
 grasp_pos, grasp_quat = sample_grasp_pose("prism")
 goto_pose(grasp_pos, grasp_quat, z_approach=0.05)
-fb = close_gripper()
+fb = close_gripper(force_threshold=27.5)
 if not contacts_ok(fb):
     open_gripper()
     fb = close_gripper(force_threshold=25.0)
@@ -40,11 +53,33 @@ if not contacts_ok(fb):
 # Lift clear of the table before probing
 move_delta(dz=0.05)
 
-# --- Texture probe: marker-flow coherence (rough ~0.55, smooth ~0.75) ---
-fb = get_tactile_data()
-coh = 0.5 * (fb["left_marker_coherence"] + fb["right_marker_coherence"])
-texture = "rough" if coh < 0.65 else "plain"
-print(f"coherence={coh:.3f} -> {texture}")
+# --- Texture probe: marker anisotropy at a light vs a firm grip ---
+# Rough => the gel picks up the ridges as horizontal banding, so the row/column
+# gradient ratio climbs steeply with gel depth (0.10-0.13 per mm); plain stays
+# near isotropic (0.01-0.03 per mm).  Taking the CHANGE between two commanded
+# grips cancels wherever the first close happened to land.
+light = get_tactile_data()
+close_gripper(force_threshold=20.5)
+firm = get_tactile_data()
+
+dd = depth(light) - depth(firm)          # depth falls as the grip firms
+da = aniso(firm) - aniso(light)
+if dd > 1.0:
+    slope = da / dd
+    texture = "rough" if slope > 0.06 else "plain"
+    print(f"aniso {aniso(light):.3f} -> {aniso(firm):.3f} over {dd:.2f} mm "
+          f"= {slope:.3f}/mm -> {texture}")
+else:
+    # The second close did not move the gel (fingers pinned): the difference
+    # carries no information, so fall back to the single-reading calibration
+    # for the depth band the grip actually landed in.
+    d = depth(firm)
+    if d < 25.0:
+        texture = "rough" if aniso(firm) > 1.38 else "plain"
+    else:
+        texture = "rough" if aniso(firm) > 1.07 else "plain"
+    print(f"grip pinned (dd={dd:.2f} mm, depth={d:.2f}); single reading "
+          f"{aniso(firm):.3f} -> {texture}")
 
 # --- Verify the prism is still held (re-grasp if probing dropped it) ---
 prism_pos, _, prism_ext = get_object_pose("prism", return_bbox_extent=True)
@@ -83,3 +118,6 @@ check_success()
 class UniVTACGraspClassifyCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
+    # Optional API-doc sections this task's LLM needs; the rest of the
+    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
+    api_doc_sections = ("texture", "servo")

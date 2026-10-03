@@ -202,23 +202,69 @@ class UniVTACMotionApi(ApiBase):
     # ----
 
     def rotate_gripper(
-        self, object_name: str, angle_rad: float, steps: int = 4
-    ) -> None:
+        self, object_name: str, angle_rad: float, steps: int = 4,
+        feed_lead_m: float | None = None,
+    ) -> dict | None:
         """Rotate the gripper while holding an object. Use for large rotations
         instead of move_delta.
+
+        Setting feed_lead_m twists along a thread instead: the gripper turns
+        about the world z axis while descending by that many metres per full
+        turn, so the twist and the descent stay locked together.  steps then
+        counts servo iterations rather than planner sub-moves - one iteration
+        is 1.5 deg of twist plus its matched feed, so 120 iterations is half a
+        turn.  The return then carries a helix block with completed /
+        requested / aborted / reached and a trace of the physical readings;
+        a run that stops reports why, and grip_released is False when nothing
+        was held firmly enough for the object to be under physics at all.
+
+        A run ends one of three ways and they mean different things.  reached
+        names the finished job - the thread is seated and the tightening
+        torque is at its target, which is where the task scores a hold.
+        aborted names a physical overload or a lost grip.  With neither, the
+        requested twist simply ran out.
+
+        A twist of exactly zero is not an approach but a hold: it leaves the
+        arm on the pose it is already holding and never reports reached, so
+        the command can be repeated to sit still.  That is how the episode is
+        ended - the environment submits a gripped command that stops moving,
+        and submitted then names that ending rather than the twist.
 
         Args:
             object_name: The name of the object being held.
             angle_rad: (float) Total rotation angle in radians.
             steps: (int) Number of incremental steps to split the rotation into.
+            feed_lead_m: (float) Axial advance per full turn, in metres.  When
+                given, twists along that lead instead of rotating in place.
 
         Returns:
-            None
+            None, or the helix block described above when feed_lead_m is set.
         """
-        self._post("/rotate_gripper", {
+        payload: dict[str, Any] = {
             "object_name": object_name, "angle_rad": angle_rad, "steps": steps,
-        })
-        print(f"Rotated '{object_name}' by {angle_rad:.2f} rad in {steps} steps")
+        }
+        if feed_lead_m is not None:
+            payload["feed_lead_m"] = feed_lead_m
+        data = self._post("/rotate_gripper", payload)
+        if feed_lead_m is None:
+            print(f"Rotated '{object_name}' by {angle_rad:.2f} rad in {steps} steps")
+            return None
+        reached = data.get("reached")
+        aborted = data.get("aborted")
+        submitted = data.get("submitted")
+        print(f"Twisted '{object_name}' along lead {feed_lead_m * 1000:.3f} mm: "
+              f"{data.get('completed')}/{data.get('requested')} iterations, "
+              f"{'seated' if reached else 'submitted' if submitted else 'stopped: ' + str(aborted) if aborted else 'OK'}")
+        return {
+            "feed_lead_m": data.get("feed_lead_m"),
+            "completed": data.get("completed"),
+            "requested": data.get("requested"),
+            "grip_released": data.get("grip_released"),
+            "aborted": aborted,
+            "reached": reached,
+            "submitted": submitted,
+            "trace": data.get("trace"),
+        }
 
     def get_object_pose(
         self, object_name: str, return_bbox_extent: bool = False

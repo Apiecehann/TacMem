@@ -92,9 +92,11 @@ SAM3_PROMPTS = {
 
 goto_pose = _api.goto_pose
 move_delta = _api.move_delta
+move_reflexive = _api.move_reflexive
 open_gripper = _api.open_gripper
 close_gripper = _api.close_gripper
 get_tactile_data = _api.get_tactile_data
+get_tactile_image = _api.get_tactile_image
 detect_contact = _api.detect_contact
 detect_slip = _api.detect_slip
 get_object_pose = _api.get_object_pose
@@ -153,10 +155,10 @@ def api_doc() -> str:
 
 __all__ = [
     # motion
-    "goto_pose", "move_delta", "open_gripper", "close_gripper",
+    "goto_pose", "move_delta", "move_reflexive", "open_gripper", "close_gripper",
     "rotate_gripper",
     # tactile
-    "get_tactile_data", "detect_contact", "detect_slip",
+    "get_tactile_data", "get_tactile_image", "detect_contact", "detect_slip",
     # perception
     "get_object_pose", "sample_grasp_pose",
     # observation & meta

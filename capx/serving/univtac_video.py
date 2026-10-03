@@ -1,9 +1,12 @@
 """Episode video recording for the UniVTAC serving server.
 
 The server captures a composite frame (head camera + wrist camera +
-left/right tactile, 320x1120) before/after every API action.  Keeping those
-frames only in process memory made it impossible to review an agent's run
-after the fact (the server restart on the previous run lost everything).
+left/right tactile, 320x1120) before/after every API action, plus every few
+servo iterations inside a lead-coupled helix twist -- that one drives its own
+IK loop with no per-step action boundary, so it has nowhere else to hang a
+frame.  Keeping those frames only in process memory made it impossible to
+review an agent's run after the fact (the server restart on the previous run
+lost everything).
 This module turns that capture into a durable record:
 
   * each captured frame is written to disk as a PNG the moment it is taken —
@@ -146,6 +149,8 @@ class EpisodeRecorder:
         self._frames_dir: Path | None = None
         self._index: list[dict] = []
         self._frame_count = 0
+        self._served = 0  # frames already handed to the eval harness
+        self._harness_mode = False  # eval harness consumes frames itself
         self._task = ""
         self._seed = 0
         self._started_ts = ""
@@ -166,6 +171,7 @@ class EpisodeRecorder:
         self._started_ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self._index = []
         self._frame_count = 0
+        self._served = 0
         if not self._enabled:
             self._episode_dir = None
             self._frames_dir = None
@@ -202,6 +208,35 @@ class EpisodeRecorder:
             "mp4_ready": (self._episode_dir / "episode.mp4").exists(),
         }
 
+    def set_harness_mode(self) -> None:
+        """Switch to harness mode: the eval harness fetches frames itself
+        (``drain_frames()``) and assembles the trial videos into its own
+        output directory, so ``finalize()`` stops writing
+        ``episode.mp4``/``index.json`` into the agent recording root
+        (``outputs/agent``).  One-way: once an eval consumes frames on a
+        server, that server stops self-finalizing episodes.
+        """
+        self._harness_mode = True
+
+    @property
+    def harness_mode(self) -> bool:
+        """True once the eval harness started consuming frames itself."""
+        return self._harness_mode
+
+    def drain_frames(self) -> list[bytes]:
+        """Return the active episode's unserved frames as PNG bytes.
+
+        Each frame is returned at most once (the eval harness fetches once
+        per trial with ``clear=True`` semantics); the durable recorder and
+        the scratch PNGs are untouched.
+        """
+        if not self._enabled or self._frames_dir is None:
+            return []
+        pngs = sorted(self._frames_dir.glob("frame_*.png"))
+        out = [p.read_bytes() for p in pngs[self._served:]]
+        self._served = len(pngs)
+        return out
+
     def record(self, b64_png: str, label: str) -> int:
         """Persist one frame (base64 PNG) plus its action label.
 
@@ -233,7 +268,18 @@ class EpisodeRecorder:
         once finalized (or with no frames) it is a no-op that returns the
         last result.
         """
-        if not self._enabled or not self.active:
+        if not self._enabled:
+            return None
+        if self._harness_mode:
+            # The eval harness drained the frames and assembled the trial
+            # video itself — drop the scratch and never write into the
+            # agent recording root.
+            if self._frames_dir is not None:
+                shutil.rmtree(self._frames_dir, ignore_errors=True)
+            self._episode_dir = None
+            self._frames_dir = None
+            return None
+        if not self.active:
             return None
         episode_dir = self._episode_dir
         frames_dir = self._frames_dir

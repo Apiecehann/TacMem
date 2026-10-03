@@ -1,0 +1,29 @@
+{
+  "spec": {
+    "geometry_version": 3,
+    "handedness": 1,
+    "lead_m": 0.004362315576188865,
+    "initial_depth_m": 0.014,
+    "seat_top_m": 0.022,
+    "profile_mode": "minimum_axial_flank_width",
+    "profile_half_width_rad": 1.4271295446494856
+  },
+  "meshes": {
+    "bulb": {
+      "vertices": 7618,
+      "tets": 22167,
+      "physical_surface_faces": 15232,
+      "visual_faces": 15232,
+      "sha256": "f089641306f090b7ab1d9a34b3b8081ed9bc763abf028ec6489acd1adec82fe7",
+      "volume_m3": 6.178210577243949e-05
+    },
+    "socket": {
+      "vertices": 8130,
+      "tets": 26603,
+      "physical_surface_faces": 16256,
+      "visual_faces": 16256,
+      "sha256": "8cc82170b70bec012dcbdad9e76510abc13d8113163be48814a3ab1be078b252",
+      "volume_m3": 0.0002120723806041517
+    }
+  }
+}
