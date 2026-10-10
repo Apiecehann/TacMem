@@ -211,29 +211,42 @@ class UniVTACMotionApi(ApiBase):
         Setting feed_lead_m twists along a thread instead: the gripper turns
         about the world z axis while descending by that many metres per full
         turn, so the twist and the descent stay locked together.  steps then
-        counts servo iterations rather than planner sub-moves - one iteration
-        is 1.5 deg of twist plus its matched feed, so 120 iterations is half a
-        turn.  The return then carries a helix block with completed /
+        counts servo iterations rather than planner sub-moves, and each
+        iteration turns the part by angle_rad / steps plus its matched feed.
+        One iteration is one differential-IK step
+        and can only carry about 4.6 deg of joint motion, so a count too
+        coarse for the angle is raised rather than refused, and requested can
+        exceed the number asked for; what the servo still cannot reach - the
+        wrist out of range, say - refuses the call, and a refusal latches the
+        task's failure flag for the rest of the episode.
+
+        The return then carries a helix block with completed /
         requested / aborted / reached and a trace of the physical readings;
         a run that stops reports why, and grip_released is False when nothing
         was held firmly enough for the object to be under physics at all.
 
-        A run ends one of three ways and they mean different things.  reached
-        names the finished job - the thread is seated and the tightening
-        torque is at its target, which is where the task scores a hold.
-        aborted names a physical overload or a lost grip.  With neither, the
-        requested twist simply ran out.
+        A run ends one of two ways and they mean different things.  reached
+        names the finished job - the part has bottomed: it has taken its whole
+        thread travel and is loaded on its seat, which is the state the task
+        is scored on.  Anything short of that is the requested twist simply
+        running out.  A physical stop - the pads at 128 N of normal force,
+        torque past the task's over-torque limit, seat force past 180 N, a
+        grasp that drifted past 4 mm or tilted past 10 deg, or an already
+        latched task failure - is not a third ending: it ends the call with an
+        error instead, so aborted is always None in a returned block.
 
         A twist of exactly zero is not an approach but a hold: it leaves the
-        arm on the pose it is already holding and never reports reached, so
-        the command can be repeated to sit still.  That is how the episode is
-        ended - the environment submits a gripped command that stops moving,
-        and submitted then names that ending rather than the twist.
+        arm on the pose it is already holding and never reports reached,
+        however seated the part is.  Nothing waits on a hold - it just steps
+        physics for the iterations it was asked for.
 
         Args:
             object_name: The name of the object being held.
             angle_rad: (float) Total rotation angle in radians.
-            steps: (int) Number of incremental steps to split the rotation into.
+            steps: (int) Number of incremental steps to split the rotation
+                into - planner sub-moves without a lead, servo iterations
+                with one, each iteration carrying angle_rad / steps of the
+                twist.
             feed_lead_m: (float) Axial advance per full turn, in metres.  When
                 given, twists along that lead instead of rotating in place.
 
@@ -251,10 +264,9 @@ class UniVTACMotionApi(ApiBase):
             return None
         reached = data.get("reached")
         aborted = data.get("aborted")
-        submitted = data.get("submitted")
         print(f"Twisted '{object_name}' along lead {feed_lead_m * 1000:.3f} mm: "
               f"{data.get('completed')}/{data.get('requested')} iterations, "
-              f"{'seated' if reached else 'submitted' if submitted else 'stopped: ' + str(aborted) if aborted else 'OK'}")
+              f"{'seated' if reached else 'stopped: ' + str(aborted) if aborted else 'OK'}")
         return {
             "feed_lead_m": data.get("feed_lead_m"),
             "completed": data.get("completed"),
@@ -262,7 +274,6 @@ class UniVTACMotionApi(ApiBase):
             "grip_released": data.get("grip_released"),
             "aborted": aborted,
             "reached": reached,
-            "submitted": submitted,
             "trace": data.get("trace"),
         }
 

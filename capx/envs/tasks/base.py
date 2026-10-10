@@ -102,13 +102,6 @@ class CodeExecutionEnvBase(Env):
         )  # type: ignore[assignment]
         # Create APIs once; maximize sharing inside a worker via lru_cache in get_api
         self._apis: dict[str, ApiBase] = {n: get_api(n)(self.low_level_env) for n in cfg.apis}
-        # A task may declare which of the API doc's optional sections its LLM
-        # needs (e.g. only the tasks that measure weight want the weight
-        # recipe).  None, the default, delivers every section.
-        allowed = getattr(self, "api_doc_sections", None)
-        if allowed is not None:
-            for api in self._apis.values():
-                api.doc_sections = frozenset(allowed)
         # for api in self._apis.values():
         #     api.set_env(self.low_level_env)
         self._executor = SimpleExecutor(self.low_level_env, self._apis)
@@ -164,6 +157,97 @@ class CodeExecutionEnvBase(Env):
         return None
 
     # ---- Private methods ----
+    def _task_name(self) -> str:
+        """The simulator's name for this task, used to route tactile skills.
+
+        That name is what the server knows the task by, and the key the
+        taxonomy in `capx.tactile_skills` routes on.  Three places can hold
+        it, in the order they are consulted:
+
+          * the built low-level env — whatever it calls itself is what the
+            server answers to;
+          * `cfg.low_level`, when the caller handed over a parsed env or dict;
+          * `cfg.low_level`, when it is the path to the low-level YAML — which
+            is what every config in `env_configs/` passes, unparsed, since
+            `_build_low_level` loads the file on the way into the env and the
+            path string stays in the cfg.
+
+        Only the middle one was read at first, and it found nothing in a real
+        run: the name resolved to "" for every config in the repo, so the
+        routing below it never delivered.  The tests did not catch it because
+        their stub handed over an already-parsed object — the one shape
+        production never uses.  `test_a_shipped_config_resolves_its_task_name`
+        now goes through the configs themselves.
+        """
+        name = getattr(getattr(self, "low_level_env", None), "task_name", None)
+        if name:
+            return str(name)
+
+        low = getattr(self.cfg, "low_level", None)
+        name = getattr(low, "task_name", None)
+        if name is None and hasattr(low, "get"):
+            name = low.get("task_name")
+        if name is None and isinstance(low, str) and low.endswith((".yaml", ".yml")):
+            try:
+                loaded = DictLoader.load(low)
+            except Exception:  # an unreadable path is "not a named task", not a crash
+                loaded = None
+            if isinstance(loaded, dict):
+                name = loaded.get("task_name")
+        return str(name or "")
+
+    def _reads_the_gel(self) -> bool:
+        """Whether any API this task is given can read the tactile sensors.
+
+        The taxonomy routes by task name, and the ablation configs
+        (`*_no_tactile*.yaml`) keep the task name while swapping the tactile
+        API for `UniVTACMotionApi` -- so name alone would hand a full page of
+        gel recipes to a robot that has no way to touch anything.
+
+        An empty or absent `_apis` is read as "cannot tell", which delivers.
+        """
+        apis = getattr(self, "_apis", None)
+        if not apis:
+            return True
+        return any("get_tactile_data" in api.functions() for api in apis.values())
+
+    def _tactile_skill_block(self) -> str:
+        """The tactile-skill block this task's prompt ends with.
+
+        Delivered by default to every task the library's taxonomy knows, which
+        is every UniVTAC task that can read the gel: the reading and acting
+        recipes the API doc no longer carries are useless if nothing hands them
+        over, and worse than useless to a task that has no tactile API at all.
+        A task outside the taxonomy -- anything not driven through the UniVTAC
+        API -- gets nothing, since no skill routes to it.
+
+        A task can override the routing:
+
+            tactile_skills = ()              # deliver nothing
+            tactile_skills = ("skill-name",) # name the skills directly
+
+        and `tactile_skills_verbose = True` swaps the one-line-per-skill form
+        for each skill's whole body.  Naming skills directly skips the tactile
+        check: an explicit list is a deliberate choice.
+        """
+        from capx.tactile_skills import default_library
+
+        verbose = bool(getattr(self, "tactile_skills_verbose", False))
+        wanted = getattr(self, "tactile_skills", True)
+        if wanted is not True:
+            if not wanted:
+                return ""
+            library = default_library()
+            skills = [library.get(name) for name in wanted]
+            body = "\n".join(s.render(compact=not verbose) for s in skills)
+            return f"TACTILE SKILLS (named by {type(self).__name__}):\n{body}".strip()
+
+        library = default_library()
+        task = self._task_name()
+        if library.task_type_of(task) is None or not self._reads_the_gel():
+            return ""
+        return library.render_for_task(task, compact=not verbose)
+
     def _get_complete_prompt(self) -> str:
         """
         Get the complete prompt for the task.
@@ -176,7 +260,9 @@ class CodeExecutionEnvBase(Env):
             # NOTE: we need to discuss this further down the line
             # docs.append(f"- {name}:\n{text.strip()}")
             docs.append(f"\n{text.strip()}")
-        return f"{self._task_prompt}\nAPIs:\n" + "\n".join(docs)
+        prompt = f"{self._task_prompt}\nAPIs:\n" + "\n".join(docs)
+        skills = self._tactile_skill_block()
+        return f"{prompt}\n\n{skills}" if skills else prompt
 
     def _exec_user_code(self, code: str) -> dict[str, Any]:
         obs = self._get_observation()

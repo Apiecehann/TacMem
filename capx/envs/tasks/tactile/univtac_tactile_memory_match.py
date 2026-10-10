@@ -17,7 +17,8 @@ compliant).  One candidate is the reference's "twin" (identical in all
 three); the other differs in at least one of them.  Your job:
 
   1. Measure all three properties of the reference from one progressive
-     position-commanded grasp, following the task-specific API protocol.
+     position-commanded grasp, following the one-grasp protocol in the
+     tactile skills at the end of this prompt.
   2. Probe both candidates with the exact same one-grasp protocol.
   3. Place on the MATCH SLOT the candidate whose feel is closest to the
      reference.  Vision cannot tell them apart — decide ONLY from tactile
@@ -32,23 +33,9 @@ Key rules:
   about the same ~10 s whether it moves 2 mm or 50 mm, so the count is what
   costs, not the distance.  Once a can's budget is spent, decide with the
   readings you have — two cans fully read beats three cans half-read.
-- Travel between grasp sites at z ~0.28, and descend only over the
-  destination: an open gripper swept near the table knocks cans away.  Grasp
-  by the side (cans lie flat), and read the sensors only when still and at
-  the same grip force.
-- A reading is INVALID unless the loose state verifies the 34 mm no-contact
-  far plane and the following firm state makes real contact.  Low follow on
-  the protocol's small lift is a property reading, not a failed hold; a rigid
-  can may stay on the table despite firm gel contact.  Do not add symmetry
-  gates for displacement or shear.  On a missed approach, retreat to cruise
-  height, re-query the can pose, and make one new approach; never retry by
-  sweeping an open gripper near the table.
 - Obtain valid protocol readings for the reference and both candidates before
-  deciding.  Readability is not evidence of identity: never choose the only
-  candidate that happened to read valid, and never pick a fallback side merely
-  to make the script complete.
-- Release only a can that already rests flat on the surface, and never end
-  the episode while one is still falling.
+  deciding.  The skills below say what makes a reading valid, what a missed
+  approach costs, and which candidate the readings do and do not identify.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """
@@ -558,6 +545,3 @@ print(f"Success: {check_success()}")
 class UniVTACTactileMemoryMatchCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ("position", "hardness", "texture", "memory_match")

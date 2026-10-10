@@ -6,10 +6,8 @@ on both fingertips. The API is described below.
 
 Goal: Insert the grasped prism into the tilted slot until fully seated.
 
-Key rules:
-- Use small incremental motions for fine insertion control.
-- Asymmetric tactile contact between the fingertips indicates misalignment
-  with the tilted slot.
+The insertion recipe — step size, what a pad-depth difference means, and what
+a stall means — is in the tactile skills at the end of this prompt.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """
@@ -37,6 +35,3 @@ move_delta(dz=-0.005)
 class UniVTACInsertTubeCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ()

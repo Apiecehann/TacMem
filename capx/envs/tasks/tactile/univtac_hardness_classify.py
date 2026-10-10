@@ -16,38 +16,17 @@ The catch: the other block is parked a metre away, out of reach, so there is no
 reference object to compare against. The reading has to be absolute, taken the
 same way every trial.
 
-How to feel the hardness:
-- Hardness is how much of your grip the block passes on to the gel. Squeeze a
-  soft block and it yields: the fingers keep travelling while the gel barely
-  moves, because the block absorbs the extra travel inside itself. A hard block
-  passes it straight through to the gel. So the reading is the gel's response
-  to a CHANGE in grip force, not the depth of any one close - close_gripper
-  states the two grip settings to compare and the value to split them at, and
-  get_tactile_data documents the channel to read.
-- Set the squeeze by position, with the depth servo off, rather than by depth.
-  A soft block yields until the jaws bottom out: a firmer depth target is never
-  reached on one, and a servo left running keeps pushing until it is - at which
-  point the gel reads a firm jam and the answer comes out backwards.
-  close_gripper documents both settings.
-- Be aware that this squeeze is the one thing that destroys a weight reading.
-  If you ever need both properties off one object, weigh it first.
-- If the block slips out during the squeeze, re-approach and measure again - a
-  block that was never really held is not a hardness reading.
+Your fingertips are the instrument: hardness is how much of your grip the block
+passes on to the gel, and it only shows up as the gel's response to a CHANGE in
+grip force, never as the depth of one close. Which two grips to compare, how to
+set the squeeze, and the value to split them at are in the tactile skills at the
+end of this prompt.
 
-After classifying, carry the block to its plate:
-- Lift it clear of the table first. The block is tall and stands on a small
-  footprint, so dragging it sideways while it still rests on the table tips it
-  over and it slides out of the grip instead of following.
-- Move it in world-frame steps (move_delta), not by commanding an absolute
-  end-effector pose. The block is held rigidly, so a world delta moves it by
-  exactly that delta and leaves the wrist alone; re-commanding the wrist while
-  the block is touching down twists it inside the grip and tips it over.
-- Block and plates have their origin at the bottom face and bbox_extent is the
-  full size, so seat the block at position[2] = plate_pos[2] + plate_ext[2].
-  Step the descent down until it is seated - never drop it from a height.
-- You do not have to let go. Opening the jaws drags the block off the plate or
-  tips it over. The task is scored on where the block ends up, so seat it on
-  the right plate and stop, with the gripper still closed.
+After classifying, carry the block to its plate. The placement recipe - how to
+move a held block, where to stop, and whether to let go - is in those same
+skills. This task is scored on where the block ends up: seat it on the right
+plate, upright, and stop.
+
 Final placement: within 4 cm horizontally and 1 cm vertically, upright within 15
 degrees.
 
@@ -168,6 +147,3 @@ check_success()
 class UniVTACHardnessClassifyCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ("position", "hardness")

@@ -4,37 +4,37 @@ PROMPT = """
 You are controlling a Franka Emika robot with GelSight Mini tactile sensors
 on both fingertips. The API is described below.
 
-Goal: screw the light_bulb into its socket until it is seated and tightened,
-then let the episode end. In the scene the bulb is named "light_bulb" - use
-that exact name with the pose and grasp helpers.
+Goal: screw the light_bulb into its socket until it is all the way in. In the
+scene the bulb is named "light_bulb" - use that exact name with the pose and
+grasp helpers.
+
+The bulb starts already threaded into its socket, and it is a thread: turning
+is the only thing that takes it deeper. Pushing it down does not move it - the
+push is taken by the glass and the pads instead, and it stays there.
 
 The fingertips are the instrument, not a safety net. The bulb is smooth glass
 and the pads are the only thing that touches it, so every question this task
 asks is answerable from them, and that is where the answers should come from:
 
-- Which way is in. rotate_gripper hands back its own tactile reading. The
-  hand sinks on a loosening twist exactly as it does on a tightening one, so
-  the two differ in one respect only - which way the thread drives the glass -
-  and that is the one thing the pads measure. Twist a few degrees each way
-  first and let the pads say which leg was which.
-- How fast to descend. The lead is not given either, and it varies. Ask for
-  more descent than a turn could ever take and the thread refuses the excess:
-  the bulb comes down at its own pitch instead, so the slide the pads read is
-  the whole of the overshoot, and one twist at such a feed measures the lead.
-  Turn the rest of the insertion at it. Being under the lead only costs
-  turning; being over it is a fight the fingers lose.
-- Whether it is in. A bulb still taking thread keeps pace with the hand, or
-  runs ahead of it. One that has bottomed out cannot: the hand goes on down
-  and the glass does not, so the slide collapses in a single twist. That is
-  the seat, and it is the reading to trust - not a count of turns.
+- Which way is in. Take the direction from separate legs; how long each leg
+  must be, and how far apart they have to come before you believe them, are in
+  the tactile skills at the end of this prompt.
+- How fast to descend. The lead is not given either, and it varies with the
+  bulb, so it has to be measured rather than assumed - and the pads are what
+  measure it. The skills below give the method.
+- Whether it is in. The seat is a reading, not a count of turns, and it has to
+  clear two conditions before it can be believed. Both thresholds are in the
+  skills below.
 
-The wrist runs out of range after roughly half a turn, so a full insertion is
-several segments with the hand re-set in between - and re-setting means
-releasing the bulb first, because winding the hand back while still holding it
-unscrews what you just put in.
+The wrist runs out of range soon after a third of a turn, so a full insertion
+is several segments with the hand re-set in between. Going past that range is
+refused outright and is not recoverable within the episode, so keep the
+segments well short of it; the skills below give the reset sequence and say
+when to stop re-setting.
 
-Do not sit still until the bulb is in and torqued: a gripped command that
-stops moving ends the episode, and it only gets to happen once.
+The job is done the moment the bulb is all the way in: there is nothing to
+submit and nothing to hold at the end, so stop turning there and let the
+episode be scored on the bulb.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """
@@ -76,15 +76,9 @@ UNWIND_CHUNK_DEG = 25.0
 UNWIND_MIN_DEG = 2.0
 # Free travel is 0.0123 m and the lead is 0.0123 / U(1.12, 2.88), so the turns
 # an insertion needs ARE that draw: 1.12 to 2.88.  The worst seed wants 2.88
-# turns (1037 deg) plus the probe and the seated tail = 38 blocks; 60 leaves
-# slack for re-tried blocks and for a bulb turning more than nominal.
+# turns (1037 deg) plus the probe and the seat's own overshoot = 38 blocks; 60
+# leaves slack for re-tried blocks and for a bulb turning more than nominal.
 MAX_BLOCKS = 60
-# Past the seat the turning only brings the torque up: three blocks on seed 3,
-# one on seed 1 (0.0005 -> 0.062 Nm against a 0.12 target).  Every block past
-# the seat spends advance the criterion does not give back -- seed 1 finished 41
-# blocks at 12.29 mm against a 13.09 mm ceiling -- so four is one block of slack
-# over the longest tail seen.
-MAX_SEATED_BLOCKS = 4
 
 # --- Reading the lead off one twist -------------------------------------------
 #
@@ -179,19 +173,18 @@ ARM_DESCENT_MM = 8.0
 WIGGLE_DEG = 4.0
 WIGGLE_ITER = 3
 # The wiggle's own feed, only to keep the two legs identical.  Net descent is
-# 2 * WIGGLE_DEG at this feed, which must stay under the 0.2 mm the thread probe
-# allows the bulb for "home".
+# 2 * WIGGLE_DEG at this feed, which used to have to stay under the 0.2 mm the
+# thread probe allowed the bulb for "home" (that probe no longer gates anything,
+# see the note at the wiggle legs below).
 LEAD_INIT_M = 0.0123 / 2.0
 
-# The direction decision's own legs.  The 4 deg wiggle is the environment's
-# probe, not the decision: it separates the legs by only 0.05-0.12 mm, one or two
-# pixels, under the tracker's own scatter.  At 30 deg the separation is lead/6,
-# 0.71-1.83 mm.  DIR_DEG_BIG is the one widening allowed if they come back close.
+# The direction decision's own legs.  The 4 deg wiggle is not the decision: it
+# separates the legs by only 0.05-0.12 mm, one or two pixels, under the
+# tracker's own scatter.  At 30 deg the separation is lead/6, 0.71-1.83 mm.
+# DIR_DEG_BIG is the one widening allowed if they come back close.
 DIR_DEG = 30.0
 DIR_DEG_BIG = 45.0
 DIR_MIN_SEP_MM = 0.15
-
-HOLD_ITER = 150
 
 RELEASE_MM = 33.5
 GRIP_TOOK_MM = 30.0
@@ -330,8 +323,8 @@ def turn(sign, deg, lead_m, steps=None):
     rotate_gripper raises on a refused block, so an over-long one would end the
     run rather than report; the readings live under "helix", with the pads'
     shear copied to the top level of the same reply.  steps defaults to one
-    servo iteration per 1.5 deg -- the hold passes it explicitly, because a zero
-    twist derives no duration from its angle.
+    servo iteration per 1.5 deg; the wind back passes it explicitly, at its own
+    coarser step.
     \"\"\"
     if steps is None:
         steps = max(2, int(round(deg / 1.5)))
@@ -419,17 +412,20 @@ else:
 
     # --- 2. Which way is in, and how far does one turn take it? ---------------
     #
-    # Two things happen here, and they are deliberately not the same twist.
+    # The decision is made by the direction legs further down: an order of
+    # magnitude longer, read across the outbound turn alone, then compared.
     #
-    # The environment's own thread probe wants a reversible excursion peaking in
-    # [2, 6] deg that returns home, and each direction has to come home on its
-    # own -- a single sweep through +4 and -4 sets both bounds at once and then
-    # neither leg registers, leaving the run's formal advance at zero however
-    # well the tightening goes.  So the +/-4 deg wiggle runs first, for the
-    # probe's sake, and its reading is printed and NOT acted on (seed 1: the
-    # same grip read +1.8/-5.1, -1.2/-9.6 and -3.0/-1.8 px over three runs, the
-    # first two picking opposite legs -- it is a coin toss, and losing it turns
-    # the run into an unscrewing).
+    # Upstream used to hold the episode's whole accounting behind a reversible
+    # +/-4 deg probe: until it completed, the formal turn count and formal
+    # advance read zero however well the tightening went.  That gate was removed
+    # locally on 2026-10-07 (see the LOCAL DEVIATION note on
+    # ReversibleThreadProbe.formal_motion in ViTaForge/envs/bulb_tightening.py),
+    # so the counters now measure the bulb from the start of the episode.  The
+    # two wiggle legs below are kept because this build was verified with them
+    # and they cost two short twists; their readings are printed and NOT acted
+    # on (seed 1: the same grip read +1.8/-5.1, -1.2/-9.6 and -3.0/-1.8 px over
+    # three runs, the first two picking opposite legs -- it is a coin toss, and
+    # losing it turns the run into an unscrewing).
     #
     # The decision gets its own legs: four times longer, read across the outbound
     # turn alone, because the return cancels most of its own excursion.  Both
@@ -438,7 +434,7 @@ else:
     # sinks, so the glass runs UP through the pads and the shear goes hard
     # negative; the tightening leg at worst keeps up.  Higher gel reading = in.
     def wiggle_leg(sign):
-        \"\"\"One reversible probe leg for the environment: out, back, residual.\"\"\"
+        \"\"\"One reversible probe leg (no longer required): out, back, residual.\"\"\"
         before = shear_now()
         turn(sign, WIGGLE_DEG, LEAD_INIT_M)
         res = turn(-sign, WIGGLE_DEG, LEAD_INIT_M)
@@ -503,7 +499,6 @@ else:
     advance_mm = 0.0
     bottomed = False
     since_reset = 0.0
-    seated_blocks = 0
     reached = False
     seat_armed = False
     blind_grasps = 0
@@ -538,7 +533,7 @@ else:
 
         if hx.get("reached"):
             reached = True
-            print(f"  block {block + 1}: the seat came up to torque -- "
+            print(f"  block {block + 1}: the fixture says the bulb is home -- "
                   f"{hx['reached']}")
             break
         if hx.get("aborted"):
@@ -654,70 +649,65 @@ else:
                                   f"means stopped, at coherence {after_coh:.2f}. "
                                   f"{advance_mm:.3f} mm in by the pads' count, "
                                   f"{sum_descent_mm:.3f} mm by the hand's -- the "
-                                  f"bulb is home in its socket; from here it "
-                                  f"only needs tightening")
+                                  f"bulb is home in its socket, which is the "
+                                  f"whole of what this run is scored on")
                 else:
                     # Past the seat the slide is the whole commanded descent
                     # every block and the pads' reading walks out of its
-                    # lattice, so it is no longer counted -- only the twisting
-                    # is, and the torque it is building.
+                    # lattice, so it is no longer counted.  Nothing here is
+                    # scored either: the loop is on its way out.
                     print(f"  block {block + 1}: still turning it in, "
                           f"{hx.get('completed')}/{hx.get('requested')} iterations")
 
         # Hand re-set.  Winding while still holding the bulb unscrews what was
         # just put in, so the release comes first -- and the release is
         # believed on the PADS' evidence, not on the command's.
-        if block + 1 >= MAX_BLOCKS or reached:
+        #
+        # The seat ends the run, not just the re-setting.  Until 2026-10-09 a
+        # block past the seat went on turning to bring the torque up to a
+        # target the scorer asked for; that target is gone, and a block past
+        # the seat buys nothing and spends wrist the run may still want.  Seed
+        # 1 stood at 2.79 turns / 12.23 mm in with 3.73 N on the seat when it
+        # was stopped by hand at the wrist's limit, six re-grasps after it was
+        # home.
+        if reached or bottomed or block + 1 >= MAX_BLOCKS:
             break
-        if bottomed:
-            # It is home, and turning on past the seat only works the wrist
-            # further into its stop for no extra depth.  The turning still has
-            # to happen -- it is what brings the torque up -- so it runs for a
-            # bounded number of blocks and then stops rather than winding the
-            # wrist out.
-            seated_blocks += 1
-            if seated_blocks >= MAX_SEATED_BLOCKS:
-                print(f"  {seated_blocks * BLOCK_DEG:.0f} deg of turning past "
-                      f"the seat without the torque target coming up -- "
-                      f"stopping here rather than winding the wrist out")
-                break
         # The re-set is counted in DEGREES, not blocks, because the wrist's
         # range does not care how the turning was divided.  The test is whether
-        # the NEXT block would fit, not whether this one already overflowed:
-        # the seated blocks go on past the seat, and a wrist wound to the end
-        # of its travel refuses the twist that would have brought the torque up.
+        # the NEXT block would fit, not whether this one already overflowed: a
+        # wrist wound to the end of its travel refuses the twist that would
+        # have finished the insertion, and a refusal latches the episode.
         if since_reset + BLOCK_DEG > DEG_PER_GRASP:
             # The grasp is over, so its degrees are in and the running slope can
             # be re-read.  What comes out is the feed the next grasp turns at --
             # not a correction to the last one, but the whole run's gain over
             # the whole run's turning so far.
-            if not bottomed:
-                if g_deg >= GRASP_MIN_DEG:
-                    read_mm = g_gain * 360.0 / g_deg
-                    run_mm = tot_gain * 360.0 / tot_deg
-                    feed_mm = clamp_lead(run_mm)
-                    blind_grasps = 0
-                    print(f"  that grasp turned {g_deg:.0f} deg and carried the "
-                          f"glass {g_gain:.3f} mm of it "
-                          f"({read_mm:.2f} mm/turn); over the "
-                          f"{tot_deg:.0f} deg the pads have read since the "
-                          f"probe the thread is running at "
-                          + printed_lead(feed_mm, run_mm)
-                          + f".  Turning at {feed_mm:.2f} from here")
-                else:
-                    blind_grasps += 1
-                    print(f"  that grasp put only {g_deg:.0f} deg of readable "
-                          f"slide together, not the {GRASP_MIN_DEG:.0f} a slope "
-                          f"needs -- {blind_grasps} of {MAX_BLIND_GRASPS} "
-                          f"before the pads are given up on")
-                    if blind_grasps >= MAX_BLIND_GRASPS:
-                        pads_blind = True
-                        print(f"  the pads have gone {MAX_BLIND_GRASPS} grasps "
-                              f"without a slope, so the slide is not this "
-                              f"run's to read.  The seat decision goes to the "
-                              f"fixture "
-                              f"from here: turning on until it reports the "
-                              f"seat, and judging nothing on the slide")
+            if g_deg >= GRASP_MIN_DEG:
+                read_mm = g_gain * 360.0 / g_deg
+                run_mm = tot_gain * 360.0 / tot_deg
+                feed_mm = clamp_lead(run_mm)
+                blind_grasps = 0
+                print(f"  that grasp turned {g_deg:.0f} deg and carried the "
+                      f"glass {g_gain:.3f} mm of it "
+                      f"({read_mm:.2f} mm/turn); over the "
+                      f"{tot_deg:.0f} deg the pads have read since the "
+                      f"probe the thread is running at "
+                      + printed_lead(feed_mm, run_mm)
+                      + f".  Turning at {feed_mm:.2f} from here")
+            else:
+                blind_grasps += 1
+                print(f"  that grasp put only {g_deg:.0f} deg of readable "
+                      f"slide together, not the {GRASP_MIN_DEG:.0f} a slope "
+                      f"needs -- {blind_grasps} of {MAX_BLIND_GRASPS} "
+                      f"before the pads are given up on")
+                if blind_grasps >= MAX_BLIND_GRASPS:
+                    pads_blind = True
+                    print(f"  the pads have gone {MAX_BLIND_GRASPS} grasps "
+                          f"without a slope, so the slide is not this "
+                          f"run's to read.  The seat decision goes to the "
+                          f"fixture "
+                          f"from here: turning on until it reports the "
+                          f"seat, and judging nothing on the slide")
             g_blocks = 0
             g_deg = 0.0
             g_gain = 0.0
@@ -740,20 +730,22 @@ else:
                 print("  re-grasp did not take -- stopping")
                 break
 
-    # --- 4. Hold, and let the environment end the episode --------------------
+    # --- 4. Stop ---------------------------------------------------------------
+    # The bar is the bulb being all the way in, so there is nothing left to do
+    # but say what the run got to.  Upstream held a gripped command still at
+    # the end to submit the episode; that gesture went with the criteria on
+    # 2026-10-09 (see the LOCAL DEVIATION notes in
+    # ViTaForge/envs/bulb_tightening.py), and the torque the hold used to chase
+    # is no longer scored -- the same episode turns on the bulb's own depth and
+    # seat load whenever the verdict is asked for.  Turning any further would
+    # only spend wrist travel the run may not have.
     if bottomed or reached:
-        print(f"holding for {HOLD_ITER} iterations to let the episode end")
-        try:
-            res = turn(1.0, 0.0, feed_mm / 1000.0, steps=HOLD_ITER)
-            hhx = res.get("helix") or {}
-            print(f"  hold: {hhx.get('completed')}/{hhx.get('requested')} "
-                  f"iterations, aborted={hhx.get('aborted')}")
-        except Exception as exc:
-            print(f"  hold ended the episode: {exc}")
+        print(f"the bulb is home ({'the fixture agrees' if reached else 'by the pads'}); "
+              f"stopping here rather than winding the wrist further in")
     else:
-        print("the pads never said the glass had stopped, so the bulb never "
-              "seated -- not holding, since a stationary command would submit "
-              "the episode as it stands")
+        print("the pads never said the glass had stopped, so the run ends with "
+              "the bulb's depth whatever it is -- the verdict is taken on the "
+              "scene as it stands")
 
     check_success()
 """
@@ -762,8 +754,3 @@ else:
 class UniVTACBulbTighteningCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the shared
-    # UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.  This is the only
-    # task that declares "screw", so the thread recipe is delivered here and
-    # nowhere else.
-    api_doc_sections = ("screw",)

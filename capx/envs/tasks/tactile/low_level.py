@@ -27,7 +27,9 @@ class UniVTACStubEnv(BaseEnv):
 
     def __init__(self, task_name: str = "insert_hole",
                  server_url: str | None = None):
-        self._task_name = task_name
+        # Public: this is the name the server knows the task by, and what the
+        # high-level env routes its prompt on (`CodeExecutionEnvBase._task_name`).
+        self.task_name = task_name
         self._server = server_url or os.environ.get(
             "UNIVTAC_SERVER_URL", _DEFAULT_SERVER
         )
@@ -75,7 +77,7 @@ class UniVTACStubEnv(BaseEnv):
         r.raise_for_status()
         self._last_success = False
         return {
-            "task_prompt": f"UniVTAC {self._task_name}",
+            "task_prompt": f"UniVTAC {self.task_name}",
         }, {}
 
     def step(self, action: np.ndarray) -> tuple[dict, float, bool, bool, dict]:

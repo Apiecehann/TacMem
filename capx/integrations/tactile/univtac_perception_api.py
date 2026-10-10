@@ -40,6 +40,12 @@ _NEAR_CAMERA_M = 0.05
 class UniVTACPerceptionApi(UniVTACTactileApi):
     """UniVTAC tactile API where object poses come from SAM3 + depth."""
 
+    # This is the non-privileged line: it must not be handed a grasp pose
+    # derived from the simulator's ground truth, which would give away the
+    # object's true position.  It keeps the EE-relative pose, whose offset is
+    # seeded from the EE pose rather than from the object.
+    _ground_truth_grasp = False
+
     def __init__(self, env: BaseEnv, server_url: str | None = None) -> None:
         super().__init__(env, server_url)
         print("init UniVTAC perception api (SAM3)")

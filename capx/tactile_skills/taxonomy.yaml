@@ -1,0 +1,44 @@
+# Routing keys for the tactile skill library.
+#
+# A task type is a family of tasks that need the same tactile skills; the task
+# names are the `task_name` of each config's low-level environment
+# (env_configs/univtac/<task>/low_level_<task>.yaml), which is also the name
+# the simulator knows the task by.  A test keeps this table in step with those
+# configs, so a task that is added or renamed fails loudly instead of silently
+# routing to nothing.
+#
+# Skills declare the task types they apply to (frontmatter `task_types`), and
+# may name individual tasks on top of that (`tasks`) when they serve one task
+# inside a type that does not need them.
+#
+# The `place` family is deliberately not routed to `screw`.  Every rule in it
+# is about an object that is free — resting on a support, being carried, being
+# set down — and a threaded part is none of those: its thread holds it, so
+# backing up to unload drags it out of its seat, lowering until the height
+# stops falling presses it in, and a world-frame delta while gripping tears the
+# grasp.  On 2026-10-08 a run followed the family's 5 mm unload with the bulb
+# still gripped and took the pad force from 108 N to 145 N, past the 135 N the
+# glass holds, ending the episode.  Readdition needs a run that says otherwise.
+
+task_types:
+  classify:
+    # Tactile is the answer itself: the reading is the classification.
+    - weight_classify
+    - hardness_classify
+    - grasp_classify
+    - tactile_memory_match
+  insert:
+    # Tactile is the process signal: contact, tilt, jam, seating.
+    - insert_hdmi
+    - insert_hole
+    - insert_tube
+  manipulate:
+    # Tactile appears at the ends: confirming a grasp, confirming support.
+    - lift_bottle
+    - lift_can
+    - pull_out_key
+    - put_bottle_in_shelf
+    - tactile_transfer_rearrange_clean
+  screw:
+    # Tactile is the only judge: direction, lead, seating.
+    - bulb_tightening

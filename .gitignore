@@ -61,3 +61,5 @@ univtac_skill/.mplconfig/
 
 # Per-episode video recordings (PNG frames + MP4) — large, generated at runtime
 video_recordings/
+
+assets/

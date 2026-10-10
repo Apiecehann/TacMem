@@ -49,7 +49,7 @@
 #
 # --- Budget -------------------------------------------------------------------
 #
-# 14000 s, not the 2400 s default (trial.py:67), not the 5400 s this file used to
+# 12000 s, not the 2400 s default (trial.py:67), not the 5400 s this file used to
 # carry, and not the 9000 s it carried until 2026-10-02.  TRIAL_EXEC_ALARM_SECONDS
 # is the wall clock for everything after reset and it REPLACES the runner's
 # TRIAL_TIMEOUT_SECONDS rather than stacking with it, so it is the only bound -
@@ -58,11 +58,34 @@
 # 1..5: seed 1 at ~6464 s and seed 4 at ~5847 s.  9000 s cleared the worst of
 # those but not a loaded machine: 2026-10-02 seed 1 reached the seat at 11.908 mm
 # of 11.91 and was cut 15 s later with ~7-14 min of torque-and-hold still to run
-# (sim ran 2.4 s/step at load 250 vs 1.25 s/step at load 21).  14000 s leaves
-# that headroom and still bounds a genuine hang.  The key is whitelisted per task
-# in launch_utils.py (merged_config) - without that line it is silently dropped.
-# Only this config sets it; the 2400 s default is unchanged for the other 33.
-exec_alarm_seconds: 14000
+# (sim ran 2.4 s/step at load 250 vs 1.25 s/step at load 21), so that run needed
+# ~9500-9850 s.  14000 s carried it with room to spare.
+#
+# 2026-10-07: lowered to 12000 s.  The floor is the ~9850 s just measured - an
+# alarm below that turns a run that would have finished into a failure, which is
+# the expensive direction.  12000 s keeps ~2150 s over it and still cuts 33
+# minutes off the other direction, a trial that is not going anywhere: nothing
+# else bounds executed code, so a hung helper runs until this fires.  One did
+# that same day - 8207 s alternating ±2 mm inside its own alignment loop, ended
+# by hand rather than by the alarm.  Below ~10500 s the two margins cross.
+#
+# 2026-10-09: lowered to 10500 s, the smallest cut the floor above allows.  That
+# floor is the ORACLE's need on a loaded machine, and skill wording cannot move
+# it, so below ~10500 s the two margins cross (the sentence the line above was
+# already carrying).  What forced the question is the other line: an LLM trial
+# ran 13026 s (3 h 37 min) and was stopped by hand at the wall, with the bulb at
+# 2.79 turns and 12.23 mm in, the torque still at 0.006 of its 0.12 target and
+# fifty release-and-re-grasp cycles behind it — one per block, because the
+# library's wind-back line could be read as "wind back between blocks".  The
+# same round's skill change (three or four blocks per grasp) targets exactly
+# that; when an eval shows a finishing LLM trial under ~6000 s, this can come
+# down further.  Until then 10500 caps a runaway half an hour earlier without
+# touching the runs that were going to finish.
+#
+# The key is whitelisted per task in launch_utils.py (merged_config) - without
+# that line it is silently dropped.  Only this config sets it; the 2400 s
+# default is unchanged for the other 33.
+exec_alarm_seconds: 10500
 
 env:
   _target_: capx.envs.tasks.tactile.univtac_bulb_tightening.UniVTACBulbTighteningCodeEnv

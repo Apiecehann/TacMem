@@ -10,16 +10,13 @@ texture is rough or smooth, and gently place it on the matching pad:
   - Smooth texture → green pad
 
 Key rules:
-- Classify texture from the gel's marker-image anisotropy (get_tactile_data):
-  a rough surface imprints the gel with horizontal banding, so the row/column
-  gradient ratio climbs as the grip firms, while a smooth surface stays near
-  isotropic.  How far it climbs depends on how hard the gel is pressed, so
-  read it at two COMMANDED grip depths and compare the two — see the API docs
-  for the calibrated numbers.
-- Compute the placement height from the object poses/extents: prism and pads
-  have their origin at the bottom face and bbox_extent is the full size, so
-  rest the prism with position[2] = pad_pos[2] + pad_ext[2]. Verify the
-  descent before opening the gripper — never release from a height.
+- Texture is read from the gel's marker-image anisotropy (get_tactile_data),
+  and its size depends on how hard the gel is pressed — so it is read at two
+  COMMANDED grip depths and the two are compared. Which channel, which two
+  depths, and the calibrated values to split on are in the tactile skills at
+  the end of this prompt.
+- Place the prism with the placement recipe in those same skills: the task is
+  scored on where it ends up, upright and on the right pad.
 - Final placement: within 2 cm horizontally and 1 cm vertically, upright
   within 15°.
 
@@ -118,6 +115,3 @@ check_success()
 class UniVTACGraspClassifyCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ("texture", "servo")

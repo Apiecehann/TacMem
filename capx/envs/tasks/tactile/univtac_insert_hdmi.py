@@ -10,21 +10,17 @@ Objects (refer to them by these exact names):
 - "prism" — the HDMI plug.
 - "slot" — the HDMI socket on the table.
 
-The prism is already grasped by the gripper and held just above the slot.
-Keep the gripper closed — do not re-grasp.
+The prism is already grasped by the gripper and held just above the slot, and
+the plug starts already upright and roughly aligned — this is a lateral
+alignment job, not a re-orientation one.
 
-Key rules:
-- The plug starts already upright and roughly aligned. Correct only the lateral
-  (x/y) offset, then insert straight down in small steps. Do NOT rotate the
-  gripper to "fix" a small tilt — the plug is within tolerance, and rotating
-  swings the grasped plug off-target.
-- Judge "seated" from geometry: track the plug's depth with get_object_pose 
-  and stop once the plug origin is about 1 cm above the slot origin (its origin 
-  sits above the insertion tip). Descend in small steps and do not overshoot 
-  — over-inserting jams the plug and tips it over.
-- Watch the plug's orientation (quat_w) while descending. If it starts tilting
-  (quat_w drops below ~0.99) or stops descending, it is jammed on the socket
-  rim: lift it slightly, re-align laterally, then descend again.
+Judge "seated" from geometry: track the plug's depth with get_object_pose and
+stop once the plug origin is about 1 cm above the slot origin (its origin sits
+above the insertion tip).
+
+The insertion recipe — the step size, how to correct the lateral offset, and
+what a tilt or a stall on the socket rim means — is in the tactile skills at
+the end of this prompt.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """
@@ -54,6 +50,3 @@ check_success()
 class UniVTACInsertHDMICodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ()

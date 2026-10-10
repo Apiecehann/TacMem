@@ -15,8 +15,8 @@ Key rules:
 - object_b sits inside a recessed compartment with walls around it — that
   compartment is NOT its slot.  slot_b is the open pad next to the
   compartment.  Reach in from above and grasp object_b normally.
-- Verify every placement: descend until the object is just above its resting
-  height, then open the gripper — never release from a height.
+- Place both objects by the placement recipe in the tactile skills at the end
+  of this prompt. What is scored is where each one ends up.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """
@@ -103,6 +103,3 @@ print(f"Success: {success}")
 class UniVTACTactileTransferCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ()

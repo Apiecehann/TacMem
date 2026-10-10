@@ -200,3 +200,7 @@ extend-exclude = [
   "assets/ur5_pick_place/ur5e/*.obj",
   "assets/ur5_pick_place/robotiq_2f85/*.stl",
 ]
+"capx.tactile_skills" = [
+  "taxonomy.yaml",
+  "skills/*/*.md",
+]

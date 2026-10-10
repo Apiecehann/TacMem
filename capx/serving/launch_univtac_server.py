@@ -242,6 +242,19 @@ _MARKER_REFERENCE: dict[str, Any] | None = None
 # subsequent calls return object_pose + offset so a re-grasp tracks the object
 # wherever it has moved.  Cleared on every reset.
 _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+# Tasks whose pre_move does NOT leave the EE above the object, so the
+# EE-relative offset above has no meaning (the EE is wherever it reset to,
+# typically far from the object).  A *privileged* caller — one that already
+# reads ground truth — gets a real grasp pose for these instead: the object's
+# own pose from the simulator, plus the task's own grasp rule.  Maps task name
+# -> {object name: name of the task-module constant holding the grasp centre's
+# lift above the object origin}; the number is read off the task module so it
+# keeps a single owner.  Non-privileged callers never take this branch, which is
+# the whole point: the offset cache above is what keeps ground truth out of
+# their grasp poses.
+_GT_GRASP_RULES: dict[str, dict[str, str]] = {
+    "bulb_tightening": {"light_bulb": "GRASP_LOCAL_Z"},
+}
 # Durable episode video recorder: frames go to scratch (frames_root), and
 # episode.mp4 + index.json are assembled into the recording root on
 # finalize (episode_video / reset / shutdown).  See univtac_video.py.
@@ -622,7 +635,6 @@ class RotateGripperResponse(ActionResponse):
     grip_released: bool = False
     aborted: str | None = None
     reached: str | None = None
-    submitted: str | None = None
     trace: list[dict[str, Any]] | None = None
 
 
@@ -1706,11 +1718,10 @@ def _jsonable(value):
 def _sim_force_state() -> dict:
     """Return the force-task acceptance state.
 
-    Tasks built on ViTaForge's force-task contract keep their verdict in
-    ``self.measured`` / ``self.held_steps`` and gate ``check_success()``
-    behind an explicit submission, so ``/check_success`` alone shows nothing
-    about physical progress.  Returns ``available: False`` for tasks that are
-    not force tasks instead of raising.
+    Tasks built on ViTaForge's force-task contract keep their physical
+    progress in ``self.measured`` and their verdict in ``check_success()``.
+    Returns ``available: False`` for tasks that are not force tasks instead of
+    raising.
     """
     global _TASK
     if not hasattr(_TASK, "measured"):
@@ -1728,14 +1739,6 @@ def _sim_force_state() -> dict:
                 getattr(_TASK, "_probe_physical_complete", False)),
             "submission_requested": bool(
                 getattr(_TASK, "_submission_requested", False)),
-            # The END gesture counts consecutive stationary steps and submits
-            # at 180 (bulb_tightening.py:1739).  It restarts from zero whenever
-            # the 8-dim command moves by more than 0.005 rad, so this counter
-            # is the difference between a hold that is about to submit and one
-            # that is chattering against its own anchor.
-            "submission_stationary_steps": int(
-                getattr(_TASK, "_submission_stationary_steps", 0)),
-            "submission_stationary_needed": 180,
             "accepted_result": _jsonable(getattr(_TASK, "_accepted_result", None)),
             "monitor_active": bool(getattr(_TASK, "_monitor_bulb", False)),
             "reset_grip_released": bool(
@@ -1760,16 +1763,18 @@ def _sim_force_state() -> dict:
 
 
 def _sim_submit_episode() -> dict:
-    """Submit a force-task episode for scoring, then report the verdict.
+    """Finish a force-task episode and report the frozen verdict.
 
-    The force-task contract scores only after an explicit submission
-    (``_finish_bulb_episode``).  Its two in-tree callers are ``take_action``
-    (8-dim joint command held still for 180 ticks) and the expert
-    ``_play_once``; this server drives tasks through the atom API and calls
-    neither, so without this hook ``check_success()`` returns False forever.
-    Its verdict reaches the LLM through ``check_success_detail`` when the task
-    defines one — ``bulb_tightening`` did not until 2026-09-26, so before that
-    its submission answered with a bare ``False`` and a ``detail`` of None.
+    ``_finish_bulb_episode`` freezes the verdict, lights the scene and walks
+    out the terminal review; its in-tree callers are ``take_action`` (on a
+    physical failure), the expert ``_play_once`` and the review scenarios.
+    The server drives tasks through the atom API and calls none of them.
+
+    Since 2026-10-09 the *verdict* no longer needs it: ``check_success()``
+    reads the physical state whenever it is asked (the submission gate was
+    removed with the torque band), so ``/check_success`` alone answers.
+    This endpoint is kept for the terminal review and for freezing a state
+    before the review motions disturb it.
     """
     global _TASK
     if not hasattr(_TASK, "_finish_bulb_episode"):
@@ -1791,13 +1796,25 @@ def _sim_submit_episode() -> dict:
 # fracture is terminal for the whole process: it must not be reached to be
 # observed.
 _FEED_MAX_STEPS = 800
+# The other end of the same guard, and the one that costs more.  One iteration
+# is one `_ik_to_center`, which refuses a target needing more than 0.08 rad of
+# joint motion (bulb_tightening.py:1940) -- and that is not a failed call but a
+# latched task failure, so a count too coarse for the angle ends the episode
+# (2026-10-07: 30 deg asked for in 2 iterations, refused at 15.0 deg on the
+# first one).  Raised rather than refused, at the 2.5 deg an iteration the
+# empty-hand wind-back runs at; 1.5 deg is the working blocks' own
+# granularity, and the ceiling itself is 4.6 deg.
+_FEED_MIN_STEP_RAD = float(np.radians(2.5))
 _FEED_SAMPLE_EVERY = 2
 _FEED_PAD_ABORT_N = 128.0
 # Command scale once the seat takes load, mirroring the profile's
-# progressive_seating_speed (bulb_tightening.py:2006-2011).  The admissible
-# torque band is target +/- tolerance -- 0.108..0.132 Nm at the reference
-# profile -- while over_torque_Nm is 0.15, so the approach has to be slow or a
-# single sample can jump clean out of the band into the failure.
+# progressive_seating_speed (bulb_tightening.py:2006-2011).  Once the thread
+# bottoms out the commanded feed has nowhere to go and turns into force on the
+# glass, and the whole window from first seat contact to the 128 N pad guard is
+# about 1.3 mm wide -- a fifth of one 30 deg block at the reference lead -- so
+# the last stretch has to be spent in smaller steps.  (The 0.108..0.132 Nm
+# torque band this used to protect went with the criteria on 2026-10-09; what
+# it protects now is the seat limits, 0.15 Nm over-torque and the pad guard.)
 _FEED_SEATING_SCALE = 0.2
 # The helix commands the pose itself, so nothing else records a frame while it
 # turns -- the Jacobian path (_sim_rotate_gripper) logs its own rotate:step
@@ -1832,15 +1849,15 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
     recomputed from the live gripper-centre pose, so the helix follows the
     bulb rather than a precomputed path.
 
-    Ends on the task's own two terminal conditions, reported separately
-    because they mean opposite things.  ``reached`` is the finished job:
-    sensed torque at ``target_torque`` with the seat loaded, which is exactly
-    ``_screw_segment``'s own stop (bulb_tightening.py:2001) and the state
-    ``held_steps`` then scores.  Stopping on seat force alone would land with
-    a torque far below the band that ``check_success`` requires, so the two
-    are checked together.  ``aborted`` is a physical overload or a lost grip,
-    and a run that stops that way is ``success: False`` because the stop *is*
-    the finding.
+    Ends on the task's own terminal condition, reported through ``reached``:
+    the part has bottomed -- it has taken the whole thread's travel and is
+    pressed onto its seat.  Since 2026-10-09 that is the acceptance bar itself
+    (``check_success`` scores the seat, not a torque), so ``reached`` is the
+    finished job and the signal to stop turning.  It is checked a millimetre
+    short of the scorer's own two-millimetre tolerance, so stopping on it
+    settles the criterion with margin.  ``aborted`` is a physical overload or
+    a lost grip, and a run that stops that way is ``success: False`` because
+    the stop *is* the finding.
 
     Once the seat takes load the command is scaled by
     ``_FEED_SEATING_SCALE`` and sampled every iteration instead of every
@@ -1859,9 +1876,15 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
     Args:
         object_name: The name of the object being held (reporting only).
         total_angle_rad: Signed total twist, wound the world-z axis.
-        steps: Servo iterations.  One iteration is one IK step; 120 covers
-            180 deg at the env's granularity.  Clamped to
-            ``_FEED_MAX_STEPS`` so a careless call cannot pin the main thread.
+        steps: Servo iterations.  One iteration is one IK step carrying
+            1 / steps of the twist; 120 of them cover 180 deg at the env's
+            granularity.  A careless count is clamped rather than refused at
+            both ends: an oversized one is cut to ``_FEED_MAX_STEPS`` so it
+            cannot pin the main thread, and an over-coarse one is raised to
+            at least one iteration per ``_FEED_MIN_STEP_RAD``, because a
+            single IK step that asks a joint for more than 0.08 rad is
+            refused, and that refusal latches the task for the rest of the
+            episode.
         lead_m: Axial advance per full turn, in metres.  The thread's own
             lead: the bulb advances this far per 2*pi of twist.
     """
@@ -1878,25 +1901,34 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
 
     from envs.utils.transforms import Pose
 
-    steps = max(1, min(int(steps), _FEED_MAX_STEPS))
     magnitude = abs(float(total_angle_rad))
     spin = 1.0 if float(total_angle_rad) >= 0.0 else -1.0
-    # A zero twist is a constant-pose hold, not an approach.  The two share
-    # this loop, and their stopping conditions are opposite: the approach ends
-    # when the thread reaches torque, while the hold *starts* from exactly that
-    # state and has to sit there until the END gesture fires.  Without this the
-    # hold would sample at iteration 0, see torque already at target with the
-    # seat loaded, declare itself reached, and never hold at all.
+    # Both clamps guard against a careless count and they fail in opposite
+    # directions: too many iterations pins the main thread, too few latches
+    # the task.  A hold asks for a duration rather than an angle and derives
+    # nothing from one -- magnitude 0 leaves its count exactly as asked.
+    steps = max(1, min(int(steps), _FEED_MAX_STEPS))
+    steps = max(steps, int(np.ceil(magnitude / _FEED_MIN_STEP_RAD)))
+    # A zero twist is a constant-pose hold, not an approach.  Nothing waits on
+    # a hold any more (the submission gesture went with the criteria on
+    # 2026-10-09): it just steps physics for the iterations it was asked for.
+    # It must not report ``reached``, though -- an already-seated part is
+    # exactly the state a hold starts from, and a hold declares nothing.
     holding = magnitude <= 1e-9
     start = _TASK._robot_manager.get_gripper_center_pose()
     params = getattr(_TASK, "params", None) or {}
     target_torque = float(getattr(_TASK, "target_torque", 0.12))
     over_torque = float(params.get("over_torque_Nm", 0.15))
+    # The thread's own travel, from the task's spec: the depth a bottomed part
+    # has taken.  ``inf`` when the task has no spec, which no advance reaches,
+    # so a spec-less task simply never reports ``reached``.
+    travel = float(getattr(getattr(_TASK, "thread_spec", None),
+                           "nominal_free_travel_m", np.inf))
 
     trace: list[dict[str, Any]] = []
     aborted: str | None = None
     reached: str | None = None
-    submitted: str | None = None
+    ended: str | None = None
     completed = 0
     step_angle = magnitude / steps
     angle = 0.0
@@ -1924,11 +1956,10 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
             #
             #  * The episode already ended.  take_action returns *before*
             #    super().take_action once _accepted_result is set
-            #    (bulb_tightening.py:1721), and take_force_task_action does the
-            #    same once eval_success is set or the step budget is spent
-            #    (_force_task_utils.py:834).  This is the expected end of a
-            #    hold -- including, and especially, the successful one, where
-            #    the END gesture has just fired.
+            #    (bulb_tightening.py:1724), which since 2026-10-09 happens on a
+            #    physical failure, and take_force_task_action does the same once
+            #    eval_success is set or the step budget is spent
+            #    (_force_task_utils.py:834).
             #  * Nothing ended and nothing moved: the silent spent-budget
             #    no-op, the same shape as move_delta's MIN_TRANS.
             #
@@ -1939,8 +1970,8 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
             # step_count on both branches.
             if (getattr(_TASK, "_accepted_result", None) is not None
                     or bool(getattr(_TASK, "eval_success", False))):
-                submitted = (f"episode ended at iteration {index} of {steps} "
-                             f"(accepted={getattr(_TASK, '_accepted_result', None)})")
+                ended = (f"episode ended at iteration {index} of {steps} "
+                         f"(accepted={getattr(_TASK, '_accepted_result', None)})")
                 break
             aborted = (f"servo is a no-op: step_count stayed at {steps_before} "
                        f"(take_action_cnt "
@@ -1967,18 +1998,28 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
                 "step": int(_TASK.step_count),
                 "angle_deg": float(np.rad2deg(angle)),
                 "pad_max_N": float(pad),
-                # Stationary-step progress toward the END gesture.  Only moves
-                # on a hold; on an approach it stays at 0 because the command
-                # keeps changing.
-                "stationary": int(getattr(_TASK, "_submission_stationary_steps", 0)),
                 **_jsonable({k: row[k] for k in _FEED_TRACE_KEYS if k in row}),
             })
             if not seating and (torque_nm > target_torque / 3.0 or seat_n > 2.0):
                 seating = True
                 scale = _FEED_SEATING_SCALE
-            if not holding and torque_nm >= target_torque and seat_n > 3.0:
-                reached = (f"torque {torque_nm:.4f} Nm at the {target_torque:.3f} Nm "
-                           f"target with {seat_n:.2f} N on the seat")
+            # Bottomed: the part has taken the whole thread's travel and is
+            # loaded on its seat.  The travel comes from the task's own thread
+            # spec, so this is the same quantity ``check_success`` scores --
+            # read a millimetre early so that stopping here settles the
+            # scorer's two-millimetre tolerance with margin.  A loosening run
+            # cannot get here: it moves the part the other way, so the advance
+            # stays below the initial one.  Measured on seed 1: the advance
+            # passes the travel a millimetre before the seat is even touched
+            # (0.02 N at travel - 1 mm), and the seat itself only loads at
+            # travel + 0.3 mm, so the seat term is what dates the event.
+            if (not holding and seat_n > 3.0
+                    and float(row.get("formal_advance_m", 0.0)) >= travel - 0.001):
+                # No numbers in the message on purpose: the thread's travel is
+                # a hidden task parameter, like the lead, and ``reached`` is
+                # not the place to hand it over.
+                reached = (f"the bulb has bottomed and is loaded on its seat "
+                           f"({seat_n:.2f} N)")
                 break
             if pad >= _FEED_PAD_ABORT_N:
                 aborted = (f"pad force {pad:.1f} N reached the "
@@ -2002,8 +2043,8 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
         "plan_success": bool(getattr(_TASK, "plan_success", False)),
         "message": (f"Helix seated after {completed}/{steps} iterations: {reached}"
                     if reached else
-                    f"Hold ended after {completed}/{steps} iterations: {submitted}"
-                    if submitted else
+                    f"Helix stopped after {completed}/{steps} iterations: {ended}"
+                    if ended else
                     "OK" if aborted is None else
                     f"Helix stopped after {completed}/{steps} iterations: {aborted}"),
         "step": int(getattr(_TASK, "step_count", step_count)),
@@ -2014,7 +2055,6 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
         "grip_released": bool(getattr(_TASK, "_reset_grip_released", False)),
         "aborted": aborted,
         "reached": reached,
-        "submitted": submitted,
         "trace": trace,
     }
 
@@ -2096,8 +2136,14 @@ def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
             "tactile": _sim_get_tactile_data()}
 
 
-def _sim_get_grasp_pose(object_name: str) -> dict:
+def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> dict:
     """Return a grasp pose (position + quaternion WXYZ) for an object on the table.
+
+    ``allow_ground_truth`` marks a privileged caller (one whose object poses
+    already come from the simulator).  When it is set and the task declares a
+    rule in ``_GT_GRASP_RULES`` for this object, the pose is built from the
+    object's own pose plus the task's grasp rule and the EE-relative cache below
+    is bypassed — the only case where the compromise in the NOTE applies.
 
     On the FIRST call for an object — while the EE still sits at the valid
     pre-grasp pose left by ``pre_move`` — we cache the object-relative offset
@@ -2123,6 +2169,45 @@ def _sim_get_grasp_pose(object_name: str) -> dict:
         return {"position": None, "quaternion_wxyz": None}
 
     object_pos = np.asarray(obj_data["position"], dtype=np.float64)
+
+    if allow_ground_truth:
+        # The task's own module — the one its class was defined in, so the
+        # constant read here cannot come from a different fork of the env.
+        task_module = sys.modules.get(type(_TASK).__module__)
+        local_z_name = _GT_GRASP_RULES.get(_TASK_NAME, {}).get(object_name)
+        local_z = (
+            getattr(task_module, local_z_name, None)
+            if task_module is not None and local_z_name else None
+        )
+        if local_z_name is not None and local_z is None:
+            # A rule that names a constant the task does not have would
+            # otherwise degrade silently to the EE-relative pose.
+            logger.warning(
+                "Ground-truth grasp rule for '%s' names '%s', which %s does "
+                "not define — falling back to the EE-relative pose",
+                object_name, local_z_name, type(_TASK).__module__,
+            )
+        if local_z is not None:
+            from envs.utils.transforms import Pose
+            # Grasp centre straight above the object origin, wrist orientation
+            # kept as it stands — the task's own approach does exactly this and
+            # warns against a constructed top-down quaternion, which puts the
+            # GelSight wrist near a singularity and makes the planner refuse.
+            # Rebuilt from the current object pose on every call, so it tracks
+            # the object after a re-grasp.
+            centre = Pose(
+                object_pos + np.array([0.0, 0.0, float(local_z)]),
+                _TASK._robot_manager.get_gripper_center_pose().q,
+            )
+            ee_pose = _TASK._robot_manager.gripper_center_to_ee(centre)
+            logger.info(
+                "Grasp pose for '%s': ground truth %s + local z %.4f -> grasp %s",
+                object_name, object_pos, float(local_z), np.asarray(ee_pose.p),
+            )
+            return {
+                "position": np.asarray(ee_pose.p, dtype=np.float64).tolist(),
+                "quaternion_wxyz": np.asarray(ee_pose.q, dtype=np.float64).tolist(),
+            }
 
     if object_name in _GRASP_OFFSET:
         offset, grasp_quat_wxyz = _GRASP_OFFSET[object_name]
@@ -2509,10 +2594,12 @@ def check_success():
 
 # The two endpoints below are the force-task port's contract, kept deliberately
 # (decided 2026-09-26 after the feasibility spike).  ViTaForge's force tasks keep
-# their verdict in ``self.measured``/``self.held_steps`` and gate
-# ``check_success()`` behind an explicit submission, so neither ``/check_success``
-# nor any motion endpoint can show physical progress or score an episode without
-# them.  They are additive and touch no existing path.
+# their physical progress in ``self.measured`` and their verdict in
+# ``check_success()``, so neither ``/check_success`` nor any motion endpoint can
+# show that progress without them.  They are additive and touch no existing path.
+# (Until 2026-10-09 a submission gate kept ``/check_success`` answered False
+# until ``/submit_episode`` was called; the gate went with the torque band, so
+# ``/check_success`` now answers from the physical state alone.)
 @app.get("/force_state")
 def force_state():
     """Force-task acceptance state (see _sim_force_state)."""
@@ -2593,15 +2680,24 @@ def health():
 
 
 @app.get("/grasp_pose", response_model=PoseResponse)
-def get_grasp_pose(object_name: str):
-    """Return a kinematically-feasible grasp pose for a named object."""
-    _grasp_pose_args = {"object_name": object_name}
+def get_grasp_pose(object_name: str, allow_ground_truth: bool = False):
+    """Return a kinematically-feasible grasp pose for a named object.
+
+    ``allow_ground_truth`` is set by privileged clients only (the ones whose
+    get_object_pose already reads /object_pose); it lets the server build the
+    pose from ground truth for tasks whose pre_move does not anchor the EE over
+    the object.  Defaults to false, so the non-privileged perception line keeps
+    exactly the pose it got before.
+    """
+    _grasp_pose_args = {"object_name": object_name,
+                        "allow_ground_truth": allow_ground_truth}
     if _TASK is None:
         action_log.log_query_failure("grasp_pose", "Task not initialized",
                                      args=_grasp_pose_args)
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
-        result = _run_on_main(_sim_get_grasp_pose, object_name, timeout=30.0)
+        result = _run_on_main(_sim_get_grasp_pose, object_name,
+                              allow_ground_truth, timeout=30.0)
     except TimeoutError:
         action_log.log_query_failure("grasp_pose", "Simulation busy — retry in a few seconds",
                                      args=_grasp_pose_args)

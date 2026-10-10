@@ -37,6 +37,3 @@ print(f"Tactile: L_contact={tactile['left_contact']} R_contact={tactile['right_c
 class UniVTACLiftCanCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ()

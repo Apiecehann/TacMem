@@ -1,5 +1,4 @@
 import inspect
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import lru_cache
@@ -9,54 +8,6 @@ import numpy as np
 from PIL import Image
 
 from capx.envs.base import BaseEnv
-
-# A docstring may wrap optional paragraphs in `[section:tag]` / `[/section]`.
-# Such a block is delivered only to APIs whose `doc_sections` contains `tag`,
-# which lets one shared API class give each task just the reading recipes it
-# needs.  Unmarked text is always delivered, and the markers are always
-# stripped, so they never reach a prompt.
-_SECTION_OPEN = "[section:"
-_SECTION_CLOSE = "[/section]"
-
-
-def _apply_doc_sections(doc: str, allowed: frozenset[str] | None) -> str:
-    """Drop marked sections, keeping only the tags in allowed.
-
-    Args:
-        doc: A dedented docstring, optionally containing section markers.
-        allowed: Section tags to keep.  None keeps every section, i.e. the
-            whole docstring with the markers stripped.
-
-    Returns:
-        The docstring with unselected sections and all markers removed.
-    """
-    kept: list[str] = []
-    keeping = True
-    dropped = False
-    for line in doc.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(_SECTION_OPEN) and stripped.endswith("]"):
-            tag = stripped[len(_SECTION_OPEN) : -1]
-            keeping = allowed is None or tag in allowed
-            dropped = dropped or not keeping
-            continue
-        if stripped == _SECTION_CLOSE:
-            keeping = True
-            continue
-        if not keeping:
-            dropped = True
-            continue
-        kept.append(line)
-    text = "\n".join(kept) + ("\n" if doc.endswith("\n") else "")
-    if not dropped:
-        # Nothing was removed, so leave the text byte-for-byte alone: a full
-        # profile has to reproduce the docstring exactly.
-        return text
-    # Collapse the blank runs the removed sections left behind -- including a
-    # trailing one, when the section that went was the last thing in the doc.
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.rstrip("\n") + ("\n" if doc.endswith("\n") else "")
-
 
 class ApiBase(ABC):
     """Base class for tool APIs.
@@ -96,19 +47,13 @@ class ApiBase(ABC):
     # knowing about them.
     _prompt_hidden: set[str] = set()
 
-    # Optional API-doc sections this instance delivers: a subset of the
-    # `[section:...]` tags its docstrings use.  None (the default) delivers
-    # every section, i.e. opt-in per task -- see CodeExecutionEnvBase, which
-    # sets this from the task's `api_doc_sections` class attribute.
-    doc_sections: frozenset[str] | None = None
-
     def __init__(self, env: BaseEnv) -> None:
         self._env = env
         self._webui_enabled: bool = False
 
     def _doc_text(self, fn: Callable[..., Any]) -> str:
-        """Docstring of fn, restricted to this instance's doc_sections."""
-        return _apply_doc_sections(inspect.getdoc(fn) or "", self.doc_sections)
+        """Docstring of fn, as delivered to the prompt."""
+        return inspect.getdoc(fn) or ""
 
     def enable_webui(self, enabled: bool = True) -> None:
         """Enable or disable web UI execution logging for this API instance."""

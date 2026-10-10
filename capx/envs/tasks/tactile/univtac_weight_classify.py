@@ -16,34 +16,16 @@ The catch: the other block is parked a metre away, out of reach, so there is no
 reference object to compare against. The reading has to be absolute, taken the
 same way every trial.
 
-How to feel the weight:
-- The weight is in the GEL, not in how far anything moved. Hang the block off
-  a light grip and the load has to be carried by friction at the fingertips,
-  which drags the marker pattern sideways - how far it drags IS the weight.
-  close_gripper says which grip to use and get_tactile_data documents the
-  channels; both spell out how to turn readings into a weight reading.
-- Take the reading as a difference within ONE grasp: sample the gel right
-  after closing (the block is still resting on the table), then again once it
-  hangs still after a few small lift steps. The squeeze the close itself
-  produced is far larger than the load's share and changes with where the
-  grasp landed, so a single raw reading means nothing on its own.
-- Do NOT judge from the closing depth or the gripper opening: the rigid block
-  pins the fingers, so the servo lands on the same depth whatever it weighs.
-- If the block slips out of the grip during the lift, close a little firmer
-  and measure again - a dropped block is not a weight reading.
+Your fingertips are the instrument: the weight is in the gel, not in how far
+anything moved, and a single raw reading means nothing on its own. Which grip
+to use, how to take the reading, and how to turn it into a weight are in the
+tactile skills at the end of this prompt.
 
-After classifying, carry the block to its plate:
-- Move it in world-frame steps (move_delta), not by commanding an absolute
-  end-effector pose. The block is held rigidly, so a world delta moves it by
-  exactly that delta and leaves the wrist alone; re-commanding the wrist while
-  the block is touching down twists it in the light grip and tips it over.
-- Block and plates have their origin at the bottom face and bbox_extent is the
-  full size, so seat the block at position[2] = plate_pos[2] + plate_ext[2].
-  Step the descent down until it is seated - never drop it from a height.
-- You do not have to let go. The gel can hold on to a block this light, and
-  opening the jaws then drags it off the plate or tips it over. The task is
-  scored on where the block ends up, so seat it on the right plate and stop,
-  with the gripper still closed.
+After classifying, carry the block to its plate. The placement recipe - how to
+move a held block, where to stop, and whether to let go - is in those same
+skills. This task is scored on where the block ends up: seat it on the right
+plate, upright, and stop.
+
 Final placement: within 4 cm horizontally and 1 cm vertically, upright within 15
 degrees.
 
@@ -169,6 +151,3 @@ check_success()
 class UniVTACWeightClassifyCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
-    # Optional API-doc sections this task's LLM needs; the rest of the
-    # shared UniVTACTactileApi doc is pruned.  See DOC_SECTION_TAGS.
-    api_doc_sections = ("servo", "weight")
