@@ -118,6 +118,6 @@ output_dir: ./outputs/univtac_bulb_tightening
 # a run here says nothing about any seed but this one - and the server serving
 # it cannot reset to another.  Move both numbers together AND restart the server
 # on the same seed for each of the five rounds.
-trials: 1
-resume_idx: 1
+trials: 19
+resume_idx: 19
 num_workers: 1  # Isaac Sim is not parallel-safe

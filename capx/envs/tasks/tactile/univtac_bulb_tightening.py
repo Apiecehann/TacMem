@@ -22,9 +22,8 @@ asks is answerable from them, and that is where the answers should come from:
 - How fast to descend. The lead is not given either, and it varies with the
   bulb, so it has to be measured rather than assumed - and the pads are what
   measure it. The skills below give the method.
-- Whether it is in. The seat is a reading, not a count of turns, and it has to
-  clear two conditions before it can be believed. Both thresholds are in the
-  skills below.
+- Whether it is in. The seat is a reading, not a count of turns, and the skills
+  below say when it can be believed.
 
 The wrist runs out of range soon after a third of a turn, so a full insertion
 is several segments with the hand re-set in between. Going past that range is
@@ -57,8 +56,9 @@ BULB = "light_bulb"
 # What the pads see is the SLIDE between gel and glass, and it is unambiguous
 # only inside one marker-lattice pitch (~1.5 mm): past half of that the tracker
 # settles on the neighbouring marker and returns a wrong number silently, sign
-# included.  A 30 deg block slides 0.8 mm at the longest admissible lead, so 30
-# is the longest twist whose own reading can be believed.
+# included.  A 30 deg block slides 0.66 mm at the longest admissible lead (its
+# whole commanded descent, if the thread holds the bulb back), so 30 is the
+# longest twist whose own reading can be believed.
 BLOCK_DEG = 30.0
 # 180 was tried and refused.  Seed 1, feed 4.271 against a true lead of 4.3623,
 # carried four blocks then refused 15 deg into the fifth -- 135 deg from the
@@ -74,10 +74,12 @@ UNWIND_DEG_PER_STEP = 2.5
 # 0.5 rad per-call cap, and the 0.02 rad below which it refuses as a no-op.
 UNWIND_CHUNK_DEG = 25.0
 UNWIND_MIN_DEG = 2.0
-# Free travel is 0.0123 m and the lead is 0.0123 / U(1.12, 2.88), so the turns
-# an insertion needs ARE that draw: 1.12 to 2.88.  The worst seed wants 2.88
-# turns (1037 deg) plus the probe and the seat's own overshoot = 38 blocks; 60
-# leaves slack for re-tried blocks and for a bulb turning more than nominal.
+# Free travel is 0.0065 m -- the seat was raised on 2026-10-10, halving it from
+# the 0.0123 m it had been.  The lead is 0.0123 / U(1.12, 2.88), so the turns an
+# insertion needs are travel / lead, worst at the shortest admissible lead:
+# 6.5 / 4.271 = 1.52 turns (548 deg).  That, plus the probe and the seat's own
+# overshoot, is 25 blocks; 60 leaves slack for re-tried blocks and for a bulb
+# turning more than nominal.
 MAX_BLOCKS = 60
 
 # --- Reading the lead off one twist -------------------------------------------
@@ -89,15 +91,17 @@ MAX_BLOCKS = 60
 #
 #     lead = feed + slide * 360 / deg
 #
-# 11.1 mm/turn is past the sampler's 4.271-10.982, so every seed is over-lead on
+# 11.1 mm/turn is past the sampler's 4.271-7.935, so every seed is over-lead on
 # the first block.  The reading is the pads' worst, though (seed 1: 0.632 mm read
 # for a true 0.561 mm slide, giving 3.51 against a 4.3623 pitch), so the grasp
 # slope below is what actually settles the feed.
 LEAD_PROBE_MM = 11.1
-# lead = 0.0123 / nominal_turns: the support of the sampler, not a guess at the
+# lead = 0.0123 / nominal_turns, and the sampler re-draws until nominal is at
+# least 1.55 turns (envs/bulb_tightening.py:728-745), so the support is
+# [0.0123/2.88, 0.0123/1.55] -- the sampler's own range, not a guess at the
 # answer.  A correction that lands on one of these has failed, and says so.
 LEAD_TRUE_MIN_MM = 4.271
-LEAD_TRUE_MAX_MM = 10.982
+LEAD_TRUE_MAX_MM = 7.935
 
 # --- Bringing the feed onto the pitch -----------------------------------------
 #
@@ -164,11 +168,24 @@ SEAT_COH_MIN = 0.70
 SEAT_DESCENT_FRAC = 0.10
 # ... and the seat cannot be called before the bulb is deep enough to have
 # reached one.  Counted on the HAND's descent, which is commanded and therefore
-# exact (the pads' own count finished 17.7 per cent over on seed 1).  The bulb
-# advances 0.80 of what the hand sinks on seeds 1 and 3 alike, so 8 mm of hand is
-# ~6.4 mm of bulb -- past v7's and v10's early stops (3.34, 3.65 mm) and short of
-# the 11 mm the criterion will not score below.
-ARM_DESCENT_MM = 8.0
+# exact (the pads' own count finished 17.7 per cent over on seed 1).  Two things
+# bound it from either side, and both are in hand millimetres:
+#
+# Above it, the first grasp turns at the probe's 11.1 mm/turn, and an over-lead
+# block slides the pads at a fraction of its own descent that looks exactly like
+# a seat -- so the arm has to clear the whole of that grasp: 120 deg at 11.1 is
+# 3.7 mm of hand whatever the thread does.
+#
+# Below it, the bulb is home when the HAND has sunk the probe's 3.7 mm plus the
+# travel at a matched feed -- 7.5 mm on the deepest sampled lead (7.935 mm,
+# home at 6.5 mm of bulb) and 8.8 mm on the shallowest (4.271).  Arming at or
+# past that leaves no block to read the seat on.
+#
+# 5.5 sits between the two with a block or two of margin either way.  It used to
+# be 8.0, which was most of the way to home while the travel was 13 mm; the seat
+# was raised on 2026-10-10 (seat_top_m .022 -> .0285) and 8.0 would now arm at
+# the bulb, or never.
+ARM_DESCENT_MM = 5.5
 
 WIGGLE_DEG = 4.0
 WIGGLE_ITER = 3
@@ -180,7 +197,7 @@ LEAD_INIT_M = 0.0123 / 2.0
 
 # The direction decision's own legs.  The 4 deg wiggle is not the decision: it
 # separates the legs by only 0.05-0.12 mm, one or two pixels, under the
-# tracker's own scatter.  At 30 deg the separation is lead/6, 0.71-1.83 mm.
+# tracker's own scatter.  At 30 deg the separation is lead/6, 0.71-1.32 mm.
 # DIR_DEG_BIG is the one widening allowed if they come back close.
 DIR_DEG = 30.0
 DIR_DEG_BIG = 45.0
@@ -610,10 +627,11 @@ else:
                     # taking the bulb the glass keeps pace with the hand, or
                     # beats it; a glass that has stopped has a slide collapsed
                     # to the whole commanded descent, running the other way.
-                    # Gated on depth (13 mm is fixed geometry, so a bulb a few
-                    # mm in cannot be seated -- v10 spent eight blocks
-                    # tightening a bulb 3.0 mm into that 13), on pads the run
-                    # has given up on, and on confidence in the reading.
+                    # Gated on depth (the travel is fixed geometry, so a bulb a
+                    # few mm in cannot be seated -- v10 spent eight blocks
+                    # tightening a bulb 3.0 mm into the 13 mm travel of the
+                    # day), on pads the run has given up on, and on confidence
+                    # in the reading.
                     if not pads_blind and sum_descent_mm >= ARM_DESCENT_MM:
                         if not seat_armed:
                             seat_armed = True
@@ -754,3 +772,54 @@ else:
 class UniVTACBulbTighteningCodeEnv(CodeExecutionEnvBase):
     prompt = PROMPT
     oracle_code = ORACLE_CODE
+
+
+class UniVTACBulbTighteningPerceptionCodeEnv(UniVTACBulbTighteningCodeEnv):
+    """The bulb on the perception line (``UniVTACPerceptionApi``).
+
+    Same task and the same tactile routine; one skill is withheld.
+    ``bulb-grasp-pose`` tells the run to ask ``sample_grasp_pose`` for the
+    bulb's grasp pose after every re-grasp, and that recipe is the server's
+    ground-truth branch (``_GT_GRASP_RULES``, ``launch_univtac_server.py``).
+    The perception API class turns that branch off (``_ground_truth_grasp =
+    False``), so on this line the same call hands back the hand's own parked
+    pose instead of the bulb's -- the 2026-10-05 failure, where the grasp
+    landed 63 mm off the bulb and closing on air ended the episode.  The
+    config that uses this class carries the perception-side grasp recipe in
+    its own ``prompt:`` block instead.
+
+    The tuple is the library's bulb routing minus that one skill.  It is
+    written out rather than derived so the delivered set can be read off the
+    class; `test_the_only_hook_override_is_the_perception_bulb_variant`
+    fails if the two sets ever drift apart.
+    """
+
+    tactile_skills = (
+        # act -- everything routed to the bulb except bulb-grasp-pose
+        "bulb-close-force",
+        "descent-until-contact",
+        "feed-must-match-lead",
+        "lattice-pitch-budget",
+        "lead-by-overshoot",
+        "mirrored-shear-slide",
+        "one-call-approach",
+        "preserve-existing-grasp",
+        "reflex-stop-on-events",
+        "seat-by-slide-collapse",
+        "small-step-insertion",
+        "thread-direction-by-legs",
+        "wrist-limit-segmentation",
+        # protocol
+        "channel-selection",
+        "differential-across-states",
+        "grasp-verification",
+        "no-absolute-without-reference",
+        "regrasp-after-slip",
+        "tactile-cannot-locate",
+        # sense
+        "confidence-gate",
+        "contact-flag-is-range",
+        "depth-grip-scale",
+        "shear-vs-displacement",
+        "slip-pair-baseline",
+    )

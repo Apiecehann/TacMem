@@ -44,9 +44,10 @@ _READ_TIMEOUT = 1800.0
 # Scalar tactile fields returned by the motion primitives (goto_pose,
 # move_delta, open/close_gripper, rotate_gripper).  Every reading this API
 # documents is built from these — contact and depth (hardness), marker shear
-# (weight), marker anisotropy (texture) — so a close or a lift carries its own
-# reading instead of forcing a get_tactile_data() call straight afterwards.
-# The images are the one thing withheld: those are what that call is for.
+# (weight), marker anisotropy and imprint relief (texture) — so a close or a
+# lift carries its own reading instead of forcing a get_tactile_data() call
+# straight afterwards.  The images are the one thing withheld: those are what
+# that call is for.
 _MOTION_TACTILE_FIELDS = (
     "left_contact",
     "right_contact",
@@ -60,7 +61,22 @@ _MOTION_TACTILE_FIELDS = (
     "left_marker_shear_dy",
     "right_marker_shear_dx",
     "right_marker_shear_dy",
+    "left_height_roughness_mm",
+    "right_height_roughness_mm",
 )
+
+
+def _settled_note(data: dict) -> str:
+    """The server's success note, ready to append to a motion tool's print.
+
+    A motion that succeeds normally answers "OK".  The blind-ball adapter
+    also reports a move that came to rest a few millimetres short of its goal
+    as executed, and says where the hand actually stopped; that sentence is a
+    fact about the world the caller acts on, so it goes out with the tool's
+    own line instead of staying in the server log.
+    """
+    note = (data or {}).get("message") or ""
+    return f" - {note}" if note and note != "OK" else ""
 
 
 def _trim_motion_tactile(data: dict) -> dict:
@@ -156,7 +172,6 @@ class UniVTACTactileApi(ApiBase):
             "open_gripper": self.open_gripper,
             "close_gripper": self.close_gripper,
             "get_tactile_data": self.get_tactile_data,
-            "detect_contact": self.detect_contact,
             "detect_slip": self.detect_slip,
             "get_object_pose": self.get_object_pose,
             "sample_grasp_pose": self.sample_grasp_pose,
@@ -312,8 +327,13 @@ class UniVTACTactileApi(ApiBase):
 
         This commands the END-EFFECTOR, not a held object: the two differ by
         the grasp offset, so a target for a held object is not a target for
-        this call.  When the commanded pose would drive a held object into the
-        table, the planner refuses with "Motion planning failed".
+        this call.  The position is the wrist flange; the gripper centre lies
+        0.131 m from it along the hand's own z axis, toward the fingers, and
+        the pads reach about 2.5 mm further along that axis.  With the fingers
+        pointing down, the lowest point of the pads is therefore about 0.134 m
+        below the commanded position.  When the commanded pose would drive a
+        held object into the table, the planner refuses with
+        "Motion planning failed".
 
         Args:
             position: (3,) XYZ in meters.
@@ -337,7 +357,8 @@ class UniVTACTactileApi(ApiBase):
             },
         )
         print(f"Moved to position={np.round(position, 3)} "
-              f"quat_w={quaternion_wxyz[0]:.3f} z_approach={z_approach}")
+              f"quat_w={quaternion_wxyz[0]:.3f} z_approach={z_approach}"
+              + _settled_note(data))
         return _trim_motion_tactile(data.get("tactile", {}))
 
     def move_delta(
@@ -390,7 +411,8 @@ class UniVTACTactileApi(ApiBase):
             },
         )
         print(f"Moved delta: dx={dx:.3f} dy={dy:.3f} dz={dz:.3f} "
-              f"drx={drx:.3f} dry={dry:.3f} drz={drz:.3f} coord={coord}")
+              f"drx={drx:.3f} dry={dry:.3f} drz={drz:.3f} coord={coord}"
+              + _settled_note(data))
         return _trim_motion_tactile(data.get("tactile", {}))
 
     def move_reflexive(
@@ -501,18 +523,30 @@ class UniVTACTactileApi(ApiBase):
         force_threshold is a gel-depth target in mm, where depth DECREASES as
         contact hardens (see get_tactile_data).  Lower values grip firmer.
 
+        With adaptive=True (the default) the close is judged by the gel depth
+        it reached, so a close that meets nothing never reaches the target and
+        raises "Gripper action failed" instead of returning a far-plane
+        reading.  adaptive=False commands the finger travel directly: a close
+        that meets nothing returns the far-plane reading, and one an object
+        stops short of the commanded opening raises, the message carrying the
+        opening it landed on.  A raise is not a lost reading: the fingers stay
+        where the object stopped them, and get_tactile_data returns what the
+        pads see at that stopping point.
+
         Args:
             force_threshold: (float, optional) Target gel deformation depth in
                 mm. Lower values = firmer/deeper grip. Below ~26.5 mm the depth
                 is one the servo can never reach on a compliant object, and the
                 close fails outright rather than stopping short. An explicit
                 value switches the close to a servoed landing: the fingers
-                micro-step onto the target and the released depth comes back at
-                it (spread ~±0.05 mm), so the reading after the close is the
-                reading that was asked for. It gives up on an asymmetric or
-                wedged grasp, where the fingers stop wherever they jammed. None
-                uses the task default (firm), which is not servoed, lands near
-                25.5 mm and varies from one close to the next.
+                micro-step onto the target and the released depth comes back
+                close to it — not exactly: 26.23, 26.32 and 26.68 were
+                measured around a 26.5 target — so check the reading against a
+                narrow band rather than one exact value. It gives up on an
+                asymmetric or wedged grasp, where the fingers stop wherever
+                they jammed. None uses the task default (firm), which is not
+                servoed, lands near 25.5 mm and varies from one close to the
+                next.
             position: (float, optional) Gripper opening percentage, 0.0 (fully
                 closed) to 1.0 (fully open). Sets the grip by finger separation
                 instead of by gel depth, which fixes the grip only where the
@@ -557,21 +591,42 @@ class UniVTACTactileApi(ApiBase):
         there is no image to read.)
 
         Returns:
-            dict with: left_contact, right_contact (bool); left_depth_mm,
-            right_depth_mm (float, distance from the sensor to the contact
-            surface — 34 mm is the far plane (no contact); it DECREASES as
-            contact hardens: ~27-28 mm is a light grasp, ~20 mm is a hard jam,
-            and the reading saturates there.  Returning to 34 mm means the
-            pads are open, which is the same reading whether the object was
-            never held, was set down, or was dropped — the field answers
-            whether something is between the fingers, never where it went);
+            dict with: left_contact, right_contact (bool — a RANGE flag, not
+            a press: true as soon as any surface is inside the sensor's range,
+            which happens while the depth is below the far plane and the
+            surface can still be up to ~5.6 mm short of the gel face.  Both
+            up does not by itself mean the pads are touching the object);
+            left_depth_mm, right_depth_mm (float, distance from the sensor to
+            the nearest surface — 34 mm is the far plane (nothing in range);
+            the gel's own face sits at ~28.3 mm undeformed, so a reading above
+            that is a surface that has NOT reached the pad and one below it is
+            pressed into the gel.  The reading DECREASES as contact hardens:
+            ~27.8-29 mm is the gel-face band, where a light grasp and a
+            close that met nothing both read — the contact flags are up in
+            either case, and only the marker displacement separates them
+            (under 0.01 px for the empty close; a real grasp moves them
+            1.5 px or more.  A pad that has touched nothing still reports a
+            few thousandths of a pixel, so test a threshold — anything
+            above ~1 px is contact — and never "nonzero") — ~24 mm is the
+            sensor's floor (the camera's window ends there), and the reading
+            saturates there.  Returning to 34 mm
+            means the pads are
+            open, which is the same reading whether the object was never held,
+            was set down, or was dropped — the field answers whether something
+            is inside the sensor's range, never where it went);
             left_marker_displacement_px, right_marker_displacement_px (float,
             mean absolute marker displacement since the no-contact baseline —
             a magnitude, so it responds to any gel deformation, not only slip);
             left_marker_coherence, right_marker_coherence (float, 0-1
             uniformity of marker motion — high when markers move together
             (shear/slip), low when they move incoherently (compression/
-            deformation or tracking loss));
+            deformation or tracking loss).  It is a ratio of common motion
+            to motion overall, not a measure of how far the markers went:
+            0.0 to 0.8 is ordinary on a pad that barely moved, whether at
+            rest right after a close or on a turn that slid it almost
+            nothing, and grasps that go on to work have read it there; a
+            pad dragged a long way through the gel has come back at 0.9 or
+            more);
             left_marker_shear_dx, left_marker_shear_dy, right_marker_shear_dx,
             right_marker_shear_dy (float, pixels, in the marker image's own
             frame: the mean marker displacement VECTOR since the no-contact
@@ -584,7 +639,19 @@ class UniVTACTactileApi(ApiBase):
             left_marker_anisotropy, right_marker_anisotropy (float, the
             row-to-row gradient of the marker image divided by its
             column-to-column gradient: 1.0 when the gel deforms evenly in every
-            direction, higher when the deformation has horizontal structure).
+            direction, higher when the deformation has horizontal structure);
+            left_height_roughness_mm, right_height_roughness_mm (float, mm,
+            RMS fine relief of the gel's indentation map after a smooth
+            quadratic contact envelope is fitted and removed: the imprint of a
+            sphere is a clean cap, while a raised surface leaves its bumps in
+            the gel.  Every field above is an average over the gel, so it
+            grows with how hard the pad is pressed; this one does not — at the
+            same squeeze a smooth ball reads 0.02-0.03 mm and a dotted one
+            0.09-0.25 mm while the pads sit on its centre — so it answers
+            what the surface is shaped like rather than how hard it is
+            pressed.  Reported only where the
+            fingertip exposes a full height map; absent from the response
+            otherwise.)
         """
         data = self._get("/tactile")
         # The server computes the marker anisotropy from the same uint8 array
@@ -595,12 +662,17 @@ class UniVTACTactileApi(ApiBase):
             if data.get(key) is None:
                 data[key] = _marker_anisotropy(data.get(f"{side}_rgb_base64", ""))
         # Print summary only (skip base64 images to keep logs readable)
+        relief = ""
+        if data.get("left_height_roughness_mm") is not None:
+            relief = (" L_relief=%.3fmm R_relief=%.3fmm"
+                      % (data["left_height_roughness_mm"],
+                         data["right_height_roughness_mm"]))
         print(f"Tactile: L_contact={data['left_contact']} R_contact={data['right_contact']} "
               f"L_depth={data['left_depth_mm']:.2f}mm R_depth={data['right_depth_mm']:.2f}mm "
               f"L_disp={data['left_marker_displacement_px']:.2f}px "
               f"R_disp={data['right_marker_displacement_px']:.2f}px "
               f"L_coh={data['left_marker_coherence']:.2f} "
-              f"R_coh={data['right_marker_coherence']:.2f}")
+              f"R_coh={data['right_marker_coherence']:.2f}{relief}")
         # Strip images before returning to avoid huge logs
         return {k: v for k, v in data.items() if "base64" not in k}
 
@@ -628,21 +700,6 @@ class UniVTACTactileApi(ApiBase):
         arr = np.asarray(img.convert("RGB"), dtype=np.uint8)
         print(f"Tactile image ({side}): {arr.shape}")
         return arr
-
-    def detect_contact(self) -> bool:
-        """Check whether either fingertip gel is under pressure right now.
-
-        "Contact" means the gel depth map already has pixels nearer than the
-        far plane — the gel is physically pressed, so this reads False while an
-        open gripper descends past an object without touching it.
-
-        Returns:
-            bool, True if either fingertip contacts an object.
-        """
-        data = self._get("/tactile")
-        result = bool(data.get("left_contact", False) or data.get("right_contact", False))
-        print(f"Contact detected: {result}")
-        return result
 
     def detect_slip(
         self, threshold_px: float = 2.0, coherence_threshold: float = 0.7
@@ -706,7 +763,7 @@ class UniVTACTactileApi(ApiBase):
         cached offset has its own rule, which the API applies instead: where a
         rule exists the pose is rebuilt from the object's pose on every call
         rather than cached, so it follows the object after it has been moved or
-        re-grasped, and the FIRST-call caveat below does not apply.
+        re-grasped, and the FIRST-call caveat above does not apply.
 
         Args:
             object_name: The simulator PRIM name of the object (e.g.
@@ -735,62 +792,55 @@ class UniVTACTactileApi(ApiBase):
     ) -> dict:
         """Rotate the gripper while holding an object, about the world z axis.
 
-        Whether feed_lead_m is present picks the implementation, not only the
-        descent.  Omitted, this is the environment's own expert rotate: one
-        planner sub-move per step, then a check that the object really turned
-        at least 30 % of the requested angle, which fails the call when it did
-        not.  Given, zero included, it is the differential-IK servo the
-        lead-coupled blocks run on, one iteration per step.
+        feed_lead_m selects the implementation.  Omitted, the environment's
+        expert rotate runs one planner sub-move per step and fails the call
+        when the object turns by less than 30 % of the requested angle (or
+        about 3 deg, whichever is larger).
+        Given, zero included, each step is one differential-IK iteration that
+        turns the object by angle_rad / steps and advances the hand by the
+        matched feed; the twist and the advance stay locked together.  This
+        servo path needs the task's own _ik_to_center servo — without it the
+        call is refused.
 
-        Set feed_lead_m to twist about the world z axis while descending by
-        that much per full turn: the twist and the descent stay locked
-        together.  In this mode steps counts servo iterations rather than
-        planner sub-moves, and each iteration turns the part by angle_rad /
-        steps plus its matched feed.
+        One servo iteration carries about 4.6 deg of joint motion, so a step
+        count too coarse for the angle is raised rather than refused:
+        "requested" can exceed the number passed.  An unreachable target (a
+        wrist limit, say) refuses the call, and that refusal latches the
+        task's failure flag for the rest of the episode.
 
-        One iteration is one differential-IK step, and it can only carry about
-        4.6 deg of joint motion: a count too coarse for the angle is raised
-        rather than refused, so "requested" can exceed the number asked for.
-        What the servo still cannot reach — the wrist out of range, say —
-        refuses the call, and a refusal latches the task's failure flag for
-        the rest of the episode.
-
-        A twist the servo can carry, but that the part's own limits stop, does
-        not come back either.  The loop ends the moment the pads reach 128 N of
-        normal force, the torque passes the task's over-torque limit, the seat
-        takes more than 180 N, the grasp drifts past 4 mm or tilts past 10 deg,
-        or the task is already in a latched failure — and each of those ends
-        the call with an error rather than a report, however far the twist had
-        got.  An errored call is not a no-op: every one of those stops is
-        noticed at the end of an iteration, after the step that ran into it,
-        so whatever that iteration did to the part stands, however few turns
-        the call reports.  Only the servo's refusal is decided before its own
-        iteration is stepped, and unlike that refusal, these stops latch
-        nothing by themselves.
+        A twist the servo can carry but that contact stops raises as well: the
+        call ends with an error when the pads reach 128 N of normal force, the
+        torque passes the task's over-torque limit, the axial load on the
+        part's stop passes 180 N, the grasp drifts past 4 mm or tilts past
+        10 deg, or the task is already in a latched failure.  An errored call
+        is not a no-op: the stop is noticed at the end of an iteration, after
+        the step that ran into it, so that step's effect on the part stands
+        however few turns the call reports.  Only a servo refusal is decided
+        before its own iteration is stepped, and unlike those stops it latches
+        nothing by itself.
 
         Args:
             object_name: The name of the object being held.
             angle_rad: (float) Total rotation angle in radians.
-            steps: (int) Number of incremental steps to split the rotation
-                into — planner sub-moves without a lead, servo iterations
-                with one, each iteration carrying angle_rad / steps of the
-                twist.
-            feed_lead_m: (float) Axial advance per full turn, in metres.  Zero
-                rolls the hand in place on the servo; omitted rotates it in
-                place on the planner instead.
+            steps: (int) Number of increments to split the rotation into —
+                planner sub-moves without a lead, servo iterations with one,
+                each carrying angle_rad / steps of the twist.
+            feed_lead_m: (float) Axial advance per full turn, in metres.  Its
+                sign does not follow angle_rad: a positive lead descends the
+                hand, a negative one lifts it, whichever way the twist goes.
+                Zero rolls the hand in place on the servo; omitted rotates it
+                in place on the planner instead.
 
         Returns:
             dict with the scalar tactile readings after the rotation (same set
             as goto_pose).  With feed_lead_m given, a "helix" entry is added:
             completed / requested (servo iterations run, and the count run
-            after any raise),
-            feed_lead_m (the lead this call twisted along), reached (bool —
-            the part has bottomed: it has taken its whole thread travel and
-            is loaded on its seat, which is the state the task is scored on),
-            aborted (always None in a returned dict — one stopped by the
-            pad guard, the over-torque limit, the seat limit or a lost
-            grasp raises instead, with the stop in the message),
-            grip_released (bool) and trace (the per-iteration record).
+            after any raise), feed_lead_m (the lead this call twisted along),
+            reached (bool — the feed servo reached its terminal condition: the
+            part has taken its full travel and is loaded on its stop),
+            aborted (always None in a returned dict — a stopped call raises
+            instead, with the stop in the message), grip_released (bool) and
+            trace (the per-iteration record).
         """
         payload: dict[str, Any] = {
             "object_name": object_name, "angle_rad": angle_rad, "steps": steps,

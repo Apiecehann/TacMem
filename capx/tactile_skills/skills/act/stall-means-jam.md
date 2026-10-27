@@ -8,7 +8,7 @@ channels: [force, depth, shear]
 objects: the insert tasks' pegs and connectors
 evidence: Slip magnitude alone misclassifies — the friction of a connector passing the socket's lip shears the markers as hard as a jam does, and then decays within a step or two.
 copies:
-  - docs/univtac_api_reference.md §3.14
+  - docs/univtac_api_reference.md §3.13
 ---
 
 ## How

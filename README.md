@@ -3,7 +3,7 @@
 
 # CaP-X
 
-> **说明**：本仓库基于 [capgym/cap-x](https://github.com/capgym/cap-x) 改进，新增 **UniVTAC 触觉评测集**与**触觉 API**（`get_tactile_data` / `detect_contact` / `detect_slip` 等），面向接触密集型的机器人操作任务评测。使用方法见 [docs/running_univtac_eval.md](docs/running_univtac_eval.md)。
+> **说明**：本仓库基于 [capgym/cap-x](https://github.com/capgym/cap-x) 改进，新增 **UniVTAC 触觉评测集**与**触觉 API**（`get_tactile_data` / `detect_slip` / `rotate_gripper` 等），面向接触密集型的机器人操作任务评测。使用方法见 [docs/running_univtac_eval.md](docs/running_univtac_eval.md)。
 
 ### A Framework for Benchmarking and Improving Coding Agents for Robot Manipulation
 

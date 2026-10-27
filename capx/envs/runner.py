@@ -106,7 +106,9 @@ def _setup_output_dir(args, config: dict[str, Any]) -> None:
     Inserts the model name into the output path so that results from
     different models are stored separately.
     """
-    if args.use_oracle_code:
+    # Read the merged decision, not just the CLI flag: a YAML can set
+    # use_oracle_code too, and the folder/name should say "oracle" either way.
+    if config.get("use_oracle_code"):
         args.model = "oracle"
     if config["output_dir"]:
         parts = config["output_dir"].split("/")

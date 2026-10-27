@@ -29,6 +29,16 @@ GPT_MODELS = [
     "openai/gpt-5.4",
     "openai/o4-mini",
 ]
+# Models the provider serves ONLY over the Responses API.  They cannot simply be
+# added to GPT_MODELS: that list also picks the chat-completions payload, and
+# these names are rejected there outright ("protocol_not_supported", 2026-10-13,
+# gpt-6-sol and gpt-6-astra on api.codexzh.com).  Reach them through a server
+# that speaks the Responses protocol -- capx/serving/openrouter_server.py
+# exposes /responses.
+RESPONSES_MODELS = [
+    "gpt-6-sol",
+    "gpt-6-astra",
+]
 VLM_MODELS = [
     "google/gemini-3.1-pro-preview",
     "google/gemini-2.5-flash-lite",
@@ -93,6 +103,54 @@ def _strip_openrouter_prefix(model: str) -> str:
 def is_openrouter_model(model: str) -> bool:
     """Return True if the model should be routed through the OpenRouter proxy."""
     return model.startswith("openrouter/") or model in OPENROUTER_MODELS
+
+
+def is_responses_model(model: str) -> bool:
+    """Return True if the model has to be queried through the Responses API.
+
+    The gpt-6 line is matched by prefix, not by name: the whole family is
+    Responses-only on this provider, and a name missing from the list does not
+    degrade gracefully -- the request lands on chat completions, the provider
+    answers 400 "protocol_not_supported" wrapped in a 500, and query_model
+    retries that 500 forever (2026-10-13: gpt-6-sol, then gpt-6-astra, the
+    second one inside a running trial).
+    """
+    return (
+        model in RESPONSES_MODELS
+        or model.startswith("gpt-6")
+        or (model in GPT_MODELS and "codex" in model)
+    )
+
+
+def _responses_server_url(server_url: str) -> str:
+    """Point a chat-completions server URL at the same server's Responses route.
+
+    Callers default to the chat URL (launch.py: --server-url), so without this
+    a responses-only model would POST a Responses payload at /chat/completions.
+    """
+    if server_url.endswith("/chat/completions"):
+        return server_url[: -len("/chat/completions")] + "/responses"
+    if server_url.rstrip("/").endswith("/v1"):
+        return server_url.rstrip("/") + "/responses"
+    return server_url
+
+
+def _responses_content(body: dict) -> str | None:
+    """Extract the text of a Responses API body.
+
+    The local proxy adds a top-level ``output_text``; a bare Responses endpoint
+    does not carry one (it is an SDK convenience, not part of the wire format),
+    so fall back to walking the output message items.
+    """
+    if body.get("output_text") is not None:
+        return body["output_text"]
+    parts = [
+        part.get("text", "")
+        for item in body.get("output", [])
+        for part in (item.get("content") or [])
+        if part.get("type") == "output_text"
+    ]
+    return "".join(parts) or None
 
 
 def is_vlm_model(model: str) -> bool:
@@ -204,23 +262,30 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     # Route OpenRouter models to the OpenRouter proxy server
     if is_openrouter_model(args.model):
         server_url = OPENROUTER_SERVER_URL
+    elif is_responses_model(args.model):
+        server_url = _responses_server_url(args.server_url)
+        if server_url != args.server_url:
+            print(f"Responses-API model {args.model}: querying {server_url}")
     else:
         server_url = args.server_url
 
-    if args.model in GPT_MODELS:
-        if "codex" in args.model:
-            prompt = _completions_to_responses_convert_prompt(prompt)
-            payload = {
-                "model": args.model,
-                "input": prompt,
-            }
-        else:
-            payload = {
-                "model": args.model,
-                "reasoning_effort": args.reasoning_effort,
-                "max_completion_tokens": args.max_tokens,  # Total completion tokens = reasoning + output tokens
-                "messages": prompt,
-            }
+    if is_responses_model(args.model):
+        prompt = _completions_to_responses_convert_prompt(prompt)
+        payload = {
+            "model": args.model,
+            "input": prompt,
+            # Same knob as the chat path, under the Responses API's own name.
+            # Left unset the provider picks its default, which for reasoning
+            # models is the slow-and-expensive direction.
+            "reasoning": {"effort": args.reasoning_effort},
+        }
+    elif args.model in GPT_MODELS:
+        payload = {
+            "model": args.model,
+            "reasoning_effort": args.reasoning_effort,
+            "max_completion_tokens": args.max_tokens,  # Total completion tokens = reasoning + output tokens
+            "messages": prompt,
+        }
     elif is_openrouter_model(args.model):
         # reasoning_effort matters far more than max_tokens here: left unset,
         # reasoning models deliberate until the whole budget is gone, so the
@@ -285,8 +350,8 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     if args.debug:
         print(json.dumps(body, indent=2))
     try:
-        if args.model in GPT_MODELS and "codex" in args.model:
-            out["content"] = body["output_text"]
+        if is_responses_model(args.model):
+            out["content"] = _responses_content(body)
         else:
             out["content"] = body["choices"][0]["message"]["content"]
         if out["content"] is None:

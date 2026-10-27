@@ -428,6 +428,17 @@ def test_tactile_response_carries_anisotropy_and_drops_std():
     assert not any("std_px" in k for k in d)
 
 
+def test_tactile_response_declares_every_motion_scalar():
+    # /tactile and /observation answer with this model, not with the free-form
+    # dict the motion primitives pass through, so a reading added to the
+    # payload but not to the model is silently stripped here — and only here.
+    # The ball oracle lost a whole trial to that: its seat close is always
+    # blocked by the ball, so its seated reading always comes back through
+    # /tactile, where the imprint relief had been cut.
+    missing = set(_MOTION_TACTILE_FIELDS) - set(S.TactileResponse.model_fields)
+    assert not missing
+
+
 def _banded_marker_b64() -> str:
     banded = np.add.outer(np.arange(16) * 16, np.arange(16)).astype(np.uint8)
     return S._rgb_tensor_to_base64(torch.from_numpy(banded))

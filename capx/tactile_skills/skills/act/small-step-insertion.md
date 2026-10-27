@@ -4,6 +4,9 @@ name: small-step-insertion
 family: act
 summary: Step in 2-5 mm and seat by depth, not force — a residual under 2 mm is the end of the loop, not a step to round up.
 task_types: [insert, manipulate, screw]
+# The balls task has no insertion and no support to seat against, and the 2 mm
+# floor this skill turns on is already stated in move_delta's docstring.
+not_tasks: [blind_pick_balls]
 channels: [force, depth]
 objects: the insert tasks, the placements and the threaded bulb
 evidence: A delta below 2 mm on every axis cannot be executed and raises instead of moving nothing, which sets a hard lower bound on any loop that steps towards a target. Past the seated depth the press goes flat — the depth stops changing while the force keeps climbing. Only the loud side of that bound is obvious — on 2026-10-07 a live run rounded a residual under it up to the floor instead, and its alignment helper alternated ±2 mm for two hours and eleven minutes on a bulb and socket whose x/y already matched to under a millimetre.

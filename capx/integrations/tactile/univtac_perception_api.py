@@ -7,9 +7,11 @@ endpoint. This mirrors the original caP-X split between the non-privileged
 ``FrankaHandoverApi`` (SAM3) and the privileged ``FrankaHandoverPrivilegedApi``
 (ground truth).
 
-Only ``get_object_pose`` is overridden. Motion primitives, tactile sensing and
-``check_success`` are inherited unchanged. ``sample_grasp_pose`` is still the
-ground-truth grasp sampler (grasp perception is out of scope for this class).
+Only ``get_object_pose`` and ``sample_grasp_pose`` are overridden. The first
+takes object poses from perception; the second must not read the simulator's
+ground truth either, so its docstring states what the non-privileged call
+actually returns (see below). Motion primitives, tactile sensing and
+``check_success`` are inherited unchanged.
 """
 
 from __future__ import annotations
@@ -114,6 +116,32 @@ class UniVTACPerceptionApi(UniVTACTactileApi):
         if return_bbox_extent:
             bbox = np.ptp(points_world, axis=0)  # full axis-aligned extent
         return position, quaternion_wxyz, bbox
+
+    def sample_grasp_pose(
+        self, object_name: str
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Sample a grasp pose without reading the object's true pose.
+
+        This is the non-privileged line: the pose is never built from the
+        simulator's scene. On the FIRST call the server caches the hand's
+        offset from the object and returns the hand's own pose at that moment,
+        not a pose above the object; later calls replay that offset, so the
+        position follows the object's displacement, not its location. Only the
+        quaternion — the hand's orientation at that call — is a usable grasp
+        orientation.
+
+        Args:
+            object_name: The simulator PRIM name of the object (e.g.
+                "hidden_object"), not a perception phrase; a SAM3 phrase
+                returns a 404. (Perception prompts only apply to
+                get_object_pose.)
+
+        Returns:
+            position: (3,) XYZ in meters — the hand's pose at the first call.
+            quaternion_wxyz: (4,) WXYZ unit quaternion — a usable grasp
+                orientation.
+        """
+        return super().sample_grasp_pose(object_name)
 
     def _perceive_once(self, object_name: str, camera: str) -> tuple[np.ndarray, str]:
         """One fetch-and-segment cycle.

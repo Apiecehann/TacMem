@@ -46,7 +46,7 @@ Import from `robo`:
 from robo import (
     health,
     goto_pose, move_delta, move_reflexive, open_gripper, close_gripper, rotate_gripper,
-    get_tactile_data, get_tactile_image, detect_contact, detect_slip,
+    get_tactile_data, get_tactile_image, detect_slip,
     get_object_pose, sample_grasp_pose,
     get_observation, get_ee_pose, check_success, episode_video,
 )
@@ -136,17 +136,18 @@ view. Match the view to the question:
 
 | Field | What it means |
 |---|---|
-| `*_contact` | bool — fingertip touching something |
-| `*_depth_mm` | distance to contact surface; **~34 mm = far plane (no contact), DECREASES as contact hardens** (~27 mm light grasp, ~20 mm hard jam) |
+| `*_contact` | bool — a surface is inside the sensor's range. **Not a press**: it goes true up to ~5.6 mm before the gel is touched |
+| `*_depth_mm` | distance to the nearest surface; **~34 mm = far plane (nothing in range), the gel face is ~28.3 mm** — above it the surface has not reached the pad, below it is pressed in; DECREASES as contact hardens (27.8-29 mm is the gel-face band — a light grasp OR an empty close with under 0.01 px of marker displacement; ~24 mm the sensor's floor — a pad bottomed out, not a deeper grip) |
 | `*_marker_displacement_px` | mean marker motion since the no-contact reset — rises with ANY gel deformation (contact, insertion, slip), so NOT a clean slip signal on its own |
 | `*_marker_coherence` | 0–1 uniformity of marker motion — **high = markers move together (shear/slip), low = incoherent (compression/tracking loss)**; combine with displacement for slip |
 
-Stopping on contact (the standard pattern for contact-critical moves):
+Stopping a descent on the contact flag (it fires ~5.6 mm before the pad
+touches, so finish on commanded position if you need the surface):
 
 ```python
-fb = get_tactile_data()          # or detect_contact()
+fb = get_tactile_data()
 while not fb["left_contact"] and not fb["right_contact"]:
-    fb = move_delta(dz=-0.005)   # small steps, read tactile after each
+    fb = move_delta(dz=-0.005)   # small steps; the move returns the flags itself
 ```
 
 Slip detection (grasp hold test): `detect_slip()` once to set the baseline,
@@ -160,14 +161,14 @@ tactile events INSIDE the motion — the server freezes the arm the moment the
 first enabled condition fires, and you read a digest of what it felt:
 
 ```python
-r = move_reflexive(dz=-0.005, stop_on={"contact": True})   # approach until touch
+r = move_reflexive(dz=-0.005, stop_on={"contact": True})   # approach until in range (~5.6 mm early)
 print(r["terminated_by"], r["event"])                      # "contact", digest
 ```
 
 **Pick `stop_on` conditions per motion** (all ORed; absent keys stay off;
 definitions/defaults/digest schema: `robo.api_doc()` → `move_reflexive`):
 
-- approach until first touch → `{"contact": True}`
+- approach until first surface in range → `{"contact": True}` (fires ~5.6 mm early)
 - insert/seat until seated → `{"plateau": {"mm": 0.5, "steps": 5}}` — press
   goes flat (jammed or seated)
 - press with jam protection → `{"hard_depth": 20}` (mm)
@@ -241,14 +242,18 @@ observe the scene and verify motion yourself in small first steps.
 4. Prefer small, safe chunks: at most 0.05 m / 0.3 rad per `move_delta`
    call, and split large motions into waypoints.
 5. **Grasp protocol**: first confirm the hand is empty — `get_tactile_data()`
-   reads the far plane (~34 mm) with no contact. If it already reads contact
-   (depth well below far plane), the gripper is holding something: do NOT
+   reads the far plane (~34 mm). If a depth is already below the gel face
+   (~28.3 mm) and the markers have moved, the gripper is holding something: do NOT
    open it as the first move; confirm with `get_observation()` what is held
    and act accordingly (the target may already be grasped, ready to insert
    or place). Only on a confirmed empty hand: approach with
    `goto_pose(..., z_approach=0.1)`, `close_gripper()`, verify the grasp
-   with tactile (contact + depth in the grasp range, not empty-hand depth)
-   and `get_observation()` before lifting or moving. Re-grasp if the fingers
+   with tactile at the close (both depths below the gel face and a rise in
+   marker displacement, not empty-hand depth); during the lift the depths
+   staying below the gel face are the evidence, not the displacement, and a
+   single frame is not a loss — only a sustained rise to the gel face or
+   beyond is.
+   Call `get_observation()` before lifting or moving. Re-grasp if the fingers
    closed empty. **Before inserting or placing, confirm the held object is
    upright from the camera images** (`get_observation()`), NOT from
    `get_object_pose()` — its quaternion is always identity (non-privileged

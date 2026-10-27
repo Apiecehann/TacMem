@@ -3,7 +3,7 @@ id: P1
 name: world-frame-transport
 family: place
 summary: Carry a held object with world-frame translation deltas, never a pose command.
-task_types: [classify, insert, manipulate]
+task_types: [classify, insert, manipulate, wipe]
 channels: []
 objects: any
 evidence: Same-seed measurement while landing an object — 11-45° of tilt with a pose command against 0.2-0.3° with world-frame translation.

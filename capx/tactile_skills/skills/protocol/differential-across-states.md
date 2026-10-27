@@ -2,8 +2,8 @@
 id: R1
 name: differential-across-states
 family: protocol
-summary: Judge from two commanded states in one grasp — and check the loose one reads the full 34.0 mm first.
-task_types: [classify, insert, manipulate, screw]
+summary: Judge from two commanded states in one grasp — the difference cancels the drift the absolute carries.
+task_types: [classify, insert, manipulate, screw, wipe]
 channels: []
 objects: any
 evidence: Hardness reads two positions, texture two grips, weight two shear readings; in each case the absolute form drifts with the grasp and the difference does not. 34 mm is the no-contact far plane, and the loose close of a hardness pair is verified by reading exactly it.

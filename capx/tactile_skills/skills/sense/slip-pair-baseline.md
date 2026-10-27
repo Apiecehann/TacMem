@@ -3,12 +3,14 @@ id: S15
 name: slip-pair-baseline
 family: sense
 summary: Call detect_slip once before the motion you judge — its first call only sets the reference.
-task_types: [classify, insert, manipulate, screw]
+task_types: [classify, insert, manipulate, screw, wipe]
+# Its summary repeats what detect_slip's own docstring already states.
+not_tasks: [blind_pick_balls]
 channels: [coherence]
 objects: any
 evidence: A steady grasp does not re-report even one that slipped earlier; coherence is what separates uniform shear from compression and tracking loss.
 copies:
-  - docs/univtac_api_reference.md §3.11
+  - docs/univtac_api_reference.md §3.10
   - univtac_skill/SKILL.md
 ---
 

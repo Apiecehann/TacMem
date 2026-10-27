@@ -3,7 +3,7 @@ id: P7
 name: keep-closed-if-task-allows
 family: place
 summary: Keep the grip unless the task requires letting go.
-task_types: [classify, manipulate]
+task_types: [classify, manipulate, wipe]
 channels: []
 objects: any
 evidence: 8 of 11 weight_classify runs failed on the release rather than on the measurement; the classification is scored on the reading that was already taken before the open.

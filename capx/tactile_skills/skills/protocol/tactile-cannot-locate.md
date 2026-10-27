@@ -3,7 +3,10 @@ id: R8
 name: tactile-cannot-locate
 family: protocol
 summary: Confirm where an object ended up from an image or a pose read — the gel cannot tell placed from dropped.
-task_types: [classify, insert, manipulate, screw]
+task_types: [classify, insert, manipulate, screw, wipe]
+# blind_pick_balls has neither an image in the observation nor a pose query:
+# the skill's lesson is true there, its prescribed check is not available.
+not_tasks: [blind_pick_balls]
 channels: [depth, coincidence]
 objects: any
 evidence: Both pads return to the 34 mm far plane whether the object was released onto a surface or lost mid-carry, so the depth field cannot separate the two outcomes; the images and the object pose can.

@@ -68,7 +68,7 @@ API 对比：
 | 函数 | Tactile | Motion |
 |---|---|---|
 | `goto_pose` `move_delta` `open/close_gripper` `rotate_gripper` `get_object_pose` `check_success` | ✅ | ✅ |
-| `get_tactile_data` `detect_contact` `detect_slip` `sample_grasp_pose` | ✅ | |
+| `get_tactile_data` `detect_slip` `sample_grasp_pose` | ✅ | |
 
 ---
 

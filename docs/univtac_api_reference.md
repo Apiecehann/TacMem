@@ -70,7 +70,6 @@
 | `get_object_pose` | ✅ | ✅ | ✅ | `(pos, quat, bbox\|None)` |
 | `sample_grasp_pose` | ✅ | ✅ | ✅ | `(pos, quat)` |
 | `get_tactile_data` | ✅ | ❌ | ✅ | `dict` |
-| `detect_contact` | ✅ | ❌ | ✅ | `bool` |
 | `detect_slip` | ✅ | ❌ | ✅ | `bool` |
 | `check_success` | ✅ | ✅ | ❌ 见下 | `bool` |
 | `move_reflexive` | ✅ | ❌ | ❌ **agent 专用** | `dict` |
@@ -148,6 +147,9 @@ while True:
         break
 ```
 
+> ⚠️ `contact` 是**量程**标志（§3.9）：表面离垫子还差 ~5.6 mm 它就会亮，所以这个循环
+> 停在真接触之前。要贴到表面，停下后按目标位置补下降。
+
 > ⚠️ **旋转分量的坐标系陷阱：** `coord="world"`（默认）下，旋转是把末端执行器的
 > **位姿绕世界原点（机器人基座）**整体旋转，位置 `p` 也会被转动——工作区在
 > x≈0.55 m 处，0.04 rad 的旋转就会让夹持物体沿弧线甩动约 2 cm。**不要**用世界系
@@ -193,7 +195,8 @@ close_gripper(force_threshold: float | None = None,
 **参数（仅 TactileApi）：**
 
 - **`force_threshold`**：目标凝胶变形深度（mm）。深度随接触变硬而**减小**，所以数值
-  越**大**抓力越**松**：34 = 未接触，~27–28 = 轻握，~20 = 重压。`None` 用任务默认
+  越**大**抓力越**松**：34 = 未接触，~27.8–29 = 凝胶面一带（轻握，或空合时两垫互压，
+  两者深度相同、只能靠标记位移区分），~20 = 重压。`None` 用任务默认
   （实到深度散落，典型 ~25.5 mm 的紧握）。
 - **`position`**：直接指定夹爪行程百分比（0.0 = 全闭，1.0 = 全开），按**指间距**而不是
   凝胶深度设定夹紧力。物体刚性太强、手指被顶住、深度伺服没有可停区间时用它：取略大于
@@ -375,16 +378,28 @@ get_tactile_data() -> dict
 
 | 键 | 描述 |
 |---|---|
-| `{side}_contact` | bool，该指尖是否有接触 |
-| `{side}_depth_mm` | 凝胶变形量（mm）。34 = 远平面（未接触），**数值越小夹得越紧**：~27 轻握、~20 硬卡 |
+| `{side}_contact` | bool，该指尖量程内是否有表面（`depth < 34 − 0.1`）。**不是「被压」**，见下 |
+| `{side}_depth_mm` | 传感器到最近表面的距离（mm）。34 = 远平面（量程内无表面）；凝胶面在 **~28.3**（未变形）——**高于 28.3 = 还没碰到，低于 = 压进凝胶**。**数值越小夹得越紧**：~27.8–29 是凝胶面一带（轻握，或空合时两垫互压——深度一样，标记位移低于 0.01 px 的是空合）、~20 硬卡 |
 | `{side}_marker_displacement_px` | 自本轮 reset 无接触基准以来的**平均绝对**标记位移。**任何**凝胶形变（接触/插入）都会让它上升，单独不是干净的滑移信号 |
 | `{side}_marker_coherence` | 标记运动一致性 (0-1)。高 = 一起动（剪切/打滑），低 = 非相干（压缩/形变/追踪丢失） |
 | `{side}_marker_shear_dx` / `_dy` | 平均标记位移**向量**（px，传感器 UV 帧）——保住了方向，是重量判读（§3.4）与 `move_reflexive` 事件的基础 |
 | `{side}_marker_anisotropy` | 标记图**行梯度 ÷ 列梯度**。1.0 = 各向同性（未加载/均匀加载）；高 = 形变有水平结构（**纹理**）。**客户端由 marker 图现算，不是服务端标量** |
 
-> **「双侧夹住」要按 `{side}_contact` 和「两侧深度都明显小于远平面」来判，不要按两侧位移相近
-> 来判。**（2026-09-20 由任务 PROMPT 移入 docstring。）`marker_displacement_px` 随局部凝胶
-> 形变走，真夹住时也常常是**单侧**的；要求位移对称会把几乎所有读数都判成无效，最后没有东西可比。
+> **「双侧夹住」要按「两侧深度都低于凝胶面（~28.3 mm）且合爪期间至少一侧的标记位移高于
+> ~1 px」来判，不要按两侧位移相近来判。**（2026-09-20 由任务 PROMPT 移入 docstring；2026-10-19 补位移门槛。）
+> `contact` 标志只表示量程内有表面，两个都亮也不足以判定夹住。**空合（两垫互压）读到
+> 27.8–29 mm、两侧标志全亮，标记位移却低于 0.01 px**——深度和标志都分不出它和轻握。
+> `marker_displacement_px` 是自 reset 起的累计量，**没碰过任何东西的垫子也会读到几千分之一
+> 像素**（日志两位小数显示成 0.00），所以判据是「高于 ~1 px」而不是「非零」。
+> `marker_displacement_px` 随局部凝胶形变走，真夹住时也常常是**单侧**的；要求位移对称会把
+> 几乎所有读数都判成无效，最后没有东西可比。
+
+> ⚠️ **`{side}_contact` 是「量程内有表面」，不是「凝胶正被压」。** 服务端把它算成
+> `depth < far_plane − 0.1`，而量程从 34 mm 一直延伸到凝胶面 28.3 mm，所以表面离垫子
+> 还差最多 ~5.6 mm 时它就会变 `True`——两个都亮也不等于夹住了。它可以用来启动一次接触
+> 动作或停下降，但**判夹持要看两侧深度都低于 28.3 mm，且合爪时至少一侧标记位移高于 ~1 px**（空合读
+> 27.8–29 mm、位移低于 0.01 px）。每次 motion（含 `close_gripper`）的返回里就带着这两个
+> 标志和位移，无需为此单独读一次。
 
 > **判读只用 shear 和 anisotropy**（配方与阈值见 §3.4）：重量看跨指 shear 差分，纹理看两次
 > 握力间的 anisotropy 增量。**其余标量都是整幅凝胶图的平均，而平均看不见结构** ——
@@ -395,26 +410,14 @@ get_tactile_data() -> dict
 > 即可分类」。** n=10 seed 实测 coherence 轴**零判别力**（oracle 6/10 < 常数基线 7/10）；
 > `rotate_gripper` 的滑脱校验同样分不开（两棱柱摩擦系数相同，滑移行为一致）。
 
-> **注意：** TactileApi 的所有 motion 函数也返回 per-side 的 `contact` / `depth_mm` /
-> `marker_displacement_px` / `marker_coherence` 这 4 个字段（共 8 个键）的 dict，大部分场景下
-> 无需单独调用此函数。其余字段（shear / anisotropy / std）只有 `get_tactile_data` 才给。
+> **注意：** TactileApi 的所有 motion 函数也返回上面这一整套标量（12 个键 + 两侧 anisotropy），
+> 所以**没有任何标量必须靠单独一次 `get_tactile_data` 才拿得到**——一次 `close_gripper` 或
+> `move_delta` 的返回里就带着它自己的读数。`get_tactile_data` 是"不产生运动的那一次读"，
+> 图像则只有 `get_tactile_image` 给。
 
 ---
 
-### 3.10 `detect_contact` — 检测接触（仅 TactileApi）
-
-```
-detect_contact() -> bool
-```
-
-任一指尖凝胶**是否正被压**（深度图已有比远平面更近的像素）。`get_tactile_data()` 的便捷
-封装。⚠️ **它不是接近传感器**：张开的夹爪从物体旁边下降时返回 `False`（还没有东西压凝胶），
-不要用它来停下降，下降要靠目标位置驱动。只有 `close_gripper` 真的夹住了什么它才会变 `True`；
-用它来在抬升前确认夹持已经啮合。
-
----
-
-### 3.11 `detect_slip` — 检测滑移（仅 TactileApi）
+### 3.10 `detect_slip` — 检测滑移（仅 TactileApi）
 
 ```
 detect_slip(threshold_px: float = 2.0, coherence_threshold: float = 0.7) -> bool
@@ -434,7 +437,7 @@ detect_slip(threshold_px: float = 2.0, coherence_threshold: float = 0.7) -> bool
 
 ---
 
-### 3.12 `move_reflexive` — 触觉反射式增量移动（快回路，agent 专用）
+### 3.11 `move_reflexive` — 触觉反射式增量移动（快回路，agent 专用）
 
 ```
 move_reflexive(dx=0, dy=0, dz=0, drx=0, dry=0, drz=0,
@@ -450,7 +453,7 @@ move_reflexive(dx=0, dy=0, dz=0, drx=0, dry=0, drz=0,
 
 | 键 | 默认 | 含义 |
 |---|---|---|
-| `contact=True` | far_plane 34.0 mm | 任一指尖触物（depth < 34 − 0.1） |
+| `contact=True` | far_plane 34.0 mm | 任一指尖量程内出现表面（depth < 34 − 0.1；比真接触早约 5.6 mm） |
 | `hard_depth=<mm>` | 20.0 | 任一侧 depth ≤ 阈值（硬卡/过压保护） |
 | `shear_spike=<px>` | 2.0 | 每步标记位移增幅 ≥ 阈值且 coherence ≥ 0.7（摩擦事件） |
 | `slip=<deg>` | 30.0 | 剪切方向相邻步转角 ≥ 阈值（需 ≥2 样本、幅度噪声门 2 px、coherence ≥ 0.7）——方向感知打滑，优于 `detect_slip` 的幅度盲判 |
@@ -470,7 +473,7 @@ move_reflexive(dx=0, dy=0, dz=0, drx=0, dry=0, drz=0,
 
 ---
 
-### 3.13 `get_tactile_image` — 指尖 GelSight marker 图（agent 专用）
+### 3.12 `get_tactile_image` — 指尖 GelSight marker 图（agent 专用）
 
 ```
 get_tactile_image(side: str = "left") -> np.ndarray | None
@@ -483,7 +486,7 @@ get_tactile_image(side: str = "left") -> np.ndarray | None
 
 ---
 
-### 3.14 插入状态判读（insert_hdmi 专用，2026-08-19 标定）
+### 3.13 插入状态判读（insert_hdmi 专用，2026-08-19 标定）
 
 > **该任务已放弃**（2026-08-27；是感知瓶颈，非 prompt 可修）。结论留档备查。
 
@@ -533,14 +536,16 @@ get_tactile_image(side: str = "left") -> np.ndarray | None
 ```python
 import numpy as np
 
-def contacts_ok(fb):
-    return fb["left_contact"] and fb["right_contact"]
+def grasp_ok(fb):
+    return (fb["left_depth_mm"] < 28.3 and fb["right_depth_mm"] < 28.3
+            and max(fb["left_marker_displacement_px"],
+                    fb["right_marker_displacement_px"]) > 1.0)
 
 grasp_pos, grasp_quat = sample_grasp_pose("prism")
 goto_pose(grasp_pos, grasp_quat, z_approach=0.05)   # 一次到位，见 §3.1
 
 fb = close_gripper()
-if not contacts_ok(fb):
+if not grasp_ok(fb):
     open_gripper()
     close_gripper(force_threshold=25.0)
 
@@ -567,7 +572,7 @@ texture = "rough" if d_aniso / max(d_depth, 1e-6) > 0.06 else "plain"
 
 # 放置前确认物体还在夹爪里（掉出去就重抓）
 p, _, _ = get_object_pose("prism")
-if not contacts_ok(get_tactile_data()) or p[2] < 0.03:
+if not grasp_ok(get_tactile_data()) or p[2] < 0.03:
     goto_pose(grasp_pos, grasp_quat, z_approach=0.05)
     close_gripper()
     p, _, _ = get_object_pose("prism")

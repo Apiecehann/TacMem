@@ -1,0 +1,197 @@
+# ViTaForge: bulb_tightening (non-privileged / perception line)
+#
+# The same task as univtac_bulb_tightening.yaml, with object poses coming from
+# the head camera (SAM3 text-prompt segmentation + metric depth back-projection,
+# UniVTACPerceptionApi) instead of the simulator's ground-truth /object_pose
+# endpoint.  Scene, thread, scoring and the tactile routine are untouched, so a
+# run here is comparable with the privileged ones seed for seed.
+#
+# FOUR things differ from the privileged file:
+#
+#   1. apis: UniVTACPerceptionApi instead of UniVTACTactileApi.  The API class
+#      IS what "non-privileged" means on UniVTAC -- the `privileged:` key is
+#      inert here, as the privileged file explains.
+#   2. env._target_ is UniVTACBulbTighteningPerceptionCodeEnv, which withholds
+#      one skill: `bulb-grasp-pose`.  That skill tells the run to ask
+#      sample_grasp_pose for the bulb's grasp pose, which is the server's
+#      GROUND-TRUTH branch (_GT_GRASP_RULES in capx/serving/
+#      launch_univtac_server.py), and the perception API class switches that
+#      branch off (_ground_truth_grasp = False).  On this line the call returns
+#      the hand's own parked pose, so the skill as written sends the run onto
+#      the 2026-10-05 failure: grasp 63 mm off the bulb, close on air, and a
+#      motion error that ends the episode.  The other 24 skills the library
+#      routes to the bulb are delivered unchanged.
+#   3. The `prompt:` block below, which carries the perception-side grasp
+#      recipe in place of the withheld skill.  It REPLACES the class PROMPT
+#      (base.py: cfg.prompt wins when set), so edits to that constant do NOT
+#      reach a non-privileged run.
+#   4. output_dir, so a perception run never overwrites a privileged one.
+#
+# --- The grasp, on this line --------------------------------------------------
+#
+# Perception gives the bulb's x, y and nothing usable for z or for the wrist
+# orientation.  So the recipe is: quaternion from sample_grasp_pose (it still
+# returns the live wrist orientation -- only its POSITION is the hand's own on
+# this line), x, y from get_object_pose, and the height from the task's own
+# geometry, which is fixed and does not depend on the seed:
+#
+#   bulb bottom face   0.002 + 0.055 - 0.006 - 0.014  = 0.037 m
+#     socket_position z = 0.002 and SOCKET_HEIGHT = 0.055 (envs/
+#     bulb_tightening.py), INITIAL_PILOT_INSERTION_DEPTH = 0.006, and
+#     initial_depth_m = 0.014 from task_config/bulb_tightening.yml -- the
+#     ThreadSpec default, NOT the 0.019-0.020 that sample_physics would set:
+#     the task config overrides it (self.params.setdefault, :1331-1333).
+#   grasp centre       0.037 + GRASP_LOCAL_Z 0.058    = 0.095 m
+#     where the pads want to be: the glass runs 0.041-0.088 above the bulb's
+#     bottom face and is widest (20 mm radius) at 0.060, so 0.058 is the
+#     globe's waist.
+#   end effector       0.095 + GRIPPER_OFFSET 0.131   = 0.226 m
+#     gripper_center_to_ee (envs/robot/robot.py:285) puts the wrist 131 mm
+#     above the grip centre.
+#
+# 0.226 m is what the task's own expert grasps at, and it is what the
+# privileged runs landed on -- [0.55x, +-0.02, 0.226] in all eight seeds run so
+# far (1, 2, 3, 4, 5, 7, 8, 9), so the number is measured, not derived.  It is
+# stated in the prompt rather than perceived because the camera cannot see the
+# bulb's bottom face (it is inside the socket) and a centimetre of z error puts
+# the pads on the narrow top of the globe, or the fingers into the socket's
+# 0.040 m rim.
+#
+# Known and deliberate: the height is task geometry handed to the run, while
+# x, y and the whole insertion stay perception- and touch-driven.  This is the
+# same split the other two non-privileged configs use (a fixed layout as the
+# fallback), and it keeps the experiment about the tactile routine rather than
+# about a grasp the camera cannot see well enough to place.
+#
+# --- Not yet verified ---------------------------------------------------------
+#
+# No eval has been run on this file (2026-10-12).  Two things are unmeasured
+# and will be fixed on the first run, both in the `prompt:` block:
+#
+#   - the SAM3 phrase.  "light bulb" is a guess.  insert_hdmi's experience is
+#     that bare nouns mis-segment often ("hole" beat "prism"), and here the
+#     bulb is 40 mm of near-clear glass inside a white 80 mm socket, with the
+#     arm in frame.  Fallbacks to try: "glass bulb", "bulb", "glass".
+#   - the centroid bias and the sanity band.  get_object_pose returns the
+#     median of the visible surface points, which for a sphere sits toward the
+#     camera by roughly a radius -- a few millimetres of x, y error, inside the
+#     ~14 mm the fingers have before they touch the socket rim, but worth
+#     measuring.  The visible bulb spans z 0.078-0.125 (globe) plus 0.057-0.071
+#     (brass thread above the rim), so the prompt's "0.07-0.13 m" band is the
+#     guess that the median lands in there; check it on the first run.
+#
+# Nor is the grasp itself verified: the privileged line's numbers were checked
+# against the runs, this line's recipe never ran.
+#
+# Servers are started manually (Isaac's main() cannot take kwargs, so the
+# runner's spawn path fails -- see _start_api_servers), SAM3 first:
+#   bash scripts/launch_sam3_server.sh 1 8114        # SAM3, GPU 1 (GPU 0 = Isaac)
+#   bash scripts/launch_univtac_server.sh bulb_tightening 8120 0 3
+# The server is one process per seed and the trial id IS the seed, so restart
+# it on the seed this file selects.
+#
+# Usage: uv run --offline capx/envs/launch.py --config-path env_configs/univtac/bulb_tightening/univtac_bulb_tightening_non_privileged.yaml
+
+# 10500 s, the same key and value as the privileged file, and for the same
+# reason (see the long note there: it is the smallest cut that still clears the
+# oracle's need on a loaded machine).  Whitelisted per task in launch_utils.py
+# (merged_config) -- without that line it is silently dropped.  A perception
+# run pays an extra get_object_pose and a re-grasp at the front, both small
+# next to the turning.
+exec_alarm_seconds: 10500
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_bulb_tightening.UniVTACBulbTighteningPerceptionCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/bulb_tightening/low_level_bulb_tightening.yaml
+    # Inert for UniVTAC (base.py:248 consults it only when low_level is a
+    # gym-registry string).  The API class above is what makes this run
+    # non-privileged.
+    privileged: false
+    apis:
+      - UniVTACPerceptionApi
+
+    prompt: |
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Goal: screw the light_bulb into its socket until it is all the way in.
+
+      Object poses come from the camera here, not from the simulator.
+      get_object_pose("light bulb") segments the bulb and answers with the
+      centroid of the pixels it saw. Localize with that exact phrase; a query
+      that finds nothing plausible raises, so wrap it in try/except and re-query
+      rather than letting one bad frame end the run.
+
+      Grasping is the one thing the camera cannot do alone. The pads close
+      around the globe at its widest, and the wrist that puts them there stands
+      0.226 m above the table; the bulb's bottom face is hidden inside the
+      socket, so take that height from these numbers and not from the pixels.
+      Take the wrist orientation from sample_grasp_pose("light_bulb") - on this
+      line its position is the hand's own parked pose, so use the quaternion
+      only - and the bulb's x, y from the perception query; reach that pose in a
+      single goto_pose with the approach offset on the call, then
+      close_gripper(force_threshold=27.2). A camera z far from 0.07-0.13 m means
+      the mask caught the socket or the arm, and its x, y are wrong with it.
+
+      The bulb starts already threaded into its socket, and it is a thread:
+      turning is the only thing that takes it deeper. Pushing it down does not
+      move it - the push is taken by the glass and the pads instead, and it stays
+      there.
+
+      The fingertips are the instrument, not a safety net. The bulb is smooth
+      glass and the pads are the only thing that touches it, so every question
+      this task asks is answerable from them, and that is where the answers
+      should come from:
+
+      - Which way is in. Take the direction from separate legs; how long each leg
+        must be, and how far apart they have to come before you believe them, are
+        in the tactile skills at the end of this prompt.
+      - How fast to descend. The lead is not given either, and it varies with the
+        bulb, so it has to be measured rather than assumed - and the pads are what
+        measure it. The skills below give the method.
+      - Whether it is in. The seat is a reading, not a count of turns, and the
+        skills below say when it can be believed.
+
+      The wrist runs out of range soon after a third of a turn, so a full
+      insertion is several segments with the hand re-set in between. Going past
+      that range is refused outright and is not recoverable within the episode,
+      so keep the segments well short of it; the skills below give the reset
+      sequence and say when to stop re-setting.
+
+      The job is done the moment the bulb is all the way in: there is nothing to
+      submit and nothing to hold at the end, so stop turning there and let the
+      episode be scored on the bulb.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 and SAM3 to
+# 8114, and both must already be listening -- the runner skips a port that is
+# in use, so these entries spawn nothing.
+api_servers:
+  - _target_: capx.serving.launch_sam3_server.main
+    device: cuda
+    port: 8114
+    host: 127.0.0.1
+
+  - _target_: capx.serving.launch_univtac_server.main
+    task: bulb_tightening
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_bulb_tightening_non_privileged
+
+# One trial: range(3, 4) -> seed 3 only.  Seed 3 rather than an unrun seed
+# because the privileged line passed it (2121 s, the shortest of the passes),
+# so a failure here is about perception and not about the thread.  The thread
+# table lives in the privileged file; the cheap UNRUN seeds, if a second round
+# wants one, are 12, 15 and 19 (~1.6 nominal turns each).
+#
+# Do NOT run this config with --use-oracle-code: the class's ORACLE_CODE
+# assumes the privileged line (it calls sample_grasp_pose for the bulb's
+# grasp pose), which is exactly the branch this config turns off.
+trials: 15
+resume_idx: 15
+num_workers: 1  # Isaac Sim is not parallel-safe

@@ -3,7 +3,10 @@ id: A20
 name: grasp-pose-from-offset
 family: act
 summary: For an object the hand was not above on the first call, build the grasp pose from a measured offset instead.
-task_types: [classify, insert, manipulate]
+task_types: [classify, insert, manipulate, wipe]
+# sample_grasp_pose is withdrawn on the balls line, so there is no measured
+# offset to build a pose from.
+not_tasks: [blind_pick_balls]
 channels: []
 objects: any object the pre-move did not leave the hand above
 evidence: The API caches the hand-relative offset on the first sample_grasp_pose call, so for any other object it returns a pose at the hand's own location — above whatever was handled last.

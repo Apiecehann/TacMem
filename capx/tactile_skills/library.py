@@ -45,7 +45,9 @@ ROOT = Path(__file__).resolve().parent
 TAXONOMY_FILE = "taxonomy.yaml"
 
 _REQUIRED_FIELDS = ("id", "name", "family", "summary", "task_types")
-_OPTIONAL_FIELDS = ("tasks", "channels", "objects", "evidence", "copies")
+_OPTIONAL_FIELDS = (
+    "tasks", "not_tasks", "channels", "objects", "evidence", "copies",
+)
 
 
 class SkillError(ValueError):
@@ -65,6 +67,11 @@ class TactileSkill:
         summary: One line, the thing to remember if nothing else is read.
         task_types: Task types this skill is routed to.
         tasks: Individual task names, on top of ``task_types``.
+        not_tasks: Task names this skill is held back from, whatever its type
+            routes it to.  For a skill whose premise is false on that task --
+            a call the task's API does not have, a flag that is constant
+            there -- rewording would damage the tasks it is right for, and
+            leaving it in spends a line of a prompt to say something untrue.
         channels: Tactile channels the skill reads (``shear``, ``anisotropy``,
             ``depth``, ``force``, ``coincidence``...).
         objects: Which objects the numbers hold for.
@@ -85,6 +92,7 @@ class TactileSkill:
     summary: str
     task_types: tuple[str, ...]
     tasks: tuple[str, ...] = ()
+    not_tasks: tuple[str, ...] = ()
     channels: tuple[str, ...] = ()
     objects: str = ""
     evidence: str = ""
@@ -222,6 +230,7 @@ class TactileSkillLibrary:
 
         task_types = _tuple("task_types")
         tasks = _tuple("tasks")
+        not_tasks = _tuple("not_tasks")
         if not (task_types or tasks):
             raise SkillError(f"{path}: names no task type and no task")
         for task_type in task_types:
@@ -230,6 +239,14 @@ class TactileSkillLibrary:
         for task in tasks:
             if task not in known_tasks:
                 raise SkillError(f"{path}: unknown task {task!r}")
+        for task in not_tasks:
+            if task not in known_tasks:
+                raise SkillError(f"{path}: unknown task in not_tasks {task!r}")
+        both = set(tasks) & set(not_tasks)
+        if both:
+            raise SkillError(
+                f"{path}: names {sorted(both)} in both tasks and not_tasks"
+            )
         return TactileSkill(
             id=str(meta["id"]),
             name=str(meta["name"]),
@@ -237,6 +254,7 @@ class TactileSkillLibrary:
             summary=" ".join(str(meta["summary"]).split()),
             task_types=task_types,
             tasks=tasks,
+            not_tasks=not_tasks,
             channels=_tuple("channels"),
             objects=str(meta.get("objects") or "").strip(),
             evidence=" ".join(str(meta.get("evidence") or "").split()),
@@ -296,6 +314,10 @@ class TactileSkillLibrary:
     def for_task(self, task: str) -> tuple[TactileSkill, ...]:
         """Skills a task receives: its type's, plus the ones naming it.
 
+        A skill listing the task in ``not_tasks`` is left out -- it is the
+        task's type that routed it there, and on this task its premise is
+        false.
+
         Raises:
             KeyError: The taxonomy does not know the task.
         """
@@ -305,7 +327,9 @@ class TactileSkillLibrary:
                 f"unknown task {task!r}; known: {sorted(self._type_of_task)}"
             )
         return tuple(
-            s for s in self if task_type in s.task_types or task in s.tasks
+            s for s in self
+            if task not in s.not_tasks
+            and (task_type in s.task_types or task in s.tasks)
         )
 
     def render_for_task(

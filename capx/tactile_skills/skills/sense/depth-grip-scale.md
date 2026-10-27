@@ -2,11 +2,11 @@
 id: S1
 name: depth-grip-scale
 family: sense
-summary: Read grip tightness as min(left, right) depth — 34 mm no contact, 27-28 mm light, 20 mm hard stop.
-task_types: [classify, insert, manipulate, screw]
+summary: Grip tightness is min(left, right) depth — 34 mm no contact, 27.8-29 mm touch without grip, 24 mm sensor floor.
+task_types: [classify, insert, manipulate, screw, wipe]
 channels: [depth]
 objects: any
-evidence: Common to every tactile task in the repo; the 34 mm sentinel is the open-pad reading on this rig, and a compliant object bottoms out near 26.4 mm. The few tenths of a millimetre between the two pads is a mounting property of the fingertips, not of the object.
+evidence: Common to every tactile task in the repo; the 34 mm sentinel is the open-pad reading on this rig, and a compliant object bottoms out near 26.4 mm. The few tenths of a millimetre between the two pads is a mounting property of the fingertips, not of the object. A close that met nothing raises and ends on the 34.00 mm far plane on both pads (blind_pick, 2026-10-20, six sites). A returned close at 27.78-28.98 mm with under 0.01 px of marker displacement is a graze — the gel was pressed, the object was not caught — and those sites shoved the block 11-15 mm (blind_pick, 2026-10-20). The raw displacement is not exactly zero — an untouched pad reads a few thousandths of a pixel, which prints as 0.00 and drifts upward slowly with the sim's image noise. The gsmini camera window is 24-34 mm, so 24.0 mm is a pad bottomed out at its near limit, not a deeper grip. A returned close with one pad there, the other at 26-27 mm and the two displacements 30-130x apart is a finger on the object's top face (blind_pick seeds 11 and 13, 2026-10-20), and both came apart within the first 20 mm lift, while the holds that survived read both pads at 26.3-27.5 (seeds 4, 9, 15).
 copies:
   - docs/univtac_api_reference.md §3.9
   - univtac_skill/SKILL.md (tactile reading guide)
@@ -25,21 +25,35 @@ Read it as a scale, not as a length:
 | reading | means |
 |---|---|
 | 34.0 mm | nothing is pressing this pad — the sentinel, not a measurement |
-| 27-28 mm | a light grasp, enough to hold against gravity |
-| ~26.4 mm | a compliant object has bottomed out; this is as far as it goes |
-| 20 mm | the hard stop |
+| 27.8-29 mm | at the gel face: a light grasp, or a graze that pressed the gel without trapping the object; marker displacement tells them apart (over ~1 px = caught, ~0 = graze) |
+| 26.2-26.8 mm | a servoed close at a 26.5 target; a compliant object has bottomed out here |
+| 24 mm | the sensor's floor — the pad is bottomed out and cannot read deeper |
+
+The 27.8-29 mm band is the one to be suspicious of: a light grasp and a
+graze — a close that pressed the object's edge without catching it — read
+there, and both contact flags light. The depth alone cannot separate them; a
+real grasp deforms the gel and shows marker displacement, a graze stays under
+0.01 px ([[grasp-verification]]). A close that met *nothing* is not in this
+band at all: it raises, and the pads end on 34.0 mm with the fingers shut.
 
 ## Traps
 
 - The far plane is a sentinel. A pad reading 34.0 mm is not touching anything,
   and everything else it reports — shear, coherence — is meaningless.
 - **0.0 mm is the other sentinel, and it is the dangerous one.** A pad that
-  never reported comes back as 0.0, which sits past the hard stop and reads as
-  the firmest grip on the scale. Out-of-range down means a dead sensor, not a
-  crush — check the contact flag on that pad before believing the number.
-- A grip that closed on nothing looks like a deep grip in the *commanded*
-  position and like 34 mm in the *reading*. Depth is measured, position is
-  commanded; when the object is not where it was expected they disagree.
+  never reported comes back as 0.0, which sits below the sensor's floor and
+  reads as the firmest grip on the scale. Out-of-range down means a dead
+  sensor, not a crush — check the contact flag on that pad before believing
+  the number.
+- **A pad pinned at 24.0 mm is bottomed out, not gripping deeper.** The camera
+  window is 24-34 mm, so 24.0 is the near limit whatever the object does. A
+  returned close with one pad there and the other at 26-27 mm is a finger on
+  the object's top face, and it comes apart on the first lift.
+- A close that met nothing has one face, not two: it raises, and with the
+  fingers shut the pads sit on 34.0 mm. A 27.8-29 mm reading while shut means
+  something was pressed — the marker displacement says whether it was caught.
+  Depth is measured, position is commanded; when the object is not where it
+  was expected they disagree.
 - **Depth says how tight the grip is, never what the object weighs or how hard
   it is.** Weight is a shear difference between the two pads
   ([[gel-shear-weight]]); hardness is a *change* in depth under a commanded

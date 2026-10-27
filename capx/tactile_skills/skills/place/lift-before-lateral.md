@@ -3,7 +3,7 @@ id: P2
 name: lift-before-lateral
 family: place
 summary: Lift clear of the table before moving sideways — a resting object is toppled, not carried.
-task_types: [classify, insert, manipulate]
+task_types: [classify, insert, manipulate, wipe]
 channels: []
 objects: any
 evidence: Standard practice across the manipulation tasks; the sideways move while the object is still supported tips it rather than sliding it.

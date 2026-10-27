@@ -2,7 +2,7 @@
 id: A14
 name: mirrored-shear-slide
 family: act
-summary: Read the slide in mm as the shear x-channel's left minus right over 18 px/mm, signed — difference it across the move you judge; the field counts from the baseline.
+summary: Read the slide in mm as the shear x-channel's left minus right over 18 px/mm, signed — difference it across the move you judge.
 task_types: [screw]
 channels: [shear, coincidence]
 objects: light_bulb (gain calibrated on this rig)

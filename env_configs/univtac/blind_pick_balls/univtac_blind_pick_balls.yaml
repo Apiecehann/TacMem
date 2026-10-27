@@ -1,0 +1,131 @@
+# ViTaForge: blind_pick_balls -- BLIND RETRIEVAL OF ONE TEXTURED BALL
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/blind_pick_balls/univtac_blind_pick_balls.yaml
+#
+# The server must be started BEFORE this, on the same port, AND WITH THE SEED
+# THAT MATCHES THE TRIAL:
+#   bash scripts/launch_univtac_server.sh blind_pick_balls 8120 <gpu> <seed>
+#                                                                          ^ seed = trial id
+#
+# --- What the task is ----------------------------------------------------------
+#
+# An open-topped box (0.36 x 0.48 m inside, rim at z = 0.19, floor at z = 0.016)
+# holds twelve 30 mm balls of three kinds -- hard, soft and textured, four of
+# each.  Take one TEXTURED ball out, lift it clear, and release it in the bowl
+# at (0.49, -0.34), radius 75 mm.  The balls sit on three rows at y = -0.115,
+# 0.000 and 0.115 m; which cells are occupied and which ball is which kind is
+# NOT public, and no camera in the policy's observation looks into the box, so
+# the two GelSight pads are the only sensor.
+#
+# Scoring (upstream, env/tasks/_blind_ball_models.py, PickScore): a ball counts
+# once it is inside the bowl (every part within 75 mm of its centre, low enough
+# to be under the rim), the gripper is open wider than a 36 mm face gap, the
+# ball's kind matches the target, and the ball was verified as grasped -- both
+# pads loaded, ball centre more than 15 mm above the box rim, within 45 mm of
+# the gripper centre, held for 0.15 s -- and it then rests for a quarter second.
+# Releasing a wrong-kind ball, or one that was never lifted, ends the episode
+# with failure = 'wrong_material' / 'unverified_grasp'.
+#
+# --- Where this task came from -------------------------------------------------
+#
+# Ported from OpenTacBench's tactile-memory-tasks branch on 2026-10-22.  The
+# upstream file is a standalone Gymnasium env, not a ViTaForge BaseTask: it owns
+# its PhysX/UIPC world, its own IK controller and its own scorer, and has none of
+# the manager objects the serving endpoints read.  capx/serving/
+# univtac_ball_adapter.py supplies that missing surface; read its module
+# docstring before changing anything here.  Three of its consequences matter to
+# this file:
+#
+#   * the served line is touch-only by construction -- _actor_manager.actors is
+#     empty (the balls are UIPC FEM bodies with no pose query), so get_object_pose
+#     and sample_grasp_pose cannot answer even if an API exposed them;
+#   * the endpoint poses are HAND-LINK poses, as on every other task, while the
+#     task commands the centre of its two gel surfaces (about 0.1335 m along the
+#     hand's z, re-measured at every reset).  The adapter converts both ways, so
+#     an oracle never has to know;
+#   * the gel depth the API reports is the raw height-map minimum in mm
+#     (~28.3 unloaded, falling with indentation), not an indentation depth.
+#
+# The API class below is UniVTACBallApi: the tactile toolset minus
+# get_object_pose / sample_grasp_pose / rotate_gripper (withdrawn, not just
+# unhelpful -- there is nothing behind them here), plus get_ee_pose, which this
+# task's oracle needs because it has to build its own TCP targets from the arm's
+# current orientation.  check_success exists but stays out of the prompt.
+#
+# The robot profile is NOT read from ViTaForge/task_config/blind_pick_balls.yml
+# beyond the task's own keys: `blind_pick_balls` is not in FINAL_TASKS, so
+# serving builds it through its own branch of init_task and the four values the
+# endpoints read (step_lim, tactile_far_plane, use_adaptive_grasp,
+# adaptive_grasp_depth_threshold) are supplied by the adapter.
+#
+# --- Budget -------------------------------------------------------------------
+#
+# The task's own clock is episode_seconds = 240 s, and it ends the episode
+# itself with failure = 'timeout' at 240 s / physics_dt = 28800 physics steps =
+# 14400 control steps (physics 120 Hz, action_repeat 2).  That is the hard cap
+# on any run here; exec_alarm_seconds only has to sit above it in wall clock.
+#
+# Wall cost per control step on this rig is measured for other ViTaForge tasks
+# at ~0.38 s (wipe_vase) to ~0.5 s (blind_pick's search), so a full-budget
+# episode is 5500-7200 s.  7200 s is that upper bound and nothing else: a run
+# that reaches it has already spent the whole simulated episode.  It is a
+# first-round figure, not a measurement -- this task has never been run through
+# cap-x -- and the oracle prints its own call count and per-probe log, so the
+# trial log is complete even if the alarm ends the run.
+#
+# The oracle's own path is much shorter (three 275 mm rakes at 15 mm per call,
+# one probe and one carry), so a healthy round should finish far inside it.  If
+# it does not, the cost is in the raking step size, not in the alarm.
+#
+# --- One process, one seed ----------------------------------------------------
+#
+# Task.__init__ draws the twelve balls' materials from cfg.seed and never
+# redraws them; reset(seed) only resamples which cells are occupied.  A second
+# seed therefore needs a second server process, unlike blind_pick (which bakes
+# nothing per process).  Five trials are five rounds of (start the server on
+# that seed, run this config, kill the server).
+#
+# Trial id IS the seed: trial.py runs env.reset(seed=trial), and
+# range(resume_idx, total_trials + 1) is what actually runs, so trials must be
+# >= resume_idx or the range is empty and the run silently does nothing.  Both
+# numbers must also agree with the server's --seed argument.
+#
+# Scripted (oracle) rounds pass --use-oracle-code on the command line, as every
+# other univtac config does.
+exec_alarm_seconds: 7200
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_blind_pick_balls.UniVTACBlindPickBallsCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/blind_pick_balls/low_level_blind_pick_balls.yaml
+    # Inert for UniVTAC: base.py only consults this when low_level is a
+    # gym-registry string, not a YAML path.  Every other univtac config sets
+    # false for the same reason.  What makes a task privileged on UniVTAC is
+    # the API class: UniVTACTactileApi reads /object_pose (the simulator's
+    # ground truth) while UniVTACPerceptionApi segments a camera instead.  Here
+    # neither can see the balls -- they are FEM bodies with no pose query and
+    # they sit below an opaque rim -- so the distinction is not even available;
+    # the withdrawn queries make that explicit rather than silent.
+    privileged: false
+    apis:
+      - UniVTACBallApi
+
+# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 (override with
+# UNIVTAC_SERVER_URL), and the server must already be listening (a free port
+# here would spawn a child that fails instantly and stall the run for 120 s).
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: blind_pick_balls
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_blind_pick_balls
+
+# One trial on seed 1: range(1, 2) -> seed 1 only.  Materials are drawn per
+# seed, so a run here says nothing about any other seed, and the server serving
+# it cannot reset to one.  Move both numbers together AND restart the server on
+# the same seed for each round.
+trials: 8
+resume_idx: 8
+num_workers: 1  # Isaac Sim is not parallel-safe

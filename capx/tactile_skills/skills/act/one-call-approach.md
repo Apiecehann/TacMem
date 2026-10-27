@@ -3,7 +3,7 @@ id: A3
 name: one-call-approach
 family: act
 summary: Reach the grasp pose in one call with z_approach=0.1 — a split approach lands up to a millimetre off.
-task_types: [classify, insert, manipulate, screw]
+task_types: [classify, insert, manipulate, screw, wipe]
 channels: []
 objects: any
 evidence: Same-seed measurement — the two-call approach lands ~1 mm from the pose, and the following close shoves the object sideways, the same drag that ruins a weight baseline.

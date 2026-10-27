@@ -4,6 +4,8 @@ name: seat-height-from-plate
 family: place
 summary: Seat the object's base on the support's surface — derive the stop height from the two poses, never from contact.
 task_types: [classify, manipulate]
+# get_object_pose is withdrawn on the balls line: no support's pose can be read.
+not_tasks: [blind_pick_balls]
 channels: []
 objects: any
 evidence: Once the object is clear of the table, world-frame deltas move it exactly, so the computed height needs no grasp-offset correction. The blocks, plates, cans and pads in these scenes all carry their pose origin at their base, so the number to command there is the support's surface itself.

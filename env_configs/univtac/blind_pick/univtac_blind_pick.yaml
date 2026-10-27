@@ -1,0 +1,187 @@
+# ViTaForge: blind_pick -- BLIND FIND AND GRASP (scripted oracle, v13)
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/blind_pick/univtac_blind_pick.yaml
+#
+# The server must be started BEFORE this, on the same port, AND WITH THE SEED
+# THAT MATCHES THE TRIAL:
+#   bash scripts/launch_univtac_server.sh blind_pick 8120 <gpu> <seed>
+#                                                                     ^ seed = trial id
+#
+# --- What the task is ----------------------------------------------------------
+#
+# An open-topped box (296 x 356 mm inside, rim at z = 0.197) with walls you
+# cannot see through, and one 50 x 50 x 60 mm block somewhere on its floor. The
+# object is below the rim, so no camera reading in the API says where it is: the
+# episode is a search, and the only sensor that can run it is the two GelSight
+# pads on the fingertips. Success is not "touched it" -- Retrieval needs the
+# object held clear of the rim (every vertex above RIM_Z + 15 mm), a light grip
+# on BOTH pads (each under 28.0 mm of gel depth) and the object's middle within
+# 60 mm of the gripper centre, held for 18 consecutive control steps
+# (envs/_blind_box.py:72-84). Let go, or let the grip soften past 28 mm, and the
+# counter restarts at zero.
+#
+# This file's oracle is the search itself, and it reads the object's pose
+# NOWHERE -- get_object_pose appears in none of it. Every decision comes from
+# the pads, which deliver one minimum optical depth per pad and nothing else:
+# no contact position, no force.
+#
+# The line is NON-PRIVILEGED: `apis` is UniVTACPerceptionApi, so a model-driven
+# run of this config cannot ask the simulator where the object is -- see the
+# comment on `apis` below.  The oracle needs no such distinction (it reads no
+# pose at all), so this one file serves both the oracle and the model rounds.
+#
+# --- What the runs and controls settled (seed 9 and seed 1, 2026-10-18) ---------
+#
+# v10 (a whole run) fired four yaws 22.5 deg apart.  Two findings killed it:
+#
+#   * the first candidate fired BOTH pads at the same rung (28.04 / 28.50,
+#     indistinguishable from a face pair) and still lost the block on the first
+#     lift step -- a symmetric CORNER pinch fools every depth test;
+#   * every failed candidate shoved the block (x 0.541 -> 0.530, yaw 38.6 ->
+#     43.0), so the one good yaw got its turn too late.
+#
+# The controls put the difference on ONE variable: the hand was not centred.
+# At the block's true x a face-aligned close holds (26.2 / 26.0 at +0 deg,
+# 27.5 / 27.4 at +12 deg) and the block barely moves; at the production x (14 mm
+# off) even a face-aligned yaw is ONE-sided (rung 0.80, 27.94 / 34.00); at
+# +24 deg the ladder has collapsed to a one-sided rung and the close shoves the
+# block 6 mm without lifting.  So the tolerance around a face pair lies between
+# 12 and 24 deg, and x has to be measured before anything closes.
+#
+# Two more measurements shaped the current recipe:
+#
+#   * measuring y on the block's TOP FACE shoves it -- informative probes press
+#     the gel onto the top-face EDGES, and the block moved yaw 38.0 -> 28.8 and
+#     y -0.0215 -> -0.0290 during the scan, so the scan's own answer described
+#     where the block had been;
+#   * measuring y on the SIDE faces does not: the side flip (below) runs at the
+#     measured x and answered 0.2 mm from the block's true y while moving it
+#     only 1.3 mm and 2.3 deg.
+#
+# The harness's own test is narrower than it looks.  retrieval.advance calls a
+# hold bilateral only while BOTH pad depths are below 28.0 mm, and success needs
+# 18 such steps once the block's lowest vertex is above RIM_Z + 0.015.  A run
+# carried the block to 0.2887 with both pads on it and still scored
+# completed=False, because the grip (first touch - 0.05) read 27.55 / 27.39 and
+# drifted to 28.26 / 27.95 during the lift -- the left pad fell out of the
+# bilateral window.  The grip now keeps closing until both pads read at least
+# 26.5 mm deep.
+#
+# --- The recipe ---------------------------------------------------------------
+#
+#   L  LANE   bisect y at x = 0.520 with the mouth gate and the rung ladder.
+#             The lane is only a HINT -- at the spawn x the block's y-slice can
+#             be shorter than the pads' closed spacing -- but its sign says
+#             which way y lies.
+#   X  CENTRE x by bisecting both edges of the union of the pads' pressed
+#             top-face intervals, which is symmetric about xc whatever the yaw
+#             or half-length.  Measured 0.5428 against a true 0.5412, and the
+#             block does not move during the scan.
+#   Y  CENTRE y by the SIDE first touch at the measured x.  The pads close
+#             symmetrically about the hand, so at any lane the pad that touches
+#             first is the one on the block's side and sign(depth_R - depth_L)
+#             is a continuous direction signal; the lane where it swaps is the
+#             block's y centre.  Probe the hint, widen 5 then 10 mm in the
+#             direction its sign points until the sign swaps, then bisect four
+#             times.  Each probe starts fully open (rung 1.00) so the first
+#             squeeze is as shallow as the instrument allows, and each meets a
+#             SIDE face at mid-block height -- not the top-face edges.
+#   S  SWEEP  four hand yaws 22.5 deg apart.  The block's plan is a 50 mm
+#             square, so its yaw repeats every 90 deg and one of the four is
+#             within 11.25 deg of a face pair -- inside the measured 12 deg.
+#             Gate: the FIRST TOUCH RUNG alone.  A face pair is met at 0.70 or
+#             narrower, a pad landing on a corner at 0.75 and wider (measured at
+#             the sweep's worst-case yaw error).  A corner is skipped without
+#             closing, so a bad candidate cannot spoil the next one.  ONE side
+#             is fine: with the hand half a millimetre off in y the two pads
+#             touch one rung apart.
+#   G  GRIP   position close (adaptive=False) at first touch - 0.05, then one
+#             rung at a time until both pads read at least 26.5 mm deep (at most
+#             3 more).  A pad still on the far plane is a ONE-sided pinch and
+#             the candidate is rejected before lifting.
+#   T  TEST   a 120 mm lift in two steps.  A lost block reads the far plane.
+#   F  FINAL  four steps to gripper-centre z 0.319 (EE ~0.45).  The task line
+#             is the block's lowest VERTEX above RIM_Z + 0.015 = 0.212, and at
+#             EE 0.377 the bottom face sat at 0.2152 and the check still said no.
+#
+# Everything is printed to the trial log -- that log is the thing to read.
+#
+# --- Budget -------------------------------------------------------------------
+#
+# 2400 s.  Measured on this rig: reset ~10 s, rise/turn ~7-11 s, a mouth descent
+# ~7 s, each rung ~5 s with adaptive=False, the grip close ~4 s, a 60 mm lift
+# step ~10 s, and each side-flip probe ~40-55 s (its own rise, move, descend,
+# ladder and rise).  Two whole runs measured the search end to end -- seed 1 at
+# 1123 s (Reward 1.0, Task Completed) and seed 9 at 1268 s (check_success True)
+# -- so the alarm is left at 2400 s with room for one rejected candidate.
+# Needing more is a signal that the search is too expensive, not that the
+# budget is too small.  The oracle counts its own calls and prints a summary, so
+# the log is complete even if the alarm ends the run.
+#
+# The server side is separate and already handled: blind_pick.yml ships
+# memory_timeout_seconds = 10.0 (1200 control steps of simulated time), which is
+# the clock that ends an episode here because serving does not consult step_lim.
+# The backing in capx/serving/launch_univtac_server.py raises it to 60 s; that
+# needs a server restart to take effect.
+#
+# --- One seed, and why this task can take more without a restart --------------
+#
+# Trial id IS the seed: trial.py:677 runs env.reset(seed=trial), and the stub
+# passes it to POST /reset. Unlike wipe_vase and bulb_tightening, blind_pick
+# bakes NOTHING per process -- the object's placement is drawn inside
+# _reset_actors from self.rng, which reset() re-seeds (blind_pick.py:53), so a
+# second seed is a second reset, not a second server.
+#
+# range(resume_idx, total_trials + 1) is what actually runs, so trials >=
+# resume_idx or the range is empty and the run silently does nothing.
+#
+# Scripted (oracle) rounds pass --use-oracle-code on the command line, as every
+# other univtac config does; without the flag the harness takes the model path
+# instead and posts the prompt to the default LLM endpoint (127.0.0.1:8110).  On
+# this host that port belongs to another user's viser server, which accepts the
+# connection and drops it, so a scripted trial without the flag dies before the
+# first code block with
+#   RemoteDisconnected: Remote end closed connection without response.
+# The runtime routes oracle results into outputs/oracle/...
+
+exec_alarm_seconds: 2400
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_blind_pick.UniVTACBlindPickCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/blind_pick/low_level_blind_pick.yaml
+    # Inert for UniVTAC: base.py:248 only consults this when low_level is a
+    # gym-registry string, not a YAML path.  Every other univtac config sets
+    # false for the same reason.  The API class below is what "non-privileged"
+    # means on UniVTAC: UniVTACPerceptionApi takes the object pose from SAM3 +
+    # depth instead of /object_pose, which is the simulator's ground truth, and
+    # its sample_grasp_pose is the EE-relative branch rather than the
+    # ground-truth one.  For THIS task the camera cannot see the object at all
+    # (opaque walls, object below the rim, no wrist camera), so the perception
+    # queries are refused by their own plausibility gates -- which is exactly
+    # the task: the pads are the only sensor that reaches the object.  The
+    # tactile tools are identical on both lines, and the oracle here calls no
+    # pose helper, so oracle rounds score the same under either class.
+    privileged: false
+    apis:
+      - UniVTACPerceptionApi
+
+# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 (override with
+# UNIVTAC_SERVER_URL), and the server must already be listening (a free port
+# here would spawn a child that fails instantly and stall the run for 120 s).
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: blind_pick
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_blind_pick
+
+# Seeds 3..10 in one run: range(resume_idx, trials + 1) -> 3,4,...,10.  Both
+# numbers move together; trials < resume_idx means an empty range and the run
+# silently does nothing.  The server does NOT need restarting between them
+# (see the header): each trial's id IS the seed it posts to /reset.
+trials: 20
+resume_idx: 20
+num_workers: 1  # Isaac Sim is not parallel-safe

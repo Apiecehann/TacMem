@@ -3,7 +3,7 @@ id: R6
 name: cruise-height
 family: protocol
 summary: Travel at a cruise height and descend only at the target.
-task_types: [insert, manipulate]
+task_types: [insert, manipulate, wipe]
 channels: []
 objects: any
 evidence: A sideways move while the object still rests on the surface topples it instead of moving it, which is why lifting clear is the first step of every transport.

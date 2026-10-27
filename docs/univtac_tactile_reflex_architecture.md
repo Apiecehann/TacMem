@@ -28,7 +28,7 @@ LLM (慢速环,决策频率) ──┬── move_reflexive(stop_on={...}) ─�
 ## 3. 事件词汇表
 
 停止条件是 7 个事件的 OR 组合。契约定义(键、默认阈值、逐条含义、digest schema)
-以 [univtac_api_reference.md](univtac_api_reference.md) §3.12 为准,阈值常量单一
+以 [univtac_api_reference.md](univtac_api_reference.md) §3.11 为准,阈值常量单一
 来源是 `capx/serving/tactile_reflex.py` 的 `DEFAULT_THRESHOLDS`。本处只记录设计要点:
 
 - **阈值 grounded**:far_plane 34.0 / light_grasp 27.5 来自 `robot_cfg.py`;shear 2.0 /
@@ -64,7 +64,7 @@ LLM (慢速环,决策频率) ──┬── move_reflexive(stop_on={...}) ─�
 | `capx/integrations/tactile/univtac_api.py` | `move_reflexive`(body = move_delta 同款 + `stop_on`;返回 8 字段修剪 tactile + `terminated_by` + `event`);`get_tactile_image(side)`(base64 PNG → `(H,W,3)` uint8,空/缺键 → None) |
 | `univtac_skill/robo.py` | re-export `move_reflexive` / `get_tactile_image`,扩展 `__all__` |
 | `univtac_skill/SKILL.md` | "Two-loop control" 章节:条件选择表、digest 阅读规则、显式取代慢速 while 循环接触模式 |
-| `docs/univtac_api_reference.md` | §3.12 `move_reflexive`(stop_on 参考表 + digest schema)、§3.13 `get_tactile_image`,概览表更新 |
+| `docs/univtac_api_reference.md` | §3.11 `move_reflexive`(stop_on 参考表 + digest schema)、§3.12 `get_tactile_image`,概览表更新 |
 | `tests/integrations/test_tactile_reflex.py` | 25 个纯 CPU 测试:特征手算核对、6 事件含边界、evaluate 序、pydantic 模型、客户端 wire、hook 生命周期(duck-typed fake `_TASK`) |
 
 ## 6. 明确不做(v1 边界)

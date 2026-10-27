@@ -3,7 +3,10 @@ id: R10
 name: channel-selection
 family: protocol
 summary: Only shear and anisotropy carry structure — texture lives in anisotropy alone; every other scalar averages the image.
-task_types: [classify, insert, manipulate, screw]
+task_types: [classify, insert, manipulate, screw, wipe]
+# blind_pick_balls separates its materials on the gel's fine relief, which is
+# not an average of the image and is the one channel its API reports for it.
+not_tasks: [blind_pick_balls]
 channels: [shear, anisotropy]
 objects: any
 evidence: Every criterion built on an averaged channel has been falsified on this rig — displacement as weight, the single-pad shear magnitude as weight, coherence as texture, twist-slip as friction. The two that survive read a difference or an axis. Two surfaces that deform the gel by the same amount read alike on every other scalar.

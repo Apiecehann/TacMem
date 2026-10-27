@@ -8,7 +8,7 @@ channels: [force, depth]
 objects: the insert tasks' pegs and tilted holes or slots
 evidence: A lateral probe of ~3 mm and a pose read-back separates the two states cleanly — seated, the pose barely moves (0.3-0.8 mm); caught on the rim, the part comes off by 45-52 mm.
 copies:
-  - docs/univtac_api_reference.md §3.14
+  - docs/univtac_api_reference.md §3.13
 ---
 
 ## How

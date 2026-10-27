@@ -132,8 +132,8 @@ docstring 里没有；docstring 独有的数字（阈值、标定）在手册里
 | S12 | can-texture-difference | 罐子用两次硬度握的各向异性**差**（界 0.02），且罐子必须刚性 | API·get_tactile_data[texture] | 记忆匹配 |
 | S13 | shear-vs-displacement | 按要回答的问题选通道：问"往哪边"用剪切，问"动没动"用位移 | API·get_tactile_data | 全部 |
 | S14 | two-sided-hold | 判"抓住了"看两个接触标志 + 两侧深度都在量程内，**别要求两侧位移对称** | API·get_tactile_data + PROMPT·memory + REF§3.9 | 全部 |
-| S15 | slip-pair-baseline | 判滑移前先空调一次建基线（首调只建参考、不判）；判据=位移增量 >2 px 且 coherence >0.7 | API·detect_slip + REF§3.11 + SKILL | 全部 |
-| S16 | contact-flag-not-proximity | ⚠ 找物体靠**命令位置**，别等接触标志——空手下降它永远是 False | API·detect_contact + API·move_delta + REF§3.10 | 全部 |
+| S15 | slip-pair-baseline | 判滑移前先空调一次建基线（首调只建参考、不判）；判据=位移增量 >2 px 且 coherence >0.7 | API·detect_slip + REF§3.10 + SKILL | 全部 |
+| S16 | contact-flag-not-proximity | ⚠ 找物体靠**命令位置**，别等接触标志——空手下降它永远是 False | API·get_tactile_data + API·move_delta + REF§3.9 | 全部 |
 | S17 | reference-depth-offset | 两侧深度差是常数 ~0.3 mm；"更紧"的那侧取 min(L,R) | REF§3.4 | 全部 |
 | S18 | far-plane-check | 松握必须读满 34.0 mm 远平面，否则这一握无效 | API×3 | 分类 |
 | S19 | confidence-gate | ⚠ 标记丢失会给出**大小合理**的假读数；唯一办法是置信度门（项目用 0.70） | API·rotate_gripper[screw] + PROMPT·bulb | 螺纹（通用） |
@@ -145,13 +145,13 @@ docstring 里没有；docstring 独有的数字（阈值、标定）在手册里
 
 | # | 技能 | 一句话 | 现有副本 | 谁需要 |
 |---|---|---|---|---|
-| A1 | reflex-stop-on-events | 把触觉事件判定放进服务端：接触 / 平台期 / 硬顶 / 滑移 / 剪切尖峰 / 不对称，触发即冻结 | API·move_reflexive + SKILL§Two-loop + REF§3.12 | 全部 |
+| A1 | reflex-stop-on-events | 把触觉事件判定放进服务端：接触 / 平台期 / 硬顶 / 滑移 / 剪切尖峰 / 不对称，触发即冻结 | API·move_reflexive + SKILL§Two-loop + REF§3.11 | 全部 |
 | A2 | descent-until-contact | 下降用小步 + 读到接触就停，别命令一个固定深度 | API·move_delta + SKILL | 全部 |
 | A3 | one-call-approach | 到抓取位姿要**一次** `goto_pose` 到位；分两次会差 ~1 mm 并把物体拖着走 | API·goto_pose + REF§3.1 | 全部 |
 | A4 | lateral-only-align | 对孔只做横向微调，别在深度上试探 | PROMPT·insert_hole/tube | 插入 |
 | A5 | small-step-insertion | 插装一律小步增量；单步下限 2 mm ⇒ 最后 1 mm 无法闭环 | PROMPT·insert_* + REF§3.2 + SKILL | 插入 |
 | A6 | asymmetry-means-misaligned | 两垫深度差 = 偏斜，用它纠姿态 | PROMPT·insert_* + API·move_reflexive | 插入 |
-| A7 | stall-means-jam | 推不动/滑移持续 = 卡住，退回来重试而不是加力 | PROMPT·insert_* + REF§3.14 | 插入 |
+| A7 | stall-means-jam | 推不动/滑移持续 = 卡住，退回来重试而不是加力 | PROMPT·insert_* + REF§3.13 | 插入 |
 | A8 | depth-stop-seating | 压到位就停，靠位置不靠力 | PROMPT·insert_* | 插入/搬运 |
 | A9 | preserve-existing-grasp | 已经抓好的别中途松开重抓 | PROMPT·manipulation | 搬运 |
 | A10 | thread-direction-by-legs | 螺纹方向：正反两条腿比剪切符号，**只读去程**（往返残差是迟滞）；腿要够长（±4° 的 S/N<1） | PROMPT·bulb + API·rotate_gripper[screw] | 螺纹 |

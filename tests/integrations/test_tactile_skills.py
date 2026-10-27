@@ -48,7 +48,7 @@ SECTION_MARKER = "[section:"
 # less precise.
 CORE = {
     "depth-grip-scale",
-    "contact-flag-not-proximity",
+    "contact-flag-is-range",
     "one-call-approach",
     "reflex-stop-on-events",
     "grasp-verification",
@@ -82,7 +82,7 @@ def test_every_task_in_the_configs_is_in_the_taxonomy(library) -> None:
 
 
 def test_taxonomy_covers_every_task_type(library) -> None:
-    assert set(library.task_types) == {"classify", "insert", "manipulate", "screw"}
+    assert set(library.task_types) == {"classify", "insert", "manipulate", "screw", "wipe"}
 
 
 def test_no_task_is_in_two_types(library) -> None:
@@ -95,11 +95,22 @@ def test_no_task_is_in_two_types(library) -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("task_type", ["classify", "insert", "manipulate", "screw"])
+@pytest.mark.parametrize("task_type", ["classify", "insert", "manipulate", "screw", "wipe"])
 def test_core_skills_reach_every_type(library, task_type: str) -> None:
-    for task in library.task_types[task_type]:
+    tasks = library.task_types[task_type]
+    for task in tasks:
         delivered = {s.name for s in library.for_task(task)}
-        assert CORE <= delivered, (task, sorted(CORE - delivered))
+        # A task can be held back from a core skill, but only on purpose: the
+        # skill file itself has to name that task in not_tasks.  A skill that
+        # simply stops reaching a task still fails here.
+        for name in CORE - delivered:
+            assert task in library.get(name).not_tasks, (task, name)
+    # ...and each core skill still has to reach the type somewhere, or the
+    # opt-out has quietly become an opt-out for the whole type.
+    for name in CORE:
+        assert any(
+            name in {s.name for s in library.for_task(t)} for t in tasks
+        ), (task_type, name)
 
 
 def test_routing_by_task_adds_to_routing_by_type(tmp_path: Path) -> None:
@@ -117,6 +128,26 @@ def test_routing_by_task_adds_to_routing_by_type(tmp_path: Path) -> None:
     assert skill in lib.for_task("bulb_tightening")
     assert skill not in lib.for_task_type("screw")  # type routing is separate
     assert skill in lib.for_task_type("classify")
+
+
+def test_not_tasks_takes_a_skill_back_out(tmp_path: Path) -> None:
+    """`not_tasks:` is the one way routing loses a skill, and it is explicit.
+
+    The skill stays routed to the type; one task is named out of it because on
+    that task the skill's premise is false, not because it is unimportant.
+    """
+    _write_library(
+        tmp_path,
+        GOOD.replace(
+            "task_types: [classify]",
+            "task_types: [classify, screw]\nnot_tasks: [bulb_tightening]",
+        ),
+    )
+    lib = TactileSkillLibrary.load(tmp_path)
+    skill = lib.get("sample")
+    assert skill in lib.for_task("weight_classify")
+    assert skill not in lib.for_task("bulb_tightening")
+    assert skill in lib.for_task_type("screw")  # type routing is untouched
 
 
 def test_unknown_task_and_type_raise(library) -> None:
@@ -265,7 +296,134 @@ def test_compact_block_is_one_line_per_skill_and_within_budget(library) -> None:
             # line took seven to say the same thing at its own home, and the
             # bulb's grasp line lost three it did not need.
             # bulb_tightening 646/26.
-            assert len(block.split()) < 26 * len(skills), (task, len(block.split()))
+            # The next run (2026-10-10) died at the other end of the range: at
+            # seed 1's 4.36 mm a turn its 30° first block asked the lattice for
+            # 0.55 mm of slide — the limit itself — so the whole ladder (30, 30,
+            # 20, 15, 10°) read at or above the feed and the run filled the gap
+            # with 5 mm a turn of its own.  Then, after a re-grasp whose pads
+            # read under the gate, its retry loop re-drove the fed block twice
+            # more and the third met the servo's limit and latched, the bulb
+            # 2.67 mm in.  So the lead line now takes a 15° first block (0.13 to
+            # 0.28 mm across the range), the gate line says a rejected reading
+            # is taken again and never re-driven, and the re-grasp line fires on
+            # a gate that keeps rejecting.  Five summaries moved; the net is one
+            # word down.  bulb_tightening 645 words over 25 skills.
+            # The round after that one (2026-10-10) was not eval-driven at all:
+            # it came from reading the environment's own expert back.  The
+            # expert feeds its two direction legs at 6.15 mm a turn and reads
+            # the pair with no gate whatever -- on runs that finished SUCCESS
+            # it read -13.5 against -2.9 px and -19.2 against -1.5 px on a pad
+            # sitting at 0.24 to 0.31 coherence -- while this library had been
+            # turning the legs in place, where a baseline-relative coherence
+            # reads low because the pad has barely moved since the reset, and
+            # then gating them at 0.70, so every pair came back short of two
+            # real readings and runs filled the gap with a written-in
+            # direction.  So the legs now carry a ~6 mm feed and no gate, the
+            # gate's line says it is for a small signal and names the seat's
+            # 0.04 mm slide as the one it belongs to, and the wind-back line
+            # says which way round it goes -- a run had turned its counter the
+            # other way and driven an empty hand 100 degrees deeper into the
+            # twist it was trying to release.  Three summaries moved, net nine
+            # words up, and the longest line fell from 56 to 52.
+            # bulb_tightening 648 words over 25 skills, two inside the bound.
+            # The next run (2026-10-10, the first under that library) took the
+            # direction correctly and then stopped the insertion itself, three
+            # blocks in: the seat line said the slide "reaching a tenth" of the
+            # block's descent, which reads as a ceiling, and the gate's line
+            # handed over a flat 0.04 mm -- a seat measured on a 0.356 mm block
+            # -- so the rule it wrote was `abs(slide) <= min(0.1 * descent,
+            # 0.04)` and it fired on the third of the six blocks the travel
+            # needs, at 3.85 mm of the 4.50 the verdict wants and 0.026 N of
+            # seat force.  The expert's own criterion is three things at once,
+            # all three missing from the delivered lines: the slide signed (a
+            # seat runs the way the glass does not), the tenth a floor rather
+            # than a ceiling, and the call armed only after the twists have
+            # sunk the hand 5.5 mm -- that run's hand stood at 5.02 mm, so the
+            # arm alone would have blocked it.  Coherence was the other half:
+            # 0.51, 0.31 and 0.32 at its three blocks, with the 0.70 the prompt
+            # promises ("both thresholds are in the skills below") never
+            # delivered at all.  So the seat line now carries the sign, the
+            # floor and the arm, and the gate line carries that number.  Two
+            # summaries moved, the net four words down.
+            # bulb_tightening 644 words over 25 skills.
+            # The next run (2026-10-11) was the first one under the seat fix,
+            # and it passed -- the direction came off the legs, fifteen blocks
+            # ran with no failure and the verdict cleared all eight conditions
+            # -- but not one of the three readings it was meant to make was
+            # actually made.  Its feed carried the twist's sign, so the lead
+            # probe's overshoot came back positive, at or above its own feed,
+            # on all four attempts, and the run fell back on a written-in 8 mm
+            # a turn; and with the servo lifting the hand under every block
+            # the seat's slide never read negative once, so the call that
+            # ended the run was the API's own `reached`.  The sign the library
+            # had left to the reader is the docstring's now, because it is a
+            # property of feed_lead_m rather than a task rule, and the two
+            # arithmetic lines say their terms are in mm -- the run's seat
+            # test had compared a slide in mm against a tenth of a descent in
+            # metres, so it fired on any negative reading at all.
+            # bulb_tightening 647 words over 25 skills, three inside the bound.
+            # The same day's next round carried the feed's own coupling into
+            # the seat line, because that is the one thing neither the sign nor
+            # the arm covers: the tenth and the arm are both read off the feed,
+            # and a feed an eighth over the thread clears the tenth on every
+            # block with nothing under the bulb -- the shape that run would
+            # have taken had only its sign been wrong.  Sixteen tokens in,
+            # nine of them taken back from other lines: the lattice line says
+            # "one grasp's" where it said "counted from the grasp's start"
+            # (four), and the wind-back line gives up a tail the task prompt
+            # already carries, "the part is in" (five).  Seven net, against
+            # three words of headroom, so the per-skill bound moves 26 to 27: a
+            # screw block with two words to spare is not headroom, and every
+            # other type sits near 20 a line, well inside either bound.
+            # bulb_tightening 654 words over 25 skills, 21 inside the bound.
+            # Two rounds after that one (both 2026-10-11) are recorded in
+            # MAINTENANCE.md alone (第三十一组, 第三十二组): they moved the
+            # gate to the seat's line, where the criteria actually read it,
+            # and off the probe's and the legs' lines -- 654 to 673, then
+            # back to 651, where the gate is stated exactly once.
+            # This round (the 33rd) came from a survey of the delivered
+            # surface rather than from a run.  Six edits.  The
+            # sample_grasp_pose docstring said its first-call caveat was
+            # "below" when the caveat sits above it.  The differential line
+            # drops a 34.0 mm tail that belongs to a hardness pair, which is
+            # a classified-block routine -- screw blocks get the line and
+            # have no loose close to check (the body keeps it).  The gate's
+            # line routes to screw only: every incident behind it is this
+            # task, the gate exists in no other task's criteria, and no
+            # other block's summaries introduce a reading that can be
+            # rejected, so there the concept was an orphan.  The task prompt
+            # stops counting the seat's conditions ("two conditions ... both
+            # thresholds") now that the seat carries three numbers.  The
+            # close line's mechanism is corrected against the server code:
+            # with no force_threshold the close does take a default -- the
+            # robot's own 27.5 mm depth, with no servo behind it -- so it
+            # lands a few millimetres deeper than 27.2 does and never at the
+            # same depth twice, rather than the "fingers run to their limit"
+            # the line used to claim; the 27.2 action is unchanged and now
+            # rests on the landing rather than on grip.  And the lattice
+            # line stops saying "about 1 mm; past half of it", two budgets
+            # in one sentence, and restates the body's own rule instead: a
+            # few tenths readable, a sign beyond, and the reading never says
+            # which.
+            # bulb_tightening 660 words over 25 skills, 15 inside the bound.
+            # The 34th round came from a run rather than from a survey, and
+            # from the one thing a cadence cannot see: the budget is the twist
+            # *not wound back*, and the lead block rides the same grasp as the
+            # working blocks.  The run put a 15° lead block and four 30° blocks
+            # on one grasp, scheduled its wind-back after every fourth
+            # *working* block, and was refused at 132.45° of un-wound twist --
+            # its plan was 135°, past the third of a turn the task prompt warns
+            # about, and the counter meant to catch it started counting after
+            # the lead block.  Three runs that passed the same day never held
+            # more than about 91° on a grasp.  So the line stops naming a
+            # cadence ("three or four blocks") and names the ledger instead:
+            # the whole twist still on the wrist, the lead block included,
+            # given back before the next block would take it past a third of a
+            # turn.  Three words in; the body's own cadence is corrected with
+            # it (three blocks when the lead rides the grasp, four when it does
+            # not), and the evidence carries the datum.
+            # bulb_tightening 663 words over 25 skills, 12 inside the bound.
+            assert len(block.split()) < 27 * len(skills), (task, len(block.split()))
             assert len(block.split()) < 800, (task, len(block.split()))
 
 
@@ -429,9 +587,17 @@ def test_the_complete_prompt_carries_the_block_after_the_apis() -> None:
     assert off == "Do the thing.\nAPIs:\n"
 
 
-def test_no_task_class_overrides_the_hook() -> None:
-    """Every UniVTAC task takes the default routing: none opts out or names
-    skills by hand, so the taxonomy is the only routing table in play."""
+def test_the_only_hook_override_is_the_perception_bulb_variant() -> None:
+    """The taxonomy is the routing table, with one deliberate exception.
+
+    The bulb's perception config must not be handed `bulb-grasp-pose`: that
+    skill's recipe is the server's ground-truth grasp branch
+    (`_GT_GRASP_RULES`), and the perception API class switches that branch off
+    (`_ground_truth_grasp = False`), so on that line it names a call that
+    returns the hand's own parked pose.  Its class names the library's bulb
+    routing minus that one skill by hand; nothing else opts out or names
+    skills, so a second override appearing here is a decision, not a drift.
+    """
     from capx.envs.tasks import tactile as tactile_tasks
     import importlib
     import pkgutil
@@ -444,7 +610,19 @@ def test_no_task_class_overrides_the_hook() -> None:
         for name, obj in vars(module).items():
             if isinstance(obj, type) and hasattr(obj, "tactile_skills"):
                 declared[name] = obj.tactile_skills
-    assert declared == {}, declared
+
+    assert set(declared) == {"UniVTACBulbTighteningPerceptionCodeEnv"}, declared
+
+    named = set(declared["UniVTACBulbTighteningPerceptionCodeEnv"])
+    routed = {s.name for s in default_library().for_task("bulb_tightening")}
+    assert named <= routed, named - routed
+    assert routed - named == {"bulb-grasp-pose"}, routed - named
+
+    # And through the hook: the skill and the call it names are both gone.
+    block = _StubTask("bulb_tightening", tactile_skills=tuple(named))._tactile_skill_block()
+    assert "bulb-grasp-pose" not in block
+    assert "sample_grasp_pose" not in block
+    assert "lead-by-overshoot" in block  # the rest of the bulb set is still there
 
 
 def test_no_task_class_prunes_the_api_doc() -> None:
@@ -496,6 +674,8 @@ def test_a_good_minimal_library_loads(tmp_path: Path) -> None:
     [
         (lambda t: t.replace("task_types: [classify]", "task_types: [clasify]"), "unknown task type"),
         (lambda t: t.replace("task_types: [classify]", "task_types: [classify]\ntasks: [weight_classfy]"), "unknown task"),
+        (lambda t: t.replace("task_types: [classify]", "task_types: [classify]\nnot_tasks: [weight_classfy]"), "unknown task in not_tasks"),
+        (lambda t: t.replace("task_types: [classify]", "task_types: [classify]\ntasks: [weight_classify]\nnot_tasks: [weight_classify]"), "both tasks and not_tasks"),
         (lambda t: t.replace("name: sample", "name: sample2"), "file stem"),
         (lambda t: t.replace("family: sense", "family: reading"), "family"),
         (lambda t: t.replace("summary: A sample skill.\n", ""), "missing"),

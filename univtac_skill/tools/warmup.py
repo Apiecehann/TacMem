@@ -150,9 +150,11 @@ def run_warmup(
              f"value — the scene is not in its initial state. Ask the "
              f"operator to restart the server; do NOT proceed blind.")
 
-    # --- contact probe: step down slowly until detect_contact ---
+    # --- contact probe: step down slowly until a gel is pressed ---
+    # The flags ride on the move's own return (every motion primitive carries
+    # the scalar tactile set), so the probe costs no extra read per step.
     note(f"contact probe: stepping down in {step_down_m * 1000:.1f} mm steps "
-         f"until detect_contact()")
+         f"until either contact flag reads True")
     steps = 0
     first_contact = None
     while steps < max_contact_steps:
@@ -161,7 +163,7 @@ def run_warmup(
             note(f"contact probe move failed: {err}")
             break
         steps += 1
-        if robo.detect_contact():
+        if td and (td.get("left_contact") or td.get("right_contact")):
             first_contact = (td["left_depth_mm"] + td["right_depth_mm"]) / 2.0
             snap("first_contact", td, {"steps_down": steps})
             note(f"contact at step {steps}; mean depth {first_contact:.1f} mm")

@@ -3,7 +3,8 @@ id: A2
 name: descent-until-contact
 family: act
 summary: Descend in small steps and stop when a pad leaves the far plane, not at a fixed depth.
-task_types: [classify, insert, manipulate, screw]
+task_types: [classify, insert, screw, wipe]
+tasks: [lift_bottle, lift_can, pull_out_key, put_bottle_in_shelf, tactile_transfer_rearrange_clean]
 channels: [depth, coincidence]
 objects: any
 evidence: The motion calls return the same tactile fields a read does, so a stepped descent needs no separate read per step.
@@ -27,6 +28,11 @@ server at physics rate — see [[reflex-stop-on-events]].
 
 ## Traps
 
+- **Not routed to `blind_pick`.** In a blind search the first pad event marks the
+  top edge of an object whose height is unknown, ~25 mm above the depth that can
+  hold it, so "stop on the event" is the wrong rule for that task
+  ([[search-past-first-contact]]). The other five `manipulate` tasks still get
+  this one by name.
 - Per-step limits: at most 0.10 m per axis and 0.5 rad, at least 2 mm and
   0.02 rad. A delta below the minimum on *every* axis is rejected outright, so
   a closed-loop descent cannot converge finer than that floor

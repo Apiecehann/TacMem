@@ -119,6 +119,9 @@ AVAILABLE_TASKS = [
     "weight_classify",
     "hardness_classify",
     "bulb_tightening",
+    "wipe_vase",
+    "blind_pick",
+    "blind_pick_balls",
 ]
 
 
@@ -134,11 +137,18 @@ class TaskBacking:
             file alone would leave the task in a degenerate state (e.g.
             weight_classify defaults to one weight label, which would make
             every trial identical).
+        vitforge_tacex: stage ViTaForge's own TacEx fork ahead of the
+            environment's editable install for this task (see
+            ``_prefer_vitforge_tacex``).  Set where the task's code reaches
+            for the fork-only ``vertex_positions`` property.  The two
+            classification profiles came before the gate and stay on the
+            environment's fork, where their thresholds were measured.
     """
 
     root: Path
     config_file: str
     cfg_overrides: tuple[tuple[str, Any], ...] = ()
+    vitforge_tacex: bool = False
 
 
 DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
@@ -192,10 +202,121 @@ TASK_BACKING: dict[str, TaskBacking] = {
     # exactly that.  Removing it removed the only phase in which both hold.
     # The seated profile file is kept for its evidence value and marked
     # FALSIFIED in its own header -- do not repoint this at it.
+    #
+    # UPDATE 2026-10-10: the profile this points at is no longer the 13 mm one.
+    # seat_top_m went .022 -> .0285 in the task config, so the free travel is
+    # half -- 6.5 mm -- to halve the turns an insertion needs and with them the
+    # release/re-grasp cycles the episode spends its time in.  Nothing above
+    # changes: 0.6 mm is still unsatisfiable and now further outside the window,
+    # since the turn window came down with the travel (1<=turns<=3 became
+    # .5<=turns<=2, in both halves -- ViTaForge/envs/bulb_tightening.py's
+    # check_success and its check_success_detail, and this repo's oracle, whose
+    # seat-arm depth is now 5.5 mm of hand rather than 8).  The 13 mm sentences
+    # above describe the profile as it stood when the seated one was falsified;
+    # the same inequality is what rules the seated one out at either travel.
     "bulb_tightening": TaskBacking(
         VITAFORGE_ROOT,
         "bulb_tightening.yml",
         (),
+    ),
+    # wipe_vase (2026-10-13) is the second ViTaForge force task served here,
+    # registered for the same reason as bulb_tightening and needing the same
+    # three things said about it:
+    #
+    # 1. It is in FINAL_TASKS (envs/_force_task_utils.py:715), so the binder in
+    #    init_task fires on the name alone and supplies the derived
+    #    ``workspace`` key.  Nothing extra to pass here.
+    # 2. wipe_vase.yml's ``task_parameters`` carries ``controller: marker_rgb``
+    #    + a calibration file, which under serving is INERT, not broken: the
+    #    marker-RGB path only runs when the policy sets ``self.reference``, and
+    #    the cap-x oracle never does.  Everything that is scored is a physical
+    #    quantity (contact force, cleaned fraction, sliding distance), so the
+    #    scoring path is unaffected.  Registered rather than stripped so the
+    #    served profile stays byte-identical to the training one.
+    # 3. Its episode budget needs no handling here: the task calls
+    #    configure_final_task(cfg, params, max_policy_seconds=160) from its own
+    #    __init__ (wipe_vase.py:367), unlike the other profiles that the
+    #    binder has to size.
+    "wipe_vase": TaskBacking(
+        VITAFORGE_ROOT,
+        "wipe_vase.yml",
+        (),
+    ),
+    # blind_pick (2026-10-15) is the first ViTaForge task served here that is
+    # NOT a force task: it is a MemoryTask (envs/_memory_task.py), so none of
+    # the force-task machinery below applies -- the name is absent from
+    # FINAL_TASKS, its profile has no ``task_parameters`` block for the binder
+    # to carry, and it sizes its own episode (step_lim = 600).  Three things
+    # still have to be said about it.
+    #
+    # 1. vitforge_tacex=True.  blind_pick reads ``self.object.vertices`` on
+    #    EVERY control step (blind_pick.py:85) and ``pad.vertex_positions``
+    #    inside ``_pad_contacts`` (:196, called every 12th step).  ViTaForge's
+    #    UipcObject adds the ``vertex_positions`` property and UniVTAC's does
+    #    not, so without this the task dies with an AttributeError deep inside
+    #    its first step -- not at import time.  The config-keyed gate in
+    #    init_task cannot see it: blind_pick.yml has no ``task_parameters``
+    #    block, which is exactly the marker that gate keys on.
+    #
+    # 2. memory_timeout_seconds is raised.  Two step hooks latch a failure off
+    #    the same field -- MemoryTask's own ('timeout', _memory_task.py:118)
+    #    and blind_pick's ('search_timeout', blind_pick.py:104) -- each
+    #    comparing ``(step_count - policy_start_step) * cfg.sim.dt`` against
+    #    it.  cfg.sim.dt is 1/120 (_base_task.py:202) with decimation 1, so the
+    #    10.0 the profile ships is 1200 control steps of SIMULATED time, sized
+    #    for a loop this server does not run: ViTaForge's own episode stops at
+    #    step_lim = 600 first, so the clock never fires there.  Serving never
+    #    consults step_lim (_sim_reset only reports it), which leaves 1200
+    #    steps as the real budget -- roughly 15-30 planned motions, measured
+    #    against wipe_vase's 2576-step episode (65 motions).  A touch search is
+    #    made of motions, and an episode that runs out scores 0 however good
+    #    the eventual grasp was: ``failure`` latches for the rest of the
+    #    episode and ``plan_success`` follows it down.  60 s is 7200 steps,
+    #    three times the largest episode measured on this rig.
+    #
+    # 3. The wall-clock side of that budget is the trial's, not the server's,
+    #    and it is deliberately the TIGHTER of the two.  Measured on wipe_vase
+    #    (2026-10-15): 2576 control steps in 985.9 s, 0.38 s of wall per step,
+    #    so 7200 steps would be ~2740 s -- and the config in
+    #    env_configs/univtac/blind_pick/ sets exec_alarm_seconds to 2400, i.e.
+    #    about 6300 steps.  That is right for a ported oracle of a dozen
+    #    motions (low hundreds of seconds): an episode that reaches the wall
+    #    clock has spent 52 of the 60 simulated seconds and is heading for 0
+    #    either way, so nothing is lost by not distinguishing the two endings.
+    "blind_pick": TaskBacking(
+        VITAFORGE_ROOT,
+        "blind_pick.yml",
+        (("memory_timeout_seconds", 60.0),),
+        vitforge_tacex=True,
+    ),
+    # blind_pick_balls (2026-10-22) is the touch-only multi-material ball
+    # retrieval task synced from OpenTacBench `tactile-memory-tasks` @3266266.
+    # It is the one entry here that is NOT a ViTaForge task at all: it is a
+    # standalone Gymnasium environment (ViTaForge/env/tasks/blind_pick_balls.py)
+    # with its own PhysX/UIPC world, its own differential-IK controller and its
+    # own scorer.  init_task therefore branches on the name before it touches
+    # TaskCfg, and capx/serving/univtac_ball_adapter.py supplies the
+    # RobotManager/TactileManager/ActorManager surface every endpoint reads.
+    # Three things worth having written down:
+    #
+    # 1. vitforge_tacex=True, for the same reason as blind_pick above: the task
+    #    is written against ViTaForge's TacEx/UIPC fork (it calls
+    #    ``marker_motion_simulator``, ``get_surface_vertices_world`` and
+    #    ``UipcObject._vertex_count``), and the fork must be on sys.path before
+    #    ``import envs.*`` binds.  The config-keyed gate cannot see this one
+    #    either: blind_pick_balls.yml has no task_parameters block.
+    # 2. It is NOT in FINAL_TASKS and its profile is a TaskCfg fragment, not a
+    #    training config — the force-task binder must not run on it.  The
+    #    init_task branch returns before that code.
+    # 3. Nothing about the episode budget is configured here.  The task sizes
+    #    its own: ``failure='timeout'`` once step_count*physics_dt exceeds
+    #    episode_seconds (240 s = 28800 physics steps at 120 Hz), which the
+    #    adapter republishes as ``cfg.step_lim`` for /reset to report.
+    "blind_pick_balls": TaskBacking(
+        VITAFORGE_ROOT,
+        "blind_pick_balls.yml",
+        (),
+        vitforge_tacex=True,
     ),
 }
 
@@ -255,6 +376,15 @@ _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 _GT_GRASP_RULES: dict[str, dict[str, str]] = {
     "bulb_tightening": {"light_bulb": "GRASP_LOCAL_Z"},
 }
+# Tasks that must NOT take the precise-landing close (grasp_servo).  The
+# 2026-10-19 ViTaForge port charges 5 mm per sim step up to first touch and
+# then adds accumulated 1.95 mm rungs without re-anchoring.  On a bulb that
+# stays kinematically fixed until BOTH pads reach the band, the first contact
+# is already ~5 mm deep and the pad force spikes past the 170 N glass-break
+# threshold (seeds 12/13, 2026-10-21: 0 -> ~205 N in one sim step, glass
+# crushed).  These tasks keep the historical close: 0.5 mm steps until
+# contact, then 0.05 mm re-anchored steps.
+_GRASP_SERVO_EXCLUDED: frozenset[str] = frozenset({"bulb_tightening"})
 # Durable episode video recorder: frames go to scratch (frames_root), and
 # episode.mp4 + index.json are assembled into the recording root on
 # finalize (episode_video / reset / shutdown).  See univtac_video.py.
@@ -365,6 +495,25 @@ def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
         dur_s=dur, step=result.get("step"), extra=extra,
     )
     return result
+
+
+def _motion_message(success: bool, default: str) -> str:
+    """What an action endpoint puts in the response's ``message``.
+
+    A failure carries the reason the task recorded for it when it has one, so
+    a call refused for a reason of its own -- a motion after the episode
+    ended, which the blind-ball adapter refuses rather than pretending to
+    move -- reaches the client as itself instead of as "Motion planning
+    failed".  Tasks that record no such reason keep ``default``.
+
+    A success normally reads ``OK``, with one exception: the ball adapter
+    reports a move that stopped a few millimetres short of its goal as
+    executed (SETTLE_M) and records how short in ``last_motion_note``, so the
+    log and the tool output still show where the hand actually is.
+    """
+    if success:
+        return getattr(_TASK, "last_motion_note", "") or "OK"
+    return getattr(_TASK, "last_motion_error", "") or default
 
 
 # ---------------------------------------------------------------------------
@@ -578,6 +727,14 @@ class TactileResponse(BaseModel):
     left_marker_shear_dy: float = 0.0
     right_marker_shear_dx: float = 0.0
     right_marker_shear_dy: float = 0.0
+    # Fine relief of the gel's indentation map, mm; only tasks that expose a
+    # height map report it.  None rather than 0.0 when unreported — 0.0 is a
+    # real reading (a smooth imprint) and the two must not be confused.  Keep
+    # this model in step with the client's _MOTION_TACTILE_FIELDS: a field the
+    # motion responses carry and this model omits is silently stripped from
+    # /tactile and /observation.
+    left_height_roughness_mm: float | None = None
+    right_height_roughness_mm: float | None = None
     left_rgb_base64: str = ""
     right_rgb_base64: str = ""
     left_depth_base64: str = ""
@@ -668,12 +825,29 @@ def _capture_frame() -> str:
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
+_LAST_RECORDED_STEP: int | None = None
+
+
 def _record_frame(label: str) -> str:
     """Capture the composite frame and persist it to the episode recording.
 
     ``_RECORDER`` writes each frame to disk immediately, so the episode can
     be replayed even if the server dies before finalizing.
+
+    Skipped when the task's step count has not advanced since the last
+    recorded frame.  This recording is one frame per API call, not per unit of
+    time, so a call the simulation refused would add the same picture again:
+    on 2026-10-26 (seed 1) the blind-ball episode ended with the ball in the
+    bowl and the program's next 88 calls, refused and motionless, became 176
+    of the video's 293 frames -- the last minute of it showed an arm that had
+    simply finished.  The step that ends an episode still gets its frame: it
+    did advance the count.
     """
+    global _LAST_RECORDED_STEP
+    step = int(getattr(_TASK, "step_count", -1))
+    if step == _LAST_RECORDED_STEP:
+        return ""
+    _LAST_RECORDED_STEP = step
     b64 = _capture_frame()
     _RECORDER.record(b64, label)
     return b64
@@ -689,10 +863,13 @@ def _sim_reset(seed: int, *, log: bool = True) -> dict:
             log here would create an ``outputs/agent`` episode directory
             before the eval harness has a chance to announce harness mode.
     """
-    global _TASK, _MARKER_REFERENCE
+    global _TASK, _MARKER_REFERENCE, _LAST_RECORDED_STEP
     _RECORDER.finalize()  # assemble previous episode's video (no-op if none)
     _GRASP_OFFSET.clear()
     _TASK.reset(seed=seed)
+    # The new episode counts its steps from zero again; forget where the last
+    # one stopped so its first frame is never mistaken for a repeat.
+    _LAST_RECORDED_STEP = None
     _rec_info = _RECORDER.start(_TASK_NAME, seed)
     if log:
         action_log.log_episode_reset(_TASK_NAME, seed, _rec_info.get("started") or "")
@@ -731,6 +908,16 @@ def _sim_get_gripper_state() -> dict:
     return {"qpos": qpos, "is_open": qpos > 0.5}
 
 
+# Travel below which a failed motion call counts as a planning failure -- the
+# hand never got anywhere -- rather than a refusal by the world.  Only the
+# first kind is worth a retry: a move that travelled and then stopped was
+# blocked, and the same goal asked for again meets the same block.  2026-10-26
+# (blind balls, seed 2): the last 9 cm toward the bowl stopped 3 mm short and
+# every retry the endpoints could make was either pointless or, in
+# move_delta's case, aimed backward from where the move began.
+_RETRY_PROGRESS_M = 0.001
+
+
 def _sim_move(position: list, quat_wxyz: list, z_approach: float,
               gripper_action: str | None, gripper_pos: float | None, tag: str) -> dict:
     """Move end-effector to target pose with optional gripper action."""
@@ -764,6 +951,8 @@ def _sim_move(position: list, quat_wxyz: list, z_approach: float,
     # Capture before-move frame
     _record_frame(f"move:tag={tag}:before")
 
+    origin = np.asarray(_TASK._robot_manager.get_ee_pose().p,
+                        dtype=np.float64).reshape(3)
     try:
         success = _TASK.move([action], tag=tag, delay=True, is_save=False)
     except Exception as exc:
@@ -773,18 +962,35 @@ def _sim_move(position: list, quat_wxyz: list, z_approach: float,
     # --- fallback: retry without z-approach waypoint -------------------------
     # The pre_dis waypoint adds an intermediate IK query that cuRobo often
     # cannot solve (especially near workspace boundaries).  When the primary
-    # plan fails and z_approach was used, retry with a direct move.
+    # plan fails and z_approach was used, retry with a direct move -- but only
+    # when the first attempt did not move the hand at all: a move that
+    # travelled and then stopped was refused by the world, and asking for the
+    # same target again meets the same refusal.  The retry also restores
+    # ``plan_success``, which a failed ``_TASK.move`` latches to False; without
+    # that the retry hits move()'s entry guard and answers without planning,
+    # which is what this branch did until 2026-10-26.
     if not success and z_approach > 0 and not gripper_action:
-        action_no_app = Action(
-            action="move",
-            target_pose=target_pose,
-            pre_dis=None,
-        )
-        try:
-            success = _TASK.move([action_no_app], tag=tag + "_noapp", delay=True, is_save=False)
-        except Exception as exc:
-            logger.error("_TASK.move() fallback raised exception: %s", exc)
-            success = False
+        travelled = float(np.linalg.norm(
+            np.asarray(_TASK._robot_manager.get_ee_pose().p,
+                       dtype=np.float64).reshape(3) - origin))
+        if travelled >= _RETRY_PROGRESS_M:
+            logger.warning(
+                "move: the hand travelled %.1f mm and stopped; not retrying "
+                "without the z-approach waypoint (tag=%s)",
+                travelled * 1000.0, tag)
+        else:
+            action_no_app = Action(
+                action="move",
+                target_pose=target_pose,
+                pre_dis=None,
+            )
+            _TASK.plan_success = True  # the failed attempt latched it
+            try:
+                success = _TASK.move([action_no_app], tag=tag + "_noapp",
+                                     delay=True, is_save=False)
+            except Exception as exc:
+                logger.error("_TASK.move() fallback raised exception: %s", exc)
+                success = False
 
     # If the motion planner failed, reset plan_success so that subsequent
     # gripper / move_delta calls are not blocked by a stale failure flag.
@@ -797,7 +1003,7 @@ def _sim_move(position: list, quat_wxyz: list, z_approach: float,
     return {
         "success": success,
         "plan_success": _TASK.plan_success,
-        "message": "OK" if success else "Motion planning failed",
+        "message": _motion_message(success, "Motion planning failed"),
         "step": _TASK.step_count,
         "tactile": tactile_data,
     }
@@ -825,6 +1031,7 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
     MIN_ROT   = 0.02    # ~1 degree
     MAX_TRANS = 0.10    # 10 cm — single-step cap
     MAX_ROT   = 0.5     # ~30 degrees
+
 
     # Reject huge single-step deltas that can crash the physics engine
     for val, name, limit in [(abs(dx), "dx", MAX_TRANS), (abs(dy), "dy", MAX_TRANS),
@@ -896,69 +1103,92 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
     # --- motion planning with fallback ----------------------------------------
     # cuRobo can transiently fail even for simple deltas (random seed, joint
     # limits, workspace boundary).  Retry with progressively smaller deltas
-    # before reporting failure.
-    success = False
-    for scale in [1.0, 0.5, 0.25]:
-        if scale < 1.0:
+    # before reporting failure -- but only when the hand did not move at all:
+    # a move that travelled and then stopped was refused by the world (a ball
+    # between the pads, a wall, a joint limit), and the same direction at half
+    # the distance runs into the same refusal.
+    #
+    # This ladder used to get two things wrong and so never moved the arm.
+    # ``_TASK.move`` latches ``plan_success = False`` when it fails, and the
+    # retries hit move()'s entry guard and returned False without planning
+    # anything; the reflexive endpoint restores the flag between attempts for
+    # exactly this reason.  And every retry was built on the pose captured
+    # before the first attempt, so once a retry did run it would ask a hand
+    # that had already travelled most of the way to go back to a point behind
+    # it.  Each retry now re-reads the pose and restores the flag first.
+    origin = np.asarray(ee_pose.p, dtype=np.float64).reshape(3)
+    try:
+        success = _TASK.move(
+            [Action(action="move", target_pose=new_pose)],
+            tag=tag,
+            delay=True,
+            is_save=False,
+        )
+    except Exception as exc:
+        logger.error("_TASK.move() delta raised exception: %s", exc)
+        success = False
+
+    if not success:
+        travelled = float(np.linalg.norm(
+            np.asarray(_TASK._robot_manager.get_ee_pose().p,
+                       dtype=np.float64).reshape(3) - origin))
+        if travelled >= _RETRY_PROGRESS_M:
             logger.warning(
-                "_sim_move_delta: retrying with scale=%.0f%% (was %s)",
-                scale * 100,
+                "_sim_move_delta: the hand travelled %.1f mm and stopped; "
+                "not retrying a smaller delta (%s)",
+                travelled * 1000.0,
                 {"dx": dx, "dy": dy, "dz": dz, "drx": drx, "dry": dry, "drz": drz},
             )
-            scaled_dx, scaled_dy, scaled_dz = dx * scale, dy * scale, dz * scale
-            scaled_drx, scaled_dry, scaled_drz = drx * scale, dry * scale, drz * scale
-
-            # Skip if the scaled delta is below the minimum
-            if (abs(scaled_dx) < MIN_TRANS * 0.5 and abs(scaled_dy) < MIN_TRANS * 0.5
-                    and abs(scaled_dz) < MIN_TRANS * 0.5
-                    and abs(scaled_drx) < MIN_ROT * 0.5 and abs(scaled_dry) < MIN_ROT * 0.5
-                    and abs(scaled_drz) < MIN_ROT * 0.5):
-                logger.warning("_sim_move_delta: scaled delta too small, skipping retry")
-                continue
-
-            if coord == "ee":
-                scaled_pose = ee_pose.add_bias([scaled_dx, scaled_dy, scaled_dz],
-                                                coord="local")
-                if any([scaled_drx, scaled_dry, scaled_drz]):
-                    scaled_pose = scaled_pose.add_rotation(
-                        euler=[scaled_drx, scaled_dry, scaled_drz], coord="local")
-            else:
-                scaled_pose = ee_pose.add_bias([scaled_dx, scaled_dy, scaled_dz],
-                                                coord="world")
-                if any([scaled_drx, scaled_dry, scaled_drz]):
-                    scaled_pose = scaled_pose.add_rotation(
-                        euler=[scaled_drx, scaled_dry, scaled_drz], coord="world")
-
-            scaled_target_z = float(scaled_pose.p[2])
-            if scaled_target_z < 0.01:
-                continue
-
-            try:
-                success = _TASK.move(
-                    [Action(action="move", target_pose=scaled_pose)],
-                    tag=tag + f"_retry{int((1-scale)*100)}",
-                    delay=True,
-                    is_save=False,
-                )
-            except Exception as exc:
-                logger.error("_TASK.move() delta retry raised exception: %s", exc)
-                success = False
-
-            if success:
-                break
         else:
-            try:
-                success = _TASK.move(
-                    [Action(action="move", target_pose=new_pose)],
-                    tag=tag,
-                    delay=True,
-                    is_save=False,
+            for scale in [0.5, 0.25]:
+                logger.warning(
+                    "_sim_move_delta: retrying with scale=%.0f%% (was %s)",
+                    scale * 100,
+                    {"dx": dx, "dy": dy, "dz": dz, "drx": drx, "dry": dry, "drz": drz},
                 )
-            except Exception as exc:
-                logger.error("_TASK.move() delta raised exception: %s", exc)
-                success = False
-            if success:
-                break
+                scaled_dx, scaled_dy, scaled_dz = dx * scale, dy * scale, dz * scale
+                scaled_drx, scaled_dry, scaled_drz = drx * scale, dry * scale, drz * scale
+
+                # Skip if the scaled delta is below the minimum
+                if (abs(scaled_dx) < MIN_TRANS * 0.5 and abs(scaled_dy) < MIN_TRANS * 0.5
+                        and abs(scaled_dz) < MIN_TRANS * 0.5
+                        and abs(scaled_drx) < MIN_ROT * 0.5 and abs(scaled_dry) < MIN_ROT * 0.5
+                        and abs(scaled_drz) < MIN_ROT * 0.5):
+                    logger.warning("_sim_move_delta: scaled delta too small, skipping retry")
+                    continue
+
+                base = _TASK._robot_manager.get_ee_pose()
+                if coord == "ee":
+                    scaled_pose = base.add_bias([scaled_dx, scaled_dy, scaled_dz],
+                                                coord="local")
+                    if any([scaled_drx, scaled_dry, scaled_drz]):
+                        scaled_pose = scaled_pose.add_rotation(
+                            euler=[scaled_drx, scaled_dry, scaled_drz], coord="local")
+                else:
+                    scaled_pose = base.add_bias([scaled_dx, scaled_dy, scaled_dz],
+                                                coord="world")
+                    if any([scaled_drx, scaled_dry, scaled_drz]):
+                        scaled_pose = scaled_pose.add_rotation(
+                            euler=[scaled_drx, scaled_dry, scaled_drz], coord="world")
+
+                scaled_target_z = float(scaled_pose.p[2])
+                if scaled_target_z < 0.01:
+                    continue
+
+                _TASK.plan_success = True  # the failed attempt latched it
+                try:
+                    success = _TASK.move(
+                        [Action(action="move", target_pose=scaled_pose)],
+                        tag=tag + f"_retry{int((1-scale)*100)}",
+                        delay=True,
+                        is_save=False,
+                    )
+                except Exception as exc:
+                    logger.error("_TASK.move() delta retry raised exception: %s", exc)
+                    success = False
+
+                if success:
+                    break
 
     # If the delta move failed, reset plan_success so subsequent
     # actions are not blocked by a stale failure flag.
@@ -971,7 +1201,7 @@ def _sim_move_delta(dx: float, dy: float, dz: float,
     return {
         "success": success,
         "plan_success": _TASK.plan_success,
-        "message": "OK" if success else "Motion planning failed",
+        "message": _motion_message(success, "Motion planning failed"),
         "step": _TASK.step_count,
         "tactile": tactile_data,
     }
@@ -1152,7 +1382,7 @@ def _sim_move_reflexive(dx: float, dy: float, dz: float,
     if ctx.triggered:
         message = f"OK (reflex: {ctx.reason} @ step {ctx.step})"
     else:
-        message = "OK" if success else "Motion planning failed"
+        message = _motion_message(success, "Motion planning failed")
     digest = {
         **detector.summary,
         "terminated_by": ctx.reason,
@@ -1171,6 +1401,19 @@ def _sim_move_reflexive(dx: float, dy: float, dz: float,
         "terminated_by": ctx.reason,
         "event": digest,
     }
+
+
+# Position closes are verified against the opening they commanded, but the
+# fingers approach that opening asymptotically instead of landing on it: on
+# 2026-10-24 a close to 0.0340 m per jaw settled at 0.03432 m after the ball
+# adapter's four hold steps and stopped there, and a zero-tolerance check
+# answered "Gripper action failed" on every such call — the program that asked
+# for it lost its whole row to a bare except.  A millimetre of slack absorbs
+# the settle without weakening what the check exists for: an object in the way
+# stops the fingers millimetres short (a 60 mm ball met by a 56 mm command
+# holds each jaw at ~30.0 mm, 2 mm short).  The adaptive branch below already
+# allows +1.0 mm on the depth it reads, for the same reason.
+_POSITION_CLOSE_TOL_M = 0.001
 
 
 def _sim_gripper(action: str, force_threshold: float | None,
@@ -1255,11 +1498,14 @@ def _sim_gripper(action: str, force_threshold: float | None,
         # land precisely on the requested depth (servo mode in
         # adaptive_set_gripper) instead of overshooting by 2-4 mm.  Closes
         # without a threshold keep the historical behaviour, so default firm
-        # grasps everywhere else are untouched.
+        # grasps everywhere else are untouched.  Tasks in
+        # _GRASP_SERVO_EXCLUDED keep the historical close on purpose.
         success = _TASK.move(
             [Action(action="gripper", target_gripper_pos=target_pos,
                     gripper_depth_threshold=depth_threshold,
-                    grasp_servo=(action == "close" and force_threshold is not None))],
+                    grasp_servo=(action == "close"
+                                 and force_threshold is not None
+                                 and _TASK_NAME not in _GRASP_SERVO_EXCLUDED))],
             tag="gripper",
             delay=True,
             is_save=False,
@@ -1284,7 +1530,7 @@ def _sim_gripper(action: str, force_threshold: float | None,
     if action == "open":
         target_qpos = _TASK._robot_manager.gripper_percent2qpos(target_pos)
         reached = final_qpos >= 0.95 * target_qpos
-        detail = f"qpos={final_qpos:.4f}"
+        detail = f"qpos={final_qpos:.4f} target={target_qpos:.4f}"
     else:
         depth = float(_TASK._tactile_manager.get_min_depth().min())
         if adaptive_for_action and depth_threshold is not None:
@@ -1295,15 +1541,22 @@ def _sim_gripper(action: str, force_threshold: float | None,
             # config usually holds None, and the check below would then
             # reject a close that landed exactly as instructed.
             reached = depth < depth_threshold + 1.0
+            detail = (f"qpos={final_qpos:.4f} depth={depth:.2f}mm "
+                      f"target={depth_threshold:.2f}mm")
         else:
             # Position close: the fingers stop on the commanded qpos — or
             # earlier, when the object blocks them — so demand only that the
             # gripper closed as far as the target, or at least halfway when
-            # the target is (near) fully closed.
+            # the target is (near) fully closed.  The tolerance is the
+            # fingers' settle, not an error bar on the command (see
+            # _POSITION_CLOSE_TOL_M); a blocked close misses by millimetres.
             target_qpos = _TASK._robot_manager.gripper_percent2qpos(target_pos)
             halfway = 0.5 * _TASK._robot_manager.gripper_percent2qpos(1.0)
-            reached = final_qpos <= max(target_qpos, halfway)
-        detail = f"qpos={final_qpos:.4f} depth={depth:.2f}mm"
+            reached = (
+                final_qpos <= max(target_qpos, halfway) + _POSITION_CLOSE_TOL_M
+            )
+            detail = (f"qpos={final_qpos:.4f} target={target_qpos:.4f} "
+                      f"depth={depth:.2f}mm")
     if not reached:
         logger.warning(
             "Gripper %s did not reach its target state (%s) — "
@@ -1318,7 +1571,10 @@ def _sim_gripper(action: str, force_threshold: float | None,
     return {
         "success": success,
         "plan_success": _TASK.plan_success,
-        "message": "OK" if success else "Gripper action failed",
+        # The numbers ride along on the failure: without them the caller sees
+        # only "Gripper action failed" and cannot tell a blocked close from
+        # one that settled a fraction of a millimetre short.
+        "message": _motion_message(success, f"Gripper action failed ({detail})"),
         "step": _TASK.step_count,
         "tactile": tactile_data,
     }
@@ -1431,6 +1687,24 @@ def _sim_get_tactile_data() -> dict:
             (_, _, right_coherence,
              right_shear_dx, right_shear_dy) = _marker_stats(right_marker, base)
 
+        # Fine relief of the gel's indentation map, where the task exposes one
+        # (the ball task does).  Depth, marker displacement and every other
+        # scalar is an average over the gel and follows how hard the pad is
+        # pressed, so none of them separates a raised surface from a polished
+        # one at a fixed squeeze; the residual left after a smooth contact
+        # envelope is removed does.  Tasks without a height map keep exactly
+        # the payload they had.
+        height_roughness = getattr(_TASK, "height_roughness_mm", None)
+        left_roughness = right_roughness = None
+        if height_roughness is not None:
+            try:
+                values = [float(v) for v in height_roughness()]
+                left_roughness, right_roughness = values[0], values[1]
+            except Exception:
+                logger.warning(
+                    "Height-map roughness unavailable: %s", traceback.format_exc()
+                )
+
         try:
             truth = getattr(_TASK, "choice", None)
             ld = left_min_depth if left_min_depth != float("inf") else -1.0
@@ -1448,12 +1722,16 @@ def _sim_get_tactile_data() -> dict:
                         f"{side}_mean={m:.3f} {side}_max={mx:.3f} "
                         f"{side}_coh={coh:.3f}"
                     )
+            if left_roughness is not None:
+                parts.append(
+                    f"L_rgh={left_roughness:.4f} R_rgh={right_roughness:.4f}"
+                )
             with open(TACTILE_CALIBRATION_LOG, "a") as _f:
                 _f.write(" ".join(parts) + f" L_depth={ld:.1f} R_depth={rd:.1f}\n")
         except Exception:
             pass
 
-        return {
+        result = {
             "left_contact": left_contact,
             "right_contact": right_contact,
             # Depth from GelSight sensor is already in mm (same unit as
@@ -1475,6 +1753,10 @@ def _sim_get_tactile_data() -> dict:
             "left_depth_base64": left_depth_b64,
             "right_depth_base64": right_depth_b64,
         }
+        if left_roughness is not None:
+            result["left_height_roughness_mm"] = round(left_roughness, 4)
+            result["right_height_roughness_mm"] = round(right_roughness, 4)
+        return result
     except Exception as exc:
         logger.warning("Tactile data unavailable: %s", traceback.format_exc())
         action_log.log_query_failure("tactile", f"Tactile data unavailable: {exc}")
@@ -2875,9 +3157,12 @@ def _prefer_vitforge_tacex(root: Path) -> None:
     reinstalling anything — which matters because one environment has to serve
     both repos' tasks.
 
-    Scoped by the caller to force-task profiles: those have never been runnable
-    under this server, so this is purely additive.  Tasks that already run keep
-    their measured behaviour until that is decided separately.
+    Scoped by the caller: to the force-task profiles, which have never been
+    runnable under this server, and to the backings that ask for it by name —
+    so this stays purely additive.  Tasks that already run keep their measured
+    behaviour until that is decided separately, which is why the two
+    classification profiles (gelsight.yml, no ``task_parameters`` block) are
+    left on the environment's fork even though they, too, are ViTaForge code.
     """
     import importlib
 
@@ -2975,6 +3260,75 @@ def _log_actor_densities() -> None:
         logger.warning("Could not read actor densities: %s", exc)
 
 
+def _build_ball_task(task_config: dict, device: str, seed: int,
+                     cfg_overrides: list[str] | None):
+    """Construct the standalone touch-only ball task (``blind_pick_balls``).
+
+    Everything the generic path in ``init_task`` does to a BaseTask is wrong for
+    this environment, and the mismatches are structural rather than cosmetic:
+
+    * ``TaskCfg`` has no ``step_lim`` / ``robot`` / ``use_adaptive_grasp`` /
+      ``adaptive_grasp_depth_threshold``.  The endpoints read all four off
+      ``_TASK.cfg``; the adapter sets them on the *live* config, because
+      ``Task.__init__`` copies TaskCfg with ``dataclasses.replace`` and would
+      drop anything written beforehand.
+    * ``_apply_task_config`` reads ``decimation`` / ``render_frequency`` /
+      ``obs_data_type`` / ``random_texture``.  None of those exist on this
+      TaskCfg, and none of them mean anything to a task that renders nothing
+      per control step.
+    * The constructor is ``Task(cfg, render_mode=...)``.  There is no
+      ``mode="collect"`` and no per-step ``_update_render`` to avoid.
+    * ``workspace`` is a UIPC dump directory, and the dataclass default is
+      relative to the CWD -- which is this repo when serving, so the scene
+      dumps and the generated tet assets would land in it.  It goes under the
+      server's temp root, keyed by seed: two seeds served by two processes
+      must not share one world directory.
+
+    Returns the adapter, which is what every endpoint means by ``_TASK``.
+    """
+    import importlib
+
+    # env/tasks/, not envs/: this task ships in its own package (the upstream
+    # runner imports it as ``env.tasks.run_blind_pick_balls``), and ``env`` is
+    # a namespace package -- it has no __init__.py -- so the dotted path works
+    # once ViTaForge is on sys.path.  ``envs.blind_pick_balls`` does not exist.
+    task_module = importlib.import_module("env.tasks.blind_pick_balls")
+    cfg = task_module.TaskCfg(device=device or "cuda:0")
+
+    fields = set(cfg.__dataclass_fields__)
+    unknown = sorted(set(task_config) - fields)
+    if unknown:
+        raise SystemExit(
+            f"task_config/blind_pick_balls.yml: not a TaskCfg field of "
+            f"blind_pick_balls: {unknown} (accepted: {sorted(fields)})")
+    for key, value in task_config.items():
+        setattr(cfg, key, tuple(value) if key == "material_profiles" else value)
+
+    # The materials are drawn from cfg.seed in __init__ and never redrawn;
+    # reset(seed) only resamples the cells.  One process therefore serves
+    # exactly one seed's material set, which is what the cap-x configs'
+    # "trial id == server --seed" rule assumes.
+    cfg.seed = int(seed)
+    cfg.workspace = str(
+        Path(tempfile.gettempdir()) / "univtac_server" / "blind_pick_balls"
+        / f"seed_{int(seed)}" / "world")
+    # The observer camera is this task's only scene view -- its policy
+    # observation carries no image at all -- and both /record/mode and
+    # get_frame_shot need it.  Here record_video does nothing else: the video
+    # writer it also gates in ViTaForge is a BaseTask feature this task lacks.
+    cfg.record_video = True
+
+    for spec in cfg_overrides or ():
+        _apply_cfg_override(cfg, spec)
+
+    logger.info("Blind-ball workspace: %s", cfg.workspace)
+    task = task_module.Task(cfg, render_mode="rgb_array")
+
+    from capx.serving.univtac_ball_adapter import BallTaskAdapter
+
+    return BallTaskAdapter(task)
+
+
 def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
               seed: int = 0, cfg_overrides: list[str] | None = None) -> None:
     """Initialize the UniVTAC task. Must be called after Isaac Sim app is ready."""
@@ -2995,12 +3349,29 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
         task_config = yaml.safe_load(f)
 
     # Must happen before ``import envs.*`` — once envs.utils.actor is bound, its
-    # UipcObject base class is fixed for the life of the process.  Keyed on the
-    # config rather than the task name so the gate is a property of the profile:
-    # a ``task_parameters`` block is what marks a force-task config, and
-    # ViTaForge's other profiles (gelsight.yml) do not have one.
-    if "task_parameters" in task_config:
+    # UipcObject base class is fixed for the life of the process.  Two ways in:
+    # a backing that asks for the fork (blind_pick, whose first step reads
+    # ``object.vertices`` — see the TASK_BACKING entry), or the profile marker
+    # the force tasks carry.  Keyed on the config rather than the task name, so
+    # that the second test is a property of the profile: a ``task_parameters``
+    # block is what marks a force-task config, and ViTaForge's other profiles
+    # (gelsight.yml) do not have one.
+    if backing.vitforge_tacex or "task_parameters" in task_config:
         _prefer_vitforge_tacex(backing.root)
+
+    # blind_pick_balls is not a BaseTask: every step from here down -- the
+    # TaskCfg() build, _apply_task_config's field whitelist, mode="collect",
+    # the force-task binder -- assumes a contract it does not implement (see
+    # _build_ball_task and the TASK_BACKING entry).  Branch before any of it
+    # and leave through the same startup sequence as the generic path.
+    if task_name == "blind_pick_balls":
+        _TASK = _build_ball_task(task_config, device, seed, cfg_overrides)
+        _TASK_NAME = task_name
+        logger.info("Task '%s' initialized successfully.", task_name)
+        _sim_reset(seed=seed, log=False)
+        logger.info("Startup reset complete (seed=%s).", seed)
+        _log_actor_densities()
+        return
 
     # Import task module
     task_module = importlib.import_module(f"envs.{task_name}")
