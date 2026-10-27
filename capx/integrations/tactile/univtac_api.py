@@ -29,6 +29,7 @@ from PIL import Image
 
 from capx.envs.base import BaseEnv
 from capx.integrations.base_api import ApiBase
+from capx.integrations.tactile import trace as tactile_trace
 
 # Default server URL — override via env var UNIVTAC_SERVER_URL
 _DEFAULT_SERVER = "http://127.0.0.1:8120"
@@ -101,6 +102,11 @@ def _trim_motion_tactile(data: dict) -> dict:
         if value is not None:
             out[key] = value
     return out
+
+
+def _fmt(value: float | None, spec: str = ".2f") -> str:
+    """One log-line number, with the missing case spelled out."""
+    return "n/a" if value is None else format(value, spec)
 
 
 def _marker_anisotropy(b64: str) -> float | None:
@@ -272,6 +278,12 @@ class UniVTACTactileApi(ApiBase):
                 f"Server response: {detail}"
             )
         data = r.json()
+        # Recorded before the success check: a motion the server refused
+        # still carries the tactile state that made it refuse, and that
+        # state is usually the half of the row worth keeping.
+        tactile = data.get("tactile")
+        if isinstance(tactile, dict):
+            tactile_trace.record(path, tactile, body)
         if not data.get("success", True):
             msg = data.get("message", "Unknown motion error")
             raise RuntimeError(f"Motion failed: {msg}")
@@ -661,6 +673,7 @@ class UniVTACTactileApi(ApiBase):
             key = f"{side}_marker_anisotropy"
             if data.get(key) is None:
                 data[key] = _marker_anisotropy(data.get(f"{side}_rgb_base64", ""))
+        tactile_trace.record("/tactile", data)
         # Print summary only (skip base64 images to keep logs readable)
         relief = ""
         if data.get("left_height_roughness_mm") is not None:
@@ -672,7 +685,13 @@ class UniVTACTactileApi(ApiBase):
               f"L_disp={data['left_marker_displacement_px']:.2f}px "
               f"R_disp={data['right_marker_displacement_px']:.2f}px "
               f"L_coh={data['left_marker_coherence']:.2f} "
-              f"R_coh={data['right_marker_coherence']:.2f}{relief}")
+              f"R_coh={data['right_marker_coherence']:.2f} "
+              f"L_shear=({_fmt(data.get('left_marker_shear_dx'))},"
+              f"{_fmt(data.get('left_marker_shear_dy'))})px "
+              f"R_shear=({_fmt(data.get('right_marker_shear_dx'))},"
+              f"{_fmt(data.get('right_marker_shear_dy'))})px "
+              f"L_aniso={_fmt(data.get('left_marker_anisotropy'))} "
+              f"R_aniso={_fmt(data.get('right_marker_anisotropy'))}{relief}")
         # Strip images before returning to avoid huge logs
         return {k: v for k, v in data.items() if "base64" not in k}
 
