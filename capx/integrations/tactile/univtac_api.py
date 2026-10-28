@@ -657,16 +657,15 @@ class UniVTACTactileApi(ApiBase):
             quadratic contact envelope is fitted and removed: the imprint of a
             sphere is a clean cap, while a raised surface leaves its bumps in
             the gel.  Every field above is an average over the gel, so it
-            grows with how hard the pad is pressed; this one mostly does not
-            — seated on a ball's centre a smooth ball reads 0.02-0.04 mm and
-            a dotted one 0.09-0.25 mm at the same squeeze — so it answers
+            grows with how hard the pad is pressed; this one does not — at the
+            same squeeze a smooth ball reads 0.02-0.03 mm and a dotted one
+            0.09-0.25 mm while the pads sit on its centre — so it answers
             what the surface is shaped like rather than how hard it is
-            pressed.  It stops answering that once the imprint stops being
-            the surface: a close driven to a gel-depth target keeps pressing
-            into a compliant ball — over 100 N a side on a 60 mm ball — and a
-            smooth rubber ball then reads 0.15 mm, a dotted ball's number.
-            Reported only where the fingertip exposes a full height map;
-            absent from the response otherwise.)
+            pressed, as long as the imprint is still the object's own
+            surface: a pad that keeps closing on a compliant object measures
+            the crush.  Reported only where the
+            fingertip exposes a full height map; absent from the response
+            otherwise.)
         """
         data = self._get("/tactile")
         # The server computes the marker anisotropy from the same uint8 array
