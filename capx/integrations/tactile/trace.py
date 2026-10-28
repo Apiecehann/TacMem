@@ -20,6 +20,10 @@ definition the next version has to keep agreeing with, and the point of
 keeping the raw scalar is that later definitions stay free.  Rows are
 appended, never rewritten, and are not rotated — a trial that polls tactile
 in a loop will make a large file, which is the caller's decision to make.
+
+Every row carries the trial it came from (see :func:`set_trial`), because a
+run writes one file for all of them.  That column is what lets a finished
+run be split into the trials that worked and the trials that did not.
 """
 
 from __future__ import annotations
@@ -41,6 +45,31 @@ _FILENAME = "tactile_trace.jsonl"
 _MAX_DEPTH = 3
 _MAX_ITEMS = 32
 _MAX_STR = 80
+
+#: Which trial the rows that follow belong to, or None when nothing has said.
+#: A run executes every trial in one process, so the destination file is per
+#: run and this is the only thing that keeps the rows apart: without it a
+#: finished run is one undifferentiated stream, and a stream cannot be asked
+#: which readings happened in the trials that failed.
+_TRIAL: Any = None
+
+
+def set_trial(trial: Any) -> None:
+    """Attribute every row written from here on to one trial.
+
+    The runner calls this at the start of each trial.  It is not an argument
+    to :func:`record` because the caller that knows the trial number is not
+    the caller that holds the reading, and threading it through the API
+    objects would make every layer carry an experiment detail.
+
+    Args:
+        trial: The trial number being executed, or None to stop attributing.
+
+    Returns:
+        None.
+    """
+    global _TRIAL
+    _TRIAL = trial
 
 
 def _destination() -> Path | None:
@@ -108,6 +137,7 @@ def record(call: str, readings: dict[str, Any] | None,
         return
     row = {
         "t": round(time.time(), 3),
+        "trial": _TRIAL,
         "call": call,
         "args": _compact(args or {}),
         "readings": _compact(readings),

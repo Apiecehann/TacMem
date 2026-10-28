@@ -118,6 +118,24 @@ def test_environment_is_re_read_on_every_call(monkeypatch, tmp_path):
     assert len(_rows(target)) == 1
 
 
+def test_rows_carry_the_trial_they_belong_to(monkeypatch, tmp_path):
+    # One run writes one file, so the trial is a column.  Without it a
+    # finished run cannot be split into the trials that worked and the ones
+    # that did not, which is the only question the trace is mined for.
+    target = tmp_path / "t.jsonl"
+    monkeypatch.setenv(trace.ENV_VAR, str(target))
+    try:
+        trace.set_trial(1)
+        trace.record("/tactile", _readings())
+        trace.set_trial(2)
+        trace.record("/tactile", _readings())
+        trace.set_trial(None)
+        trace.record("/tactile", _readings())
+    finally:
+        trace.set_trial(None)
+    assert [row["trial"] for row in _rows(target)] == [1, 2, None]
+
+
 # ---------------------------------------------------------------------------
 # The client hooks
 # ---------------------------------------------------------------------------

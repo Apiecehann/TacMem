@@ -670,6 +670,12 @@ def _run_single_trial(
     """
     trial_start_time = time.time()
 
+    # Every row the tactile trace writes from here on belongs to this trial.
+    # The runner executes all trials in one process, so without this the run
+    # leaves a single stream that no outcome can be attributed to.
+    from capx.integrations.tactile import trace as tactile_trace
+    tactile_trace.set_trial(trial)
+
     use_video_diff = config.get("use_video_differencing", False)
     use_wrist = config.get("use_wrist_camera", False)
 
