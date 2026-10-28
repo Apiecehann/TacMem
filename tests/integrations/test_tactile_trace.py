@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import sys
 from unittest import mock
 
 import pytest
@@ -134,6 +136,45 @@ def test_rows_carry_the_trial_they_belong_to(monkeypatch, tmp_path):
     finally:
         trace.set_trial(None)
     assert [row["trial"] for row in _rows(target)] == [1, 2, None]
+
+
+def test_rows_carry_the_run_they_belong_to(monkeypatch, tmp_path):
+    # A re-run appends to the same file and repeats the same trial numbers,
+    # so the trial column alone cannot say which attempt a row belongs to.
+    target = tmp_path / "t.jsonl"
+    monkeypatch.setenv(trace.ENV_VAR, str(target))
+    trace.record("/tactile", _readings())
+    trace.record("/tactile", _readings())
+    assert [row["run"] for row in _rows(target)] == [trace.RUN_ID, trace.RUN_ID]
+
+
+def _run_id_from_a_fresh_process() -> str:
+    """The id a process importing the module now would stamp on its rows.
+
+    Loaded by path rather than through the package: the package pulls in the
+    simulator, and the question here is only what the module computes for
+    itself when a new process starts.
+    """
+    script = (
+        "import importlib.util, sys;"
+        "spec = importlib.util.spec_from_file_location('trace', sys.argv[1]);"
+        "module = importlib.util.module_from_spec(spec);"
+        "spec.loader.exec_module(module);"
+        "print(module.RUN_ID)"
+    )
+    done = subprocess.run([sys.executable, "-c", script, trace.__file__],
+                          capture_output=True, text=True, check=True)
+    return done.stdout.strip()
+
+
+def test_a_restart_is_a_new_run_not_more_of_the_same_one():
+    # Without this a second attempt at a seed would be read as more evidence
+    # for the first attempt's outcome -- and if the two ended differently, as
+    # one trial that both worked and did not.
+    first = _run_id_from_a_fresh_process()
+    second = _run_id_from_a_fresh_process()
+    assert first and second
+    assert first != second
 
 
 # ---------------------------------------------------------------------------

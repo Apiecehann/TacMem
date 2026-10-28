@@ -24,6 +24,13 @@ in a loop will make a large file, which is the caller's decision to make.
 Every row carries the trial it came from (see :func:`set_trial`), because a
 run writes one file for all of them.  That column is what lets a finished
 run be split into the trials that worked and the trials that did not.
+
+Every row also carries the run it came from (:data:`RUN_ID`).  Rows are
+appended and a re-run of a seed repeats the same trial numbers into the same
+file, so the trial column on its own would read the second attempt as more
+of the first — and if the two ended differently, as one trial that both
+worked and did not.  The id is fixed when the process imports this module,
+which is the grain the runner works at: one process executes one run.
 """
 
 from __future__ import annotations
@@ -52,6 +59,13 @@ _MAX_STR = 80
 #: finished run is one undifferentiated stream, and a stream cannot be asked
 #: which readings happened in the trials that failed.
 _TRIAL: Any = None
+
+#: Which run the rows written by this process belong to.  One process is one
+#: run: the runner executes every trial of a run in it.  The value is the
+#: process's start time and its pid taken together, because either alone
+#: fails the case this exists for — pids are reused across days, and two runs
+#: started within the same second would otherwise share an id.
+RUN_ID = f"{time.strftime('%Y-%m-%dT%H:%M:%S')}-{os.getpid()}"
 
 
 def set_trial(trial: Any) -> None:
@@ -137,6 +151,7 @@ def record(call: str, readings: dict[str, Any] | None,
         return
     row = {
         "t": round(time.time(), 3),
+        "run": RUN_ID,
         "trial": _TRIAL,
         "call": call,
         "args": _compact(args or {}),
