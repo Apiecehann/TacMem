@@ -34,7 +34,9 @@ output_debug/
 outputs**
 curobo_debug/
 =*
+# Crash dumps are core.<pid>; Python modules are named core.py too.
 core.*
+!core.py
 wandb/
 .webui_secret_key
 
