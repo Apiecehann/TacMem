@@ -2,7 +2,7 @@
 id: A26
 name: strap-load-is-shear-difference
 family: sense
-summary: The load is the two pads' shear difference, about 1 N per px — pulling runs one shear up and the other down, and the depths do not move.
+summary: The load is the two pads' shear difference, about 1 N per px measured from the close — the depths do not move at all.
 task_types: [force]
 channels: [shear]
 objects: the elastic strap, gripped by the tab at its top
@@ -22,16 +22,22 @@ their marker fields opposite ways. The difference is the load and it is
 linear in it; either pad alone is half the signal and loses the other half to
 whatever moved both of them.
 
-At this task's grip the difference reads newtons at about one for one —
-1.03 N per px, linear to 0.05 N from 4 N to 19 N. Where zero sits is
-neither a constant nor small: closing at the task's 27.6 mm left 1.5 px of
-difference on the resting strap, and closing without asking for a depth
-left 3.3, which is 1.9 N.
+The calibration belongs to the close.  Asked for 27.2 mm, the difference
+reads newtons at about one for one — 0.98 N per px, linear to 0.23 N from 0
+to 22 N — and its zero is whatever the pads had made of the gel at that
+moment, 4.6 px of difference on the resting strap.
 
 So take the zero from the close.  The fixture still holds the strap at that
 moment, so the load there is nothing and the reading is the offset — a
 number that belongs to the grasp, not to the calibration.  Measure every
-later load from it.
+later load from it; a shallower close moves it by more than a newton.
+
+Close firmly, and check the strap followed.  The task frees it only when
+both pads pass 27.7 mm *during* the close, and landings are not stable:
+27.70/27.38 one run, 27.80/27.32 the next, same pose and same command.  The
+27.80 one never released, and a pinned strap buys almost no tension when
+pulled — 4.9 N after 12 mm where a free one gives 22 — while the tab slides
+through the gel and reads as a large load that is not there.
 
 What is worth measuring in-episode is the strap's stiffness in millimetres
 per newton, because that is what the seed draws differently; the gel reads
