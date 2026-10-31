@@ -2,7 +2,7 @@
 id: A26
 name: strap-load-is-shear-difference
 family: sense
-summary: The load is the two pads' shear difference, about 1 N per px measured from the close — the depths do not move at all.
+summary: The load is the two pads' shear difference, 0.93 N per px at a position=0.22 close — the depths do not move at all.
 task_types: [force]
 channels: [shear]
 objects: the elastic strap, gripped by the tab at its top
@@ -22,22 +22,19 @@ their marker fields opposite ways. The difference is the load and it is
 linear in it; either pad alone is half the signal and loses the other half to
 whatever moved both of them.
 
-The calibration belongs to the close.  Asked for 27.2 mm, the difference
-reads newtons at about one for one — 0.98 N per px, linear to 0.23 N from 0
-to 22 N — and its zero is whatever the pads had made of the gel at that
-moment, 4.6 px of difference on the resting strap.
+Close by opening, not by depth.  `close_gripper(position=0.22)` lands the
+pads at 25.70 and 25.25 mm every time — three closes in a row, to a hundredth
+of a millimetre — where the same depth command lands somewhere new each
+time: 27.31/26.99, 27.39/27.10, 27.70/27.38, 27.80/27.32.  One of those
+dragged a pad's whole marker field off its lattice and never let go.  The
+opening frees the strap as well; 0.18 crushes to the sensor floor and
+0.10-0.14 do not fit the tab at all.
 
-So take the zero from the close.  The fixture still holds the strap at that
-moment, so the load there is nothing and the reading is the offset — a
-number that belongs to the grasp, not to the calibration.  Measure every
-later load from it; a shallower close moves it by more than a newton.
-
-Close firmly, and check the strap followed.  The task frees it only when
-both pads pass 27.7 mm *during* the close, and landings are not stable:
-27.70/27.38 one run, 27.80/27.32 the next, same pose and same command.  The
-27.80 one never released, and a pinned strap buys almost no tension when
-pulled — 4.9 N after 12 mm where a free one gives 22 — while the tab slides
-through the gel and reads as a large load that is not there.
+At that grip the load is 0.932 N per px of the difference measured from the
+close, above the first 4.5 px.  The first two millimetres of pull take up
+slack and carry nothing, so a pull that buys no reading has not failed —
+five points from 3.2 to 18.0 N sit on that line within 0.2 N, and a line
+through the origin is the wrong model (0.63 N/px, 2.9 N of residual).
 
 What is worth measuring in-episode is the strap's stiffness in millimetres
 per newton, because that is what the seed draws differently; the gel reads
