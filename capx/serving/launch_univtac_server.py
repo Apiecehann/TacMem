@@ -407,16 +407,29 @@ _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 # keeps a single owner.  Non-privileged callers never take this branch, which is
 # the whole point: the offset cache above is what keeps ground truth out of
 # their grasp poses.
-_GT_GRASP_RULES: dict[str, dict[str, str]] = {
+#
+# A rule is the name of a constant on the task module, which is added to the
+# actor's own pose.  Where the actor is a solid that deforms, that pose is a
+# rigid fit of the deformed mesh onto the undeformed one and can be several
+# millimetres off the frame the geometry was authored in -- five on the strap,
+# which was enough to move the grasp off the tab's centre line and change what
+# the pads read (below).  For those, a rule may be a pair instead: the constant
+# and the name of an attribute on the task that holds the anchor outright.
+_GT_GRASP_RULES: dict[str, dict[str, str | tuple[str, str]]] = {
     "bulb_tightening": {"light_bulb": "GRASP_LOCAL_Z"},
     # tension_strap's pre_move only opens the gripper, so the EE is not left
     # above the object and the EE-relative fallback would hand back the hand's
     # own reset pose.  gpt-6-astra took that pose as the grasp target on its
-    # second run, drove nowhere, closed on air and refused -- which is the
-    # compromise this table exists to avoid (see the NOTE above).  The tab is
-    # 0.174 m above the strap's own origin; ViTaForge/envs/tension_strap.py
-    # names it so this cannot drift from the expert's own grasp.
-    "tension_strap": {"elastic_strap": "TAB_LOCAL_Z"},
+    # second run, drove nowhere, closed on air and refused.
+    #
+    # The anchor is the task's own ``base``, not the actor's pose.  The strap
+    # is a FEM solid, so its pose is a fit: on seed 1 that fit read
+    # [0.554, -0.003, 0.005] against a base of [0.550, 0, 0.005], and grasping
+    # five millimetres off the tab's centre line made the pads read 4.03 and
+    # 0.76 px of shear instead of the 6.52 and 5.05 the centred grasp gives.
+    # That difference is 1.8 px of differential at zero load -- most of a
+    # newton -- and the fourth run then held both stages that far low.
+    "tension_strap": {"elastic_strap": ("TAB_LOCAL_Z", "base")},
 }
 # Tasks that must NOT take the precise-landing close (grasp_servo).  The
 # 2026-10-19 ViTaForge port charges 5 mm per sim step up to first touch and
@@ -2517,7 +2530,23 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
         # The task's own module — the one its class was defined in, so the
         # constant read here cannot come from a different fork of the env.
         task_module = sys.modules.get(type(_TASK).__module__)
-        local_z_name = _GT_GRASP_RULES.get(_TASK_NAME, {}).get(object_name)
+        rule = _GT_GRASP_RULES.get(_TASK_NAME, {}).get(object_name)
+        if isinstance(rule, tuple):
+            local_z_name, anchor_name = rule
+        else:
+            local_z_name, anchor_name = rule, None
+        anchor = object_pos
+        if anchor_name is not None:
+            # A task that knows its own frame outright — see _GT_GRASP_RULES.
+            raw_anchor = getattr(_TASK, anchor_name, None)
+            if raw_anchor is not None:
+                anchor = np.asarray(raw_anchor, dtype=np.float64).reshape(-1)[:3]
+            else:
+                logger.warning(
+                    "Ground-truth grasp rule for '%s' names the anchor '%s', "
+                    "which the task does not have — using the actor's pose",
+                    object_name, anchor_name,
+                )
         local_z = (
             getattr(task_module, local_z_name, None)
             if task_module is not None and local_z_name else None
@@ -2539,13 +2568,14 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
             # Rebuilt from the current object pose on every call, so it tracks
             # the object after a re-grasp.
             centre = Pose(
-                object_pos + np.array([0.0, 0.0, float(local_z)]),
+                anchor + np.array([0.0, 0.0, float(local_z)]),
                 _TASK._robot_manager.get_gripper_center_pose().q,
             )
             ee_pose = _TASK._robot_manager.gripper_center_to_ee(centre)
             logger.info(
-                "Grasp pose for '%s': ground truth %s + local z %.4f -> grasp %s",
-                object_name, object_pos, float(local_z), np.asarray(ee_pose.p),
+                "Grasp pose for '%s': %s %s + local z %.4f -> grasp %s",
+                object_name, anchor_name or "ground truth", anchor,
+                float(local_z), np.asarray(ee_pose.p),
             )
             return {
                 "position": np.asarray(ee_pose.p, dtype=np.float64).tolist(),
