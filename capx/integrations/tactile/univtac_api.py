@@ -536,17 +536,19 @@ class UniVTACTactileApi(ApiBase):
 
     def close_gripper(self, force_threshold: float | None = None,
                       position: float | None = None,
-                      adaptive: bool = True) -> dict:
+                      adaptive: bool | None = None) -> dict:
         """Close the gripper to grasp an object. Uses tactile feedback to stop
         at the requested gel deformation depth.
 
         force_threshold is a gel-depth target in mm, where depth DECREASES as
         contact hardens (see get_tactile_data).  Lower values grip firmer.
 
-        With adaptive=True (the default) the close is judged by the gel depth
-        it reached, so a close that meets nothing never reaches the target and
-        raises "Gripper action failed" instead of returning a far-plane
-        reading.  adaptive=False commands the finger travel directly: a close
+        With adaptive=True the close is judged by the gel depth it reached, so
+        a close that meets nothing never reaches the target and raises
+        "Gripper action failed" instead of returning a far-plane reading.
+        That is the default for a close that names a depth, and it is why a
+        close that names only an opening runs the travel command instead.
+        adaptive=False commands the finger travel directly: a close
         that meets nothing returns the far-plane reading, and one an object
         stops short of the commanded opening raises, the message carrying the
         opening it landed on.  A raise is not a lost reading: the fingers stay
@@ -573,14 +575,20 @@ class UniVTACTactileApi(ApiBase):
                 object is rigid enough for the fingers to pin it. None leaves
                 the travel unconstrained (closes fully).
             adaptive: (bool) Whether the depth servo runs during the close.
-                True (default) drives towards force_threshold. False commands
-                the finger travel directly, so it goes exactly where it is told
-                whatever the object does.
+                True drives towards force_threshold. False commands the finger
+                travel directly, so it goes exactly where it is told whatever
+                the object does. Omitted, it is True unless a position was
+                given: a position close is a travel command by definition, and
+                running the depth servo alongside it would stop the fingers on
+                the gel reading while the opening stayed wherever they happened
+                to be.
 
         Returns:
             dict with the scalar tactile readings after closing (same set as
             goto_pose).
         """
+        if adaptive is None:
+            adaptive = position is None
         payload: dict = {"action": "close", "use_adaptive_grasp": adaptive}
         if force_threshold is not None:
             payload["force_threshold"] = force_threshold
