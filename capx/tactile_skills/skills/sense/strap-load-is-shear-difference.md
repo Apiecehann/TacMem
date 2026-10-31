@@ -50,6 +50,13 @@ the rest of the pull can be computed from it.
 
 ## Traps
 
+- **A dead pad reads as load.** A close can drag one pad's whole marker
+  field along with the jaw; that pad then reports the drag. Its displacement
+  is several times the other's — 49 px against 8.7 on a 2026-10-31 run — its
+  coherence sits near zero, and it never recovers during the episode. The
+  difference of the two is then the drag, not the tab: that run's gauge
+  finished at 18.4 N against a strap carrying 15.383 N. Close again; the
+  same approach and depth usually recovers.
 - **The depth is not the load.** It reads the squeeze between the pads, which
   the pull does not change: the tab is dragged along the gel, not pushed into
   it. Across the whole 0-19 N ramp both depths held constant to 0.02 mm.
