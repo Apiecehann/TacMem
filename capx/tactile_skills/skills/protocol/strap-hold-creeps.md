@@ -2,7 +2,7 @@
 id: R15
 name: strap-hold-creeps
 family: protocol
-summary: A held strap reads about a quarter of a newton higher over its three seconds without loading more — hold the height, and re-zero between stages.
+summary: A held strap reads most of a band higher over three seconds without loading more — hold the height and the clock, not the reading.
 task_types: []
 tasks: [tension_strap]
 channels: [shear]
@@ -26,7 +26,10 @@ bias in the next target.
 ## Traps
 
 - **The creeping reading looks like a load that is rising.** Correcting on it
-  drives the hand down and turns a good hold into a real release.
+  drives the hand down and turns a good hold into a real release, and watching
+  it against a band abandons a hold that was fine: on a 2026-10-31 run the
+  gauge climbed 0.50 N in 287 ticks while the hand did not move, and the
+  program's own +-0.4 N hold guard raised on it.
 - **It is a settling, not a clock.** The drift does not accumulate from one
   stage to the next, so subtracting a per-tick rate from every later reading
   makes the next stage land most of a newton high. Re-zero where the load is
