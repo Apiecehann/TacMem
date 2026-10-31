@@ -3,7 +3,7 @@ id: S13
 name: shear-vs-displacement
 family: sense
 summary: Pick the channel by the question — shear for which way the part slid, displacement for whether anything moved.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 channels: [shear, displacement, coherence]
 objects: any
 evidence: Both scalars come off the same marker field; only shear keeps a sign per axis, which is why every directional reading in the repo (weight, thread direction, jamming) is built on it.

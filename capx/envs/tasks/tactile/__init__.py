@@ -12,6 +12,7 @@ from .univtac_pull_out_key import UniVTACPullOutKeyCodeEnv
 from .univtac_put_bottle_in_shelf import UniVTACPutBottleInShelfCodeEnv
 from .univtac_tactile_memory_match import UniVTACTactileMemoryMatchCodeEnv
 from .univtac_tactile_transfer import UniVTACTactileTransferCodeEnv
+from .univtac_tension_strap import UniVTACTensionStrapCodeEnv
 from .univtac_weight_classify import UniVTACWeightClassifyCodeEnv
 from .univtac_wipe_vase import UniVTACWipeVaseCodeEnv
 
@@ -32,4 +33,5 @@ __all__ = [
     "UniVTACWipeVaseCodeEnv",
     "UniVTACBlindPickCodeEnv",
     "UniVTACBlindPickBallsCodeEnv",
+    "UniVTACTensionStrapCodeEnv",
 ]

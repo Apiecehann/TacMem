@@ -3,7 +3,7 @@ id: R8
 name: tactile-cannot-locate
 family: protocol
 summary: Confirm where an object ended up from an image or a pose read — the gel cannot tell placed from dropped.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 # blind_pick_balls has neither an image in the observation nor a pose query:
 # the skill's lesson is true there, its prescribed check is not available.
 not_tasks: [blind_pick_balls]

@@ -3,7 +3,7 @@ id: R10
 name: channel-selection
 family: protocol
 summary: Only shear and anisotropy carry structure — texture lives in anisotropy alone; every other scalar averages the image.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 # blind_pick_balls separates its materials on the gel's fine relief, which is
 # not an average of the image and is the one channel its API reports for it.
 not_tasks: [blind_pick_balls]

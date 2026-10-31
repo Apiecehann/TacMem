@@ -122,6 +122,7 @@ AVAILABLE_TASKS = [
     "wipe_vase",
     "blind_pick",
     "blind_pick_balls",
+    "tension_strap",
 ]
 
 
@@ -317,6 +318,39 @@ TASK_BACKING: dict[str, TaskBacking] = {
         "blind_pick_balls.yml",
         (),
         vitforge_tacex=True,
+    ),
+    # tension_strap (2026-10-31) is the third ViTaForge force task served here
+    # and the first whose verdict is a continuous physical quantity rather than
+    # a geometric end state.  Four things worth having written down:
+    #
+    # 1. It is in FINAL_TASKS (envs/_force_task_utils.py:715), so the binder in
+    #    init_task fires on the name alone and supplies ``workspace``.  Its
+    #    profile carries a ``task_parameters`` block, which is what puts
+    #    ViTaForge's TacEx fork ahead of the environment's editable install.
+    #
+    # 2. ``controller: marker_rgb`` + ``calibration`` in the profile are INERT
+    #    under serving, the same way wipe_vase's are: that path only runs when
+    #    the expert ``_perform_strap_episode`` sets ``self.reference``, and the
+    #    cap-x policy never calls it.  The profile is registered unmodified
+    #    rather than stripped so the served task stays byte-identical to the
+    #    training one -- and because ``create_actors`` validates the frozen
+    #    calibration's physical contract against these very parameters, so
+    #    editing either side would raise at construction.
+    #
+    # 3. One process serves ONE physics seed, and the seed is drawn before UIPC
+    #    initialises: ``_reset_actors`` raises unless ``cfg.seed`` equals
+    #    ``params['physics_seed']``.  That is prepare_force_task_config's seed
+    #    argument, i.e. the server's --seed.  Same wall as bulb_tightening.
+    #
+    # 4. The verdict is ``check_success()`` = the two-stage acceptance in
+    #    StrapLifecycle: 12 N then 18 N, each held inside +-0.5 N for 3 s of
+    #    SIMULATED time, 60 s total.  Nothing has to be "submitted" -- the task
+    #    does not have a submission ritual (see /force_state's
+    #    ``submission_requested``, which stays False here).
+    "tension_strap": TaskBacking(
+        VITAFORGE_ROOT,
+        "tension_strap.yml",
+        (),
     ),
 }
 
@@ -2022,9 +2056,15 @@ def _sim_force_state() -> dict:
             "submission_requested": bool(
                 getattr(_TASK, "_submission_requested", False)),
             "accepted_result": _jsonable(getattr(_TASK, "_accepted_result", None)),
-            "monitor_active": bool(getattr(_TASK, "_monitor_bulb", False)),
+            "monitor_active": bool(getattr(_TASK, "_monitor_bulb", False)
+                                   or getattr(_TASK, "_monitor_strap", False)),
             "reset_grip_released": bool(
                 getattr(_TASK, "_reset_grip_released", False)),
+            # tension_strap: the task holds the strap's rest shape until both
+            # pads have acquired the tab, and only then does the strap follow
+            # the hand.  Without this the two states look identical from
+            # outside -- the pull moves the arm and the tension stays at zero.
+            "grip_released": _jsonable(getattr(_TASK, "_grip_released", None)),
             "plan_success": bool(getattr(_TASK, "plan_success", False)),
             "step_count": int(getattr(_TASK, "step_count", 0)),
             # Privileged: the hidden thread specification the task samples per

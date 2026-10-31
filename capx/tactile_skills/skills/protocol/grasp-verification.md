@@ -3,7 +3,7 @@ id: R9
 name: grasp-verification
 family: protocol
 summary: Grasp — both depths below 28.3, one pad's displacement above ~1 px at close; in transport, only a sustained rise to 28.3+ means it left; never open unchecked.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 channels: [depth, coincidence]
 objects: any
 evidence: Implemented in the agent-line warmup tool, which refuses to open on an occupied hand. Marker displacement is routinely one-sided on a real hold; requiring the two pads to agree rejects almost every genuine reading. During a lift the displacement relaxes under a steady grip and can jump on a single frame while the two depths stay put (blind_pick seeds 18 and 20, 2026-10-20). A single depth frame can also leave a narrow band — seed 8 (2026-10-21) held 27.5/27.1 at the close, and its 10 mm lift's returned frame failed its own 24.8-28.3/contact check; that frame is not printed, so the side is unknown.

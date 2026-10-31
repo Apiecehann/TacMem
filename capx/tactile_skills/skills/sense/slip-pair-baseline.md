@@ -3,7 +3,7 @@ id: S15
 name: slip-pair-baseline
 family: sense
 summary: Call detect_slip once before the motion you judge — its first call only sets the reference.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 # Its summary repeats what detect_slip's own docstring already states.
 not_tasks: [blind_pick_balls]
 channels: [coherence]

@@ -3,7 +3,7 @@ id: A1
 name: reflex-stop-on-events
 family: act
 summary: Freeze the arm on the server's tactile event instead of polling between steps.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 # blind_pick_balls serves seven primitives and no reflexive call, so the stop
 # condition this skill names cannot be written on any of them.
 not_tasks: [blind_pick_balls]

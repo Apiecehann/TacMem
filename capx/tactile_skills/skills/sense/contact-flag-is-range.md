@@ -3,7 +3,7 @@ id: S16
 name: contact-flag-is-range
 family: sense
 summary: Treat the contact flag as range, not a press — it fires ~5.6 mm before the surface reaches the pad.
-task_types: [classify, insert, manipulate, screw, wipe]
+task_types: [classify, force, insert, manipulate, screw, wipe]
 # On blind_pick_balls the unloaded gel reads 28.3 mm against a 34 mm far plane,
 # so the flag is true with nothing in range at all and carries no distance.
 not_tasks: [blind_pick_balls]

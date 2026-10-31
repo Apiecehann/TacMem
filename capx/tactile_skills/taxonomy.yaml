@@ -144,3 +144,21 @@ task_types:
     # families are withheld too: there is no thread to follow and no hole to
     # find — contact here is made and kept, not entered.
     - wipe_vase
+  force:
+    # Tactile is the gauge: the episode is a load held at a number, and the
+    # load is the only thing scored.  Nothing is placed, inserted or screwed,
+    # so the `place`, `insert` and `screw` families are wrong for it end to
+    # end — there is no free object to set down, no hole to enter and no
+    # thread to follow, and every rule in them is about one of those.
+    #
+    # What it does need from `manipulate` is the carrying half: a grasp
+    # checked before it is trusted, and a grip kept while the load changes.
+    # That half reaches here because the shared rules are typed, not because
+    # this task is routed to that family; the descent-and-seat rules that the
+    # rest of `manipulate` carries do not.
+    #
+    # tension_strap (2026-10-31) is the only member.  Its load is not a
+    # position and not a force the API reports: the strap's modulus is drawn
+    # per episode, so the same tension sits at a different height on every
+    # seed, and only the gel can say how hard it is being pulled.
+    - tension_strap

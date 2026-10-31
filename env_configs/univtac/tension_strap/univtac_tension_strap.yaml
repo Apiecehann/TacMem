@@ -1,0 +1,94 @@
+# ViTaForge: tension_strap
+# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/tension_strap/univtac_tension_strap.yaml
+#
+# The server must be started BEFORE this, on the same port, AND WITH THE SEED
+# THAT MATCHES THE TRIAL:
+#   bash scripts/launch_univtac_server.sh tension_strap 8120 <gpu> <seed>
+#                                                                      ^ seed = trial id
+#
+# ONE PROCESS SERVES EXACTLY ONE SEED.  The strap's band modulus is drawn per
+# seed before UIPC initialises (envs/_force_task_utils.py:sample_physics,
+# U(0.25, 0.40) MPa) and the task raises on any other combination
+# (envs/tension_strap.py:_reset_actors, "Create one force-task process per
+# seed...").  So N trials are N rounds of (start the server on that seed, run
+# this config, stop the server), and the trial id IS the seed
+# (capx/envs/trial.py:668).  Move `trials` and `resume_idx` together.
+#
+# --- What the episode is ------------------------------------------------------
+#
+# Grasp the tab at the top of the elastic strap and pull it up.  The verdict is
+# the strap's own physical tension, scored as two stages: 12 N held inside
+# +-0.5 N for 3 s, then 18 N the same way, inside a 60 s budget of SIMULATED
+# time (envs/tension_strap.py:StrapAcceptanceLimits, configure_final_task).
+# Nothing is submitted; check_success() reads the physical state, and it stays
+# true once both stages have been held.
+#
+# The strap is much softer than the task's 55 mm travel limit suggests: seed 0
+# measured 2.1 N/mm, so 12 N arrives 5.4 mm off the release point and 18 N at
+# 8.3 mm.  Seed 1 will differ -- that is what the modulus draw is for -- which
+# is why the oracle measures the stiffness in-episode instead of assuming one.
+#
+# --- What one trial costs, measured on seed 0 ---------------------------------
+#
+# One raise is ~41 physics ticks: the planner emits a ~31-step trajectory even
+# for a sub-millimetre move and the server adds 10 ticks of settle after every
+# motion.  The oracle's full episode -- approach, close, two ramps, two holds
+# -- is 1636 of the 7200 ticks the 60 s budget allows, 13.6 s of simulated
+# time, and measured **521 s** of wall clock end to end (trial 0, 2026-10-31).
+#
+# A hold is made of motion calls, not of waiting: a GET does not step physics,
+# so 14 calls at the pose the hand already holds is 574 ticks = 4.8 s, which
+# clears the 3 s a stage needs with room.
+#
+# --- Budget -------------------------------------------------------------------
+#
+# 2400 s, which is the runner's default and is kept explicit because it is
+# sized rather than inherited: an episode that never satisfies a stage runs the
+# whole 60 s of simulated time (7200 ticks) before the task latches
+# failure='timeout', and at the oracle's measured 3.7 ticks/s that is ~1950 s.
+# So the worst case that can still exist fits, and the 521 s a real episode
+# takes has 4.6x of room.  TRIAL_EXEC_ALARM_SECONDS replaces the runner's trial
+# timeout rather than stacking with it, and it is the only bound on wall clock:
+# the server neither enforces step_lim nor stops an episode that has failed.
+exec_alarm_seconds: 2400
+
+env:
+  _target_: capx.envs.tasks.tactile.univtac_tension_strap.UniVTACTensionStrapCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/tension_strap/low_level_tension_strap.yaml
+    # Inert for UniVTAC: base.py only consults this when low_level is a
+    # gym-registry string, not a YAML path.  What makes this task privileged
+    # is the API class below - UniVTACTactileApi reads /object_pose, the
+    # simulator's ground truth, whereas UniVTACPerceptionApi would segment the
+    # head camera with SAM3 instead.  The oracle never asks either for the
+    # strap's pose: the tab's height is scene geometry, and the load is read
+    # off the gel.
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+
+# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 (override with
+# UNIVTAC_SERVER_URL), and the server must already be listening (a free port
+# here would spawn a child that fails instantly and stall the run for 120 s).
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: tension_strap
+    port: 8120
+    host: 127.0.0.1
+
+record_video: true
+output_dir: ./outputs/univtac_tension_strap
+
+# One trial: range(1, 2) -> seed 1 only.
+#
+# Seed 0 cannot be selected on its own, which is why the pair below is not
+# 0/0: runner.py builds range(resume_idx, total_trials + 1), so resume_idx=0
+# with trials=0 exits immediately ("No trials requested") and resume_idx=0 with
+# trials=1 runs seeds 0 AND 1 -- and the second fails, because the server is
+# still serving seed 0.  At a nonzero seed, trials == resume_idx is exactly one
+# trial.  Move both numbers together AND restart the server on the same seed
+# for each round.
+trials: 2
+resume_idx: 2
+num_workers: 1  # Isaac Sim is not parallel-safe

@@ -82,7 +82,8 @@ def test_every_task_in_the_configs_is_in_the_taxonomy(library) -> None:
 
 
 def test_taxonomy_covers_every_task_type(library) -> None:
-    assert set(library.task_types) == {"classify", "insert", "manipulate", "screw", "wipe"}
+    assert set(library.task_types) == {
+        "classify", "force", "insert", "manipulate", "screw", "wipe"}
 
 
 def test_no_task_is_in_two_types(library) -> None:
@@ -95,7 +96,8 @@ def test_no_task_is_in_two_types(library) -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("task_type", ["classify", "insert", "manipulate", "screw", "wipe"])
+@pytest.mark.parametrize("task_type",
+                         ["classify", "force", "insert", "manipulate", "screw", "wipe"])
 def test_core_skills_reach_every_type(library, task_type: str) -> None:
     tasks = library.task_types[task_type]
     for task in tasks:
