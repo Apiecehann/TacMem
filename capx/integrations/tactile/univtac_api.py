@@ -50,6 +50,10 @@ _READ_TIMEOUT = 1800.0
 # straight afterwards.  The images are the one thing withheld: those are what
 # that call is for.
 _MOTION_TACTILE_FIELDS = (
+    # The episode clock rides in the same payload rather than in a call of
+    # its own: a policy already reads this after every motion, and a hold
+    # measured in seconds needs two of them.
+    "step",
     "left_contact",
     "right_contact",
     "left_depth_mm",
@@ -357,7 +361,11 @@ class UniVTACTactileApi(ApiBase):
         Returns:
             dict with the scalar tactile readings after the move, per side:
             contact, depth_mm, marker_displacement_px, marker_shear_dx,
-            marker_shear_dy, marker_coherence and marker_anisotropy.
+            marker_shear_dy, marker_coherence and marker_anisotropy, plus
+            ``step`` — the physics ticks the episode has advanced, 120 of
+            them per second.  A move spends whatever the planned trajectory
+            ran, at least ten ticks and about forty for a short one, so the
+            length of a hold is the difference between two ``step`` reads.
         """
         data = self._post(
             "/move",
@@ -603,7 +611,11 @@ class UniVTACTactileApi(ApiBase):
         there is no image to read.)
 
         Returns:
-            dict with: left_contact, right_contact (bool — a RANGE flag, not
+            dict with: step (int — physics ticks since the episode was reset,
+            at 120 per simulated second.  This call does not advance it, so
+            it is the clock as it stands: two reads around a motion say how
+            long that motion took, and a read before a hold is the start of
+            it); left_contact, right_contact (bool — a RANGE flag, not
             a press: true as soon as any surface is inside the sensor's range,
             which happens while the depth is below the far plane and the
             surface can still be up to ~5.6 mm short of the gel face.  Both

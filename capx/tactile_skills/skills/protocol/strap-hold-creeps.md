@@ -2,7 +2,7 @@
 id: R15
 name: strap-hold-creeps
 family: protocol
-summary: A held strap reads higher without loading more — hold the height, and re-zero the reading between the two stages.
+summary: A held strap reads about 0.4 N higher per three seconds without loading more — hold the height, and re-zero between stages.
 task_types: []
 tasks: [tension_strap]
 channels: [shear]

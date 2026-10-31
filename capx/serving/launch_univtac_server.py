@@ -743,6 +743,11 @@ class MoveReflexiveResponse(ActionResponse):
 
 
 class TactileResponse(BaseModel):
+    # Physics ticks since reset, at 120 Hz -- the episode clock.  Carried by
+    # every tactile payload (this endpoint and every motion reply) because
+    # the API has no other one, and a duration in seconds is otherwise
+    # unmeasurable from the outside.
+    step: int = 0
     left_contact: bool = False
     right_contact: bool = False
     left_depth_mm: float = 0.0
@@ -1766,6 +1771,13 @@ def _sim_get_tactile_data() -> dict:
             pass
 
         result = {
+            # The episode clock.  Not a tactile reading -- it rides here
+            # because this is the one call every policy already makes, and a
+            # task whose verdict is "held for three seconds" cannot be built
+            # without a clock: nothing else in the API says how much time a
+            # motion spent, and a GET advances none.  120 Hz, counted from
+            # reset.
+            "step": int(getattr(_TASK, "step_count", 0)),
             "left_contact": left_contact,
             "right_contact": right_contact,
             # Depth from GelSight sensor is already in mm (same unit as
@@ -1795,6 +1807,7 @@ def _sim_get_tactile_data() -> dict:
         logger.warning("Tactile data unavailable: %s", traceback.format_exc())
         action_log.log_query_failure("tactile", f"Tactile data unavailable: {exc}")
         return {
+            "step": int(getattr(_TASK, "step_count", 0)),
             "left_contact": False,
             "right_contact": False,
             "left_depth_mm": 0.0,
