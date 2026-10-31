@@ -409,6 +409,14 @@ _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 # their grasp poses.
 _GT_GRASP_RULES: dict[str, dict[str, str]] = {
     "bulb_tightening": {"light_bulb": "GRASP_LOCAL_Z"},
+    # tension_strap's pre_move only opens the gripper, so the EE is not left
+    # above the object and the EE-relative fallback would hand back the hand's
+    # own reset pose.  gpt-6-astra took that pose as the grasp target on its
+    # second run, drove nowhere, closed on air and refused -- which is the
+    # compromise this table exists to avoid (see the NOTE above).  The tab is
+    # 0.174 m above the strap's own origin; ViTaForge/envs/tension_strap.py
+    # names it so this cannot drift from the expert's own grasp.
+    "tension_strap": {"elastic_strap": "TAB_LOCAL_Z"},
 }
 # Tasks that must NOT take the precise-landing close (grasp_servo).  The
 # 2026-10-19 ViTaForge port charges 5 mm per sim step up to first touch and
