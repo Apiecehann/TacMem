@@ -23,11 +23,19 @@ linear in it; either pad alone is half the signal and loses the other half to
 whatever moved both of them.
 
 At this task's grip the difference reads newtons at about one for one —
-1.03 N per px, less 1.8 N of offset, linear to 0.05 N from 4 N to 19 N.
-That is a calibration of this tab between these pads, not a law, but it is
-the one number a hold needs and it is worth nothing to measure it again
-mid-episode: the strap's stiffness is what changes per seed, and the gel
-reads the load, not the stretch.
+1.03 N per px, linear to 0.05 N from 4 N to 19 N. Where zero sits is
+neither a constant nor small: closing at the task's 27.6 mm left 1.5 px of
+difference on the resting strap, and closing without asking for a depth
+left 3.3, which is 1.9 N.
+
+So take the zero from the close.  The fixture still holds the strap at that
+moment, so the load there is nothing and the reading is the offset — a
+number that belongs to the grasp, not to the calibration.  Measure every
+later load from it.
+
+What is worth measuring in-episode is the strap's stiffness in millimetres
+per newton, because that is what the seed draws differently; the gel reads
+the load itself, not the stretch.
 
 Size a correction from the reading, not from the height. One 2 mm rise tells
 you how many newtons this strap gives per millimetre this episode — it is
