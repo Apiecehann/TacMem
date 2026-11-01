@@ -262,7 +262,12 @@ class BaselineServer:
         previous = self.task.cfg.use_adaptive_grasp
         self.task.cfg.use_adaptive_grasp = False
         try:
-            return self.task.move([cmd], tag='ablation_position', delay=True, is_save=False)
+            executed = self.task.move([cmd], tag='ablation_position', delay=True, is_save=False)
+            # Preserve the peer server's recoverable planning-status behavior.
+            # Do not reset native failures, episode state or scorer latches.
+            if not executed and not self.stopped():
+                self.task.plan_success = True
+            return executed
         finally:
             self.task.cfg.use_adaptive_grasp = previous
 

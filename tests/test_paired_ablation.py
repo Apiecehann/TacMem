@@ -250,3 +250,31 @@ def test_existing_http_routes_and_sensor_endpoint_are_blocked():
             assert (await client.post('/ablation/state',json={})).json()=={'ok':True}
             assert (await client.post('/ablation/finish',json={},headers={'X-Capx-Contract':'other'})).status_code==403
     asyncio.run(check())
+
+
+@pytest.mark.parametrize('mode', ['tactile-rgb-opencv', 'no-tactile'])
+def test_same_position_grasp_without_sensor_feedback_and_recoverable_planner(monkeypatch, mode):
+    import sys
+    from types import ModuleType
+    atom=ModuleType('envs.utils.atom')
+    atom.Action=lambda **kw:SimpleNamespace(**kw)
+    transforms=ModuleType('envs.utils.transforms')
+    transforms.Pose=lambda **kw:SimpleNamespace(**kw)
+    monkeypatch.setitem(sys.modules,'envs.utils.atom',atom)
+    monkeypatch.setitem(sys.modules,'envs.utils.transforms',transforms)
+    cfg=SimpleNamespace(use_adaptive_grasp=True)
+    task=SimpleNamespace(cfg=cfg,plan_success=True)
+    def move(commands, **kw):
+        assert cfg.use_adaptive_grasp is False
+        assert commands[0].action=='gripper'
+        assert commands[0].target_gripper_pos==.4
+        task.plan_success=False
+        return False
+    task.move=move
+    server=object.__new__(BaselineServer)
+    server.task=task; server.spec={'mode':mode}; server.stopped=lambda:False
+    assert server._franka_action('gripper', {'position':.4}) is False
+    assert cfg.use_adaptive_grasp is True and task.plan_success is True
+    server.stopped=lambda:True
+    server._franka_action('gripper', {'position':.4})
+    assert task.plan_success is False  # native terminal status cannot be cleared
