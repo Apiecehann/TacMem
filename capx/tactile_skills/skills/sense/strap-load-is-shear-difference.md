@@ -36,6 +36,10 @@ strap and the slope does not: 0.932 on one and 0.939 on another, so aim with
 the middle and both land inside the band.  The first two millimetres of pull
 carry nothing, so a pull that buys no reading has not failed, and a line
 through the origin is the wrong model (0.63 N/px, 2.9 N of residual).
+Measure from the close and keep climbing: the field does not retrace its
+path, so a descent and a fresh zero re-zeroes against a state that is not
+the close (0.90 px on a 2026-11-01 run, 0.85 N, and its second stage landed
+at 19.070 N).
 
 What is worth measuring in-episode is the strap's stiffness in millimetres
 per newton, because that is what the seed draws differently; the gel reads
