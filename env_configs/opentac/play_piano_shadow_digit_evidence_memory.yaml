@@ -13,6 +13,10 @@ env:
       piano_hold_seconds: 0.12
       piano_require_dynamics: true
       piano_continue_on_note_failure: true
+      # Opt-in full-sequence comparison: retain failed PIANO_NOTE evidence while
+      # allowing guarded release and finalization; fatal PIANO_STOP still stops.
+      defer_public_note_failures: ${oc.env:CAPX_SHADOW_DEFER_NOTE_FAILURES,false}
+      expected_piano_request_path: ${oc.env:CAPX_SHADOW_EXPECTED_REQUEST,null}
       seed_base: 0
       device: cuda:0
       tactile_image_width: 320
@@ -31,13 +35,15 @@ env:
       endpoint_calibration: true
       keyboard_calibration_path: ${oc.env:CAPX_SHADOW_KEYBOARD_CACHE,${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}/keyboard_calibration.json}
       public_episode_recording: true
+      # Numeric 16 x 4D error keys stay in RAM; no raw DIGIT image recording.
+      error_windows_only: true
       require_public_release: true
       third_party_video: true
       evidence_memory_root: ${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}
       # Parallel retrieval spaces; the frozen instantaneous 5D force model above stays active.
       tactile_temporal_encoder:
         run_dir: ${oc.env:CAPX_SHADOW_TRAJECTORY_RUN,/mnt/data/ljz/opentacbench/tactile_trajectory_encoder_v1/run_20261027T091422Z}
-        representations: [window4, tactile, tactile_action]
+        representations: [window4]
     privileged: false
     apis:
     - ShadowPianoVisualForceApi
@@ -57,6 +63,97 @@ env:
       policies.
 
 
+      COMPLETE PUBLIC API CONTRACT FOR THIS CONFIGURATION (8 functions):
+
+      All reads below advance NO physics. Motion targets are absolute values in
+      the task control frame, not world XYZ and not increments. Missing observations
+      remain unknown; never substitute zero velocity, zero force or an invented pose.
+
+      1. get_keyboard_endpoints() -> dict. Returns A0/C8 with midi,
+      world_key_top_center_m and display_image_center_px; frame, mirrored,
+      display_image_size_px, camera_picture_origin_px and white_center_spacing_m
+      describe the HEAD geometry. In this endpoint mode it also returns
+      calibration_ready, calibration_id and mapped_keys. If ready, mapped_keys
+      already contains this request. World key centers are NOT wrist commands.
+
+      2. locate_visual_keys(pixels: dict[str,dict]) -> dict[str,dict]. Supply either
+      exactly A0 and C8, both color=''white'', or every distinct requested note.
+      Each item is {u:float,v:float,color:''white''|''black''}, using the displayed
+      mirrored HEAD picture without its 22px header: u=x/960, v=(y-22)/640.
+      Do not mirror the coordinates again. Returns per-note midi, color,
+      wrist_x_offset_m, wrist_y_m, press_lift_z_m, hover_lift_z_m and geometric
+      diagnostics. Use these wrist targets; never send projected_world_xyz_m
+      as an action. Invalid color, ordering, workspace or calibration raises;
+      only a successful return establishes visual_key_map_ready=1.
+
+      3. get_hand_state() -> dict. Measured fields are wrist_x_offset_m,
+      wrist_y_m, wrist_z_m (m), index_flexion_rad (rad),
+      wrist_and_index_velocity=[Y_speed_m_s,Z_speed_m_s,index_speed_rad_s],
+      arm_joint_position_rad, arm_joint_velocity_rad_s (seven values each),
+      and visual_key_map_ready (0/1). Sent targets are not measured positions.
+
+      4. move_shadow_index(wrist_x_offset_m:float,wrist_y_m:float,
+      lift_z_m:float,index_flexion_rad:float,steps:int=1) ->
+      {ok:bool,steps_executed:int,native_done:bool}. Current inclusive bounds:
+      X [-0.01,0.09]m, Y [-0.32,0.26]m, Z [-0.006,0.05]m,
+      flexion [0,0.50]rad. All four values must be finite. steps is an integer
+      1..240, never a Boolean; steps_executed counts completed ACTIONS.
+      ok means the command returned, not arrival, force stability or scoring.
+
+      EXACT XY GUARD: after visual calibration, EVERY action whose target
+      lift_z_m<0.035 OR index_flexion_rad>0.05 requires current measured
+      sqrt((wrist_x_offset_m-target_x)**2+(wrist_y_m-target_y)**2)<=0.002m
+      AND abs(wrist_and_index_velocity[0])<=0.015m/s. This includes lowering,
+      pressing, holding and intermediate release actions. It is checked before
+      native stepping and raises ValueError on failure. Only targets with BOTH
+      Z>=0.035 and flexion<=0.05 skip this XY check; other bounds still apply.
+      A failure does not execute that action; earlier successful actions persist.
+      These are adapter preconditions, not native musical success criteria.
+
+      5. wait_steps(steps:int) -> {ok:bool,steps_executed:int,native_done:bool}.
+      Repeats the LAST commanded target with the same bounds and XY guard.
+      It advances physics and can fail if that target is no longer admissible;
+      it neither freezes the hand nor automatically chooses a safe hover target.
+
+      6. get_index_tactile_rgb() -> uint8 ndarray[H,W,3]. One current single-index
+      DIGIT RGB image, not depth, force or a native scoring label. Unavailable or
+      invalid image state can raise. The read does not advance simulation.
+
+      7. estimate_key_force(note:str|int) -> dict with estimated_key_force_N,
+      sample_step, age_steps, quality and calibration_version. note is the
+      intended note name or MIDI, used to select black/white calibration; it
+      does NOT verify which physical key was touched. Only finite force with
+      quality=''ok'' and age_steps=0 is usable. no_contact has None force;
+      ood, insufficient_history, invalid_shape, invalid_depth, nonfinite_depth,
+      invalid_color_or_stale, unavailable or any unknown state is unusable.
+      sample_step/age_steps count actions, may be None when unavailable, and
+      duplicate reads do not advance a hold clock. Do not clamp an OOD or
+      unavailable result into a plausible force. Preserve calibration_version.
+
+      Reset first collects real open-finger hover samples spanning the 5D
+      estimator history: 8 physics ticks (1/30 s; two actions at action_repeat=4).
+      insufficient_history is transient missing history, not OOD or zero force.
+      If it occurs, keep an open-finger hover, advance steps=1 and re-read;
+      do not lower/curl, count hold time or end the note for this status.
+      Repeated reads alone add no history. Persistent invalid/missing samples
+      are a sensor availability error; never fabricate a force value.
+
+      8. finish_piano_note_attempt(index:int) -> {ok:bool,native_done:bool}.
+      index is the next zero-based attempt, not a note name; submit exactly once
+      in request order. While active, measured abs(index_flexion_rad)<=0.02
+      and abs(wrist_z_m-0.04)<=0.002 must stay true for at least 0.12 physical
+      seconds. The host starts timing at the first observed ready pose and
+      resets on a violation. Sending release targets or reading pose repeatedly
+      is insufficient. Premature, duplicate or out-of-order submission raises.
+      This finalizes an attempt without advancing physics or revealing its score.
+
+      get_note_target, get_key_angles, query_tactile_skill, record_tactile_skill,
+      task objects and private audit access are NOT exposed in this configuration.
+      Memory retrieval is host-managed only on a recognized recoverable error;
+      do not invent extra API calls. END is also host-managed. After native_done,
+      propagate the terminal outcome and return immediately without further actions.
+
+
       Use get_keyboard_endpoints(). If calibration_ready reuse mapped_keys with no
       image. Otherwise
 
@@ -74,8 +171,14 @@ env:
       At hover z=0.04m with finger extended, move to mapped X/Y. Verify actual X/Y
       arrival and
 
-      stability from get_hand_state before lowering or curling. Use the API''s measured
-      arrival guards.
+      stability from get_hand_state before lowering or curling, using BOTH the
+      Euclidean XY error and Y-speed limits above. Check stability over consecutive
+      actions; one low-speed sample at a direction reversal is not settled arrival.
+      Re-read actual pose BEFORE EVERY guarded action, including later descent and
+      hold; the hand can accelerate after an initially acceptable sample. If not
+      ready, use bounded hover/extension at the same target X/Y and recheck, rather
+      than blindly replaying a low-Z target with wait_steps. On persistent failure
+      print PIANO_STOP arrival_timeout and return for the existing repair mechanism.
 
 
       Initial numerical priors: descend in about0.50s, curl smoothly to0.50rad over0.45s
@@ -89,6 +192,9 @@ env:
 
       press counts. Native requested hold, release checks and motion/force safety
       limits remain fixed.
+
+      在已有动作及反馈限制内，尝试适度增大接近、下压、弯指的步幅，优化动作路径和不必要的等待；保持和释放要求不变。
+      不得用提前结束失败尝试来减少动作数；应在不削弱任务要求和安全条件的前提下，优化动作规划与执行效率。
 
       Mapped nominal press_lift_z_m plus class trim gives a bounded probe: white/light
       -0.00069m,
@@ -126,7 +232,7 @@ env:
 
       Persistent OOD/stale/invalid or overforce requires safe release. If the public
       recovery cannot resolve it, print PIANO_STOP OOD_REPROBE and return without
-      finalizing the unfinished attempt. The host may request one in-episode repair.
+      finalizing the unfinished attempt. The host may request an in-episode repair.
 
       Fresh quality=''ok'', age_steps=0 and finite force are prerequisites for feedback.
       Keep Z fixed
@@ -166,9 +272,7 @@ env:
 
 
       Release by extending and lifting to hover. Before finish_piano_note_attempt(i),
-      ACTUAL index
-
-      flexion <=0.02rad and abs(wrist_z_m-0.04)<=0.002m must remain true continuously
+      measured abs(index_flexion_rad)<=0.02rad and abs(wrist_z_m-0.04)<=0.002m must remain true continuously
       for>=0.12s.
 
       Keep advancing bounded release actions until measured arrival and elapsed interval
@@ -187,11 +291,14 @@ env:
       the native task and submits END using its unchanged verdict. Do not call more
       motion or mark unattempted notes completed to satisfy the requested count.
 
-      After finalization update piano_state[''completed''], append a public attempt
-      summary and print
-
-      PIANO_NOTE with index, quality, had_valid_contact, public_hold_confidence and
-      abort_reason.
+      After release print PIANO_NOTE followed by a Python dict with index, quality, had_valid_contact,
+      public_hold_confidence and abort_reason. Report an abort or failed hold before
+      finalization. had_valid_contact and public_hold_confidence are Booleans, not
+      probability scores; abort_reason is None on a confirmed public hold. On failure
+      the host interrupts this block for repair. Otherwise finalize,
+      update piano_state[''completed''] and append a public attempt summary. Preserve finalized
+      attempts when resuming. Use parameter keys white_light, white_heavy,
+      black_light and black_heavy.
 
       No public confidence or memory entry proves official success. No files or arbitrary
       env access.
@@ -204,7 +311,9 @@ env:
       5D or the frozen force estimator. Normal execution only records evidence.
       On an explicit public failure print PIANO_STOP with the reason and return
       without falsely finalizing the unfinished attempt. The host retrieves history
-      only before one bounded repair request. There is no episode-end LLM updater.
+      only before a repair request, at most one per episode. There is no episode-end LLM updater.
+      The recovery dict exists on the first call too. Only enter recovery when
+      piano_state[''recovery''][''resuming''] is True; otherwise approach normally.
       When run_piano is called again, use piano_state[''recovery''] and
       its host-confirmed finalized_indices/current_attempt. Do not replay finalized
       attempts, initialization, clearing or calibration. Inspect fresh hand pose and
@@ -256,8 +365,20 @@ evolve_skill_library: false
 shadow_piano_evidence_memory: ${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}
 shadow_piano_evidence_mode: ${oc.env:CAPX_SHADOW_EVIDENCE_MODE,joint}
 shadow_piano_evidence_trigger: repair_only
-shadow_piano_repair_scope: release_regions_v1
+shadow_piano_repair_scope: public_contract
 # Optional frozen V0 for a controlled repair comparison, not an approved cache entry.
 shadow_piano_initial_source: ${oc.env:CAPX_SHADOW_INITIAL_SOURCE,null}
 shadow_piano_initial_source_sha256: ${oc.env:CAPX_SHADOW_INITIAL_SOURCE_SHA256,null}
+# Opt-in fixed-error evidence comparison. Off leaves the existing repair flow unchanged.
+shadow_piano_evidence_ablation: ${oc.env:CAPX_SHADOW_EVIDENCE_ABLATION,off}
+shadow_piano_evidence_fixture: ${oc.env:CAPX_SHADOW_EVIDENCE_FIXTURE,null}
+shadow_piano_ablation_round: ${oc.env:CAPX_SHADOW_ABLATION_ROUND,1}
+shadow_piano_ablation_max_rounds: ${oc.env:CAPX_SHADOW_ABLATION_MAX_ROUNDS,1}
+shadow_piano_ablation_capture_reason: ${oc.env:CAPX_SHADOW_ABLATION_CAPTURE_REASON,ood_reprobe}
+shadow_piano_ablation_next_fixture: ${oc.env:CAPX_SHADOW_ABLATION_NEXT_FIXTURE,null}
+shadow_piano_ablation_regenerate: false  # Opt in only in the isolated regeneration experiment.
 shadow_piano_action_memory: false
+shadow_piano_independent_memory: true
+shadow_piano_skill_retrieval: ${oc.env:CAPX_SHADOW_SKILL_RETRIEVAL,joint}
+shadow_piano_retrieval_representation: window4
+shadow_piano_text_encoder: /mnt/data/ljz/opentacbench/repair_text_encoder_v1/multilingual-e5-small

@@ -1,0 +1,203 @@
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    generated_code_mode: host_module
+    stream_user_code_output: false
+    low_level:
+      _target_: capx.envs.simulators.opentac_shadow.ShadowPianoLowLevelEnv
+      univtac_root: ${oc.env:UNIVTAC_ROOT,/mnt/a/ljz/cap/OpenTacBench}
+      piano_notes: null
+      piano_dynamics: null
+      piano_hold_seconds: 0.12
+      piano_require_dynamics: true
+      piano_continue_on_note_failure: true
+      seed_base: 0
+      device: cuda:0
+      tactile_image_width: 320
+      action_repeat: 4
+      digit_piano_config: ${oc.env:CAPX_DIR,/mnt/a/ljz/cap/t-cap/cap-x}/env_configs/opentac/config_digit_piano_0_2.v1.yml
+      digit_force_sidecar: ${oc.env:CAPX_SHADOW_FORCE_SIDECAR,${oc.env:CAPX_DIR,/mnt/a/ljz/cap/t-cap/cap-x}/env_configs/opentac/shadow_digit_key_top_force_5d_matched60hz_8episode.v1.json}
+      private_audit_root: ${oc.env:CAPX_SHADOW_PRIVATE_AUDIT_ROOT,/mnt/data/ljz/opentacbench/capx-private-audits/shadow_piano_visual_force_v1}
+      visual_key_mode: true
+      auto_clear_keyboard_for_visual: true
+      snap_visual_key_pixels: true
+      mirror_head_view: true
+      video_frame_stride: 12
+      video_width: 512
+      piano_note_count: 6
+      task_seed: ${oc.env:CAPX_SHADOW_TASK_SEED,3300}
+      endpoint_calibration: true
+      keyboard_calibration_path: ${oc.env:CAPX_SHADOW_KEYBOARD_CACHE}
+      public_episode_recording: true
+      error_windows_only: true
+      require_public_release: true
+      third_party_video: true
+      evidence_memory_root: ${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}
+      tactile_temporal_encoder: null
+      defer_public_note_failures: true
+      expected_piano_request_path: null
+      retrieve_tactile_history: false
+      require_xy_arrival: true
+    privileged: false
+    apis:
+    - ShadowPianoVisualForceApi
+    prompt: "任务：用 Franka＋Shadow Hand 食指依次尝试 request 指定的音符、力度和持音时间。通过公开位置状态及实时 DIGIT\
+      \ 测力自行设计接近、按压、保持和释放策略，合理分配动作预算。失败尝试合法释放后继续，原生终止后停止。全部尝试结束后由宿主提交 END。\n\n输入与输出：返回一个\
+      \ JSON 对象，source 是完整 Python 模块，入口 run_piano(request, piano_state)，另外返回 reason、expected_effect、experience。宿主只调用入口一次；顶层只定义常量及函数，不执行动作。只可\
+      \ import math，API 是直接绑定的全局函数；piano_state 是普通字典，不是 API 对象。禁止文件、任务对象、私有属性、动态查找及\
+      \ eval/exec/getattr/globals。使用 request['notes']、request['dynamics']、request['hold_seconds']，不写死音序或逐音坐标。每个\
+      \ episode 清空进度。\n\n公开任务与执行契约：原样定义 frozen_constants_source 中的常量。FORCE_SETTINGS\
+      \ 每项只有(target_force_N,tolerance_N,hold_gate_N)；探针高度参考单独列在下文，不改变该三元组。这些保持门槛沿用本实验已有公开控制契约，不能改成更低要求。运行时只用新鲜、有限、quality=ok\
+      \ 的估计判断保持；连续落在 [hold_gate_N,target_force_N+tolerance_N] 达到 request 持音时间才报告 public_hold_confidence=True，否则如实报告。用\
+      \ sample_step 的实际间隔计时；重复读取不计时间，不合格采样重置计时。公开通过不代表原生得分。动作间隔固定为 ACTION_SECONDS；所有动作都计入\
+      \ EPISODE_ACTION_BUDGET。每次动作调用 steps=1，以便逐动作获得反馈；自主规划每音预算和释放余量，不通过其他动作接口绕过总预算。首轮无经验；仅提供下述专家接触探针，其他控制策略自行设计。\n\
+      \n唯一专家策略先验：接触探针（A/B 相同，来自已有专家轨迹与原探针配置）。先用公开映射选择本音腕部 X/Y，并通过现有实测到位及速度条件。探针高度\
+      \ z_probe = clip(press_lift_z_m + trim_m, -0.006, 0.05)：white/light 的 trim_m=-0.00069\
+      \ m，white/heavy=-0.00286 m，black/light=-0.00090 m，black/heavy=-0.00209 m。这四个偏移是类别级参考，不是逐音坐标、实测力或接触证明。\n\
+      到位后保持食指伸直，从悬停到 z_probe 用约0.50秒平滑降腕（约30个动作，每次steps=1），不要同时降腕并弯指。确认实际腕部已到探针位置后，在探针高度按\
+      \ theta(t)=0.50*(3*u*u-2*u*u*u) rad、u=clip(t/0.45秒,0,1) 渐进弯指（约27个动作），逐动作读取公开反馈并遵守边界和终止规则。这只是建立接触姿态的参考，不保证力估计准确或原生通过，不能把完成弯曲当作保持达标。\n\
+      除该探针先验外，保持控制、反馈增益、微调节奏、释放及恢复策略由你根据公开反馈自行设计；不提供专家保持时长、按压阶段步数上限或固定释放流程。任务持音要求和既有公开执行检查仍须满足。\n\
+      \n每个音按压尝试结束时，打印 PIANO_NOTE 加一个 dict，字段 index、quality、had_valid_contact、public_hold_confidence、abort_reason，反映真实公开观测。随后完成释放并调用\
+      \ finish_piano_note_attempt(index)，再进入下一音；失败也需合法提交，不能跳音或伪造成功。PIANO_STOP 只表示整条无法继续。native_done\
+      \ 仅表示终止，立即停止动作并正常返回，由宿主处理已完成尝试与 END，不推断原生成功。\n\n公开 API（读取不推进物理；动作目标均为控制坐标系绝对值，不是增量，也不是世界坐标）：\n\
+      1. get_keyboard_endpoints() -> dict：A0/C8 含 midi、world_key_top_center_m、display_image_center_px；还有\
+      \ frame、mirrored、display_image_size_px、camera_picture_origin_px、white_center_spacing_m、calibration_ready、calibration_id、mapped_keys。标定有效时\
+      \ mapped_keys 已含本次音符，返回每键的 midi、color、wrist_x_offset_m、wrist_y_m、press_lift_z_m、hover_lift_z_m。世界键中心不是腕部动作目标。\n\
+      2. locate_visual_keys(pixels) -> 每键目标 dict：输入恰好 A0/C8（均白键）或所有不同请求音；每项 {u,v,color}。显示图像为镜像\
+      \ HEAD 960×662，去掉顶部22像素，u=x/960、v=(y-22)/640，不再次镜像。返回目标字段同 mapped_keys；无效颜色、顺序、工作区或标定会抛错。几何\
+      \ press_lift_z_m 不保证接触或达到目标力。\n3. get_hand_state() -> dict：wrist_x_offset_m、wrist_y_m、wrist_z_m（m），index_flexion_rad，wrist_and_index_velocity=[Y速度m/s,Z速度m/s,食指速度rad/s]，arm_joint_position_rad、arm_joint_velocity_rad_s（各7维），visual_key_map_ready。发送目标不代表实际到位；缺值不可补零。\n\
+      4. move_shadow_index(wrist_x_offset_m,wrist_y_m,lift_z_m,index_flexion_rad,steps=1)\
+      \ -> {ok,steps_executed,native_done}。目标必须有限；X范围[-0.01,0.09]m、Y[-0.32,0.26]m、Z[-0.006,0.05]m、弯指[0,0.50]rad。steps_executed\
+      \ 是动作数，一个动作推进4个240Hz物理步。ok 仅表示调用返回。\n   接口实际前置条件：标定后，目标Z<0.035m或弯指>0.05rad的动作要求当前实测XY距目标<=0.002m，且abs(Y速度)<=0.015m/s。检查在步进前执行，失败抛\
+      \ ValueError，该次动作未执行；之前已执行动作保留。仅目标Z>=0.035且弯指<=0.05时不检查XY。这是适配器条件，不是音符判分。\n\
+      5. wait_steps(steps) -> 同上：重复最后目标并推进物理，仍检查相同边界与XY；不冻结机器人、不自动选择姿态。本实验 steps 同样固定为1。\n\
+      6. get_index_tactile_rgb() -> uint8[H,W,3]：食指当前 DIGIT RGB；无效时可抛错，不返回力或评分。\n\
+      7. estimate_key_force(note) -> {estimated_key_force_N,sample_step,age_steps,quality,calibration_version}：note\
+      \ 为音名/MIDI，只选择黑白键标定，不验证实际碰了哪个键。sample_step/age_steps 单位为动作步。仅 quality=ok、age_steps=0\
+      \ 且有限数值可用。no_contact 的力为 None；ood、insufficient_history、invalid_shape、invalid_depth、nonfinite_depth、invalid_color_or_stale、unavailable\
+      \ 及未知状态均不可用，不能解释为零力或伪造数值。insufficient_history 表示历史不足，不是OOD；重复读取不增加历史。宿主 reset\
+      \ 已做真实历史预热，原始缺失仍需如实处理。保留校准版本。\n8. finish_piano_note_attempt(index) -> {ok,native_done}：按\
+      \ request 顺序、每音一次。活动期间必须实测abs(index_flexion_rad)<=0.02rad、abs(wrist_z_m-HOVER_Z)<=0.002m，连续至少0.12物理秒。到位后开始累计，偏离会重置；只发送目标或重复读取不满足条件。提前/重复/乱序提交抛错；此调用不推进物理、不透露评分。原生已终止时不再动作，正常返回给宿主。\n\
+      get_note_target、get_key_angles、query_tactile_skill、record_tactile_skill 不可用；没有额外的记忆\
+      \ API。\n\n整轮结束反馈：final_note_results 对 A/B 提供同样格式的逐音最终结果，index 对应本轮 request 音序；passed/failed\
+      \ 是环境最终通过/未通过，unresolved 表示缺少已结算结果，不得当成失败或成功。available=false 时保持未知。这些结果只在执行结束后用于更新，运行中不能查询。结果不附带原生失败原因、真实力、琴键角度或内部评分过程。\n\
+      根据最终结果和本组实际提供的证据，结合当前源码、动作和实际状态总结原因，再提出下一轮可验证的策略调整，包括探针、接近、下压、保持和释放。原因必须由可见证据推断，区分观察和假设；不能因某音失败就断言测力错误或编造真实牛顿数，也不能因一次通过就扩大策略适用范围。\n\
+      更新证据边界：A 不接收历史触觉数值、图像、特征，也不接收 quality、OOD、接触标记、公开保持结果或触觉派生的失败原因。A 的 notes 没有\
+      \ report 字段；只能依据源码、任务目标、动作与实测姿态、动作数、姿态释放检查、通用程序错误以及最终逐音结果总结经验。B 额外接收本组逐音触觉报告、估计力历史、质量及算术摘要。缺失反馈不等于未发生接触或传感器正常；不得把假设写成已观测事实。两组都可自行提出控制假设，宿主只校验经验格式，不审查推断内容。两组都不接收真实力和原生失败原因；运行时都使用同一实时测力API。历史窗口由两组相同的动作目标规则选择，不依赖触觉读数。\n\
+      \n轮末更新：参考本组当前程序（若提供）、整轮公开反馈和本组累计经验，生成下一轮完整程序与经验。两组运行时同样能测力；缺少数值更新材料时保持未知，不从错误类别猜数值。分清观测、源码事实和假设，不能从\
+      \ quality=ok 推断估计完全准确，不能把30Hz窗口当全部60Hz控制或240Hz物理步。反馈的单位、列和缺失标记以字段说明为准。提升完成机会，在不削弱任务要求和边界的前提下改进效率，不得通过提前放弃失败尝试减少动作数。\n\
+      experience 首次必须=[]；之后最多16条、8KiB，每项包含 id、conditions、advice、basis（observed或hypothesis），可附\
+      \ numeric_correction 和公开来源 evidence。规则可以描述具体控制数值，但新方案仅是待验证假设；下一轮结果可支持或反驳。可按\
+      \ final_note_results 记录逐音最终结果；不得推断其未提供的失败原因或真实力，不推断另一组情况。源码只返回一份，建议控制在9KiB，经验建议约1KiB；完整代码可以重写，不限制为局部补丁。"
+    multi_turn_prompt: 'Use the unchanged public request and preserve finalized attempts.
+      No private scoring. {console_stdout}
+
+      {console_stderr}'
+trials: 1
+num_workers: 1
+record_video: true
+output_dir: ${oc.env:CAPX_OUTPUT_DIR,/mnt/data/ljz/opentacbench/capx-runs/shadow_piano_evidence}
+trial_timeout_seconds: 1800
+code_block_wall_timeout_seconds: 1500
+max_trial_retries: 0
+max_regenerations: 0
+stop_multiturn_when_regeneration_exhausted: true
+multi_turn_on_failure_only: true
+multiturn_requires_checkpoint_or_failure: true
+shadow_piano_recover_on_stop: false
+shadow_piano_wrist_on_failure: false
+split_code_blocks_on_breakpoint: true
+visual_checkpoint_markers:
+- finger_alignment
+use_visual_feedback: true
+use_wrist_camera: false
+visual_feedback_raw_camera_views: true
+visual_feedback_context: shadow_piano
+visual_feedback_max_image_side_px: 960
+visual_feedback_jpeg_quality: 92
+visual_feedback_allow_unlisted_model: true
+visual_feedback_require_image_input: true
+save_multiturn_prompts: true
+tactile_memory:
+  trial:
+    enabled: false
+    include_in_multiturn: false
+  persistent:
+    enabled: false
+shadow_piano_code_memory: ${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}/legacy_code_archive
+shadow_piano_public_skill_library: null
+evolve_skill_library: false
+shadow_piano_evidence_memory: ${oc.env:CAPX_SHADOW_EVIDENCE_ROOT,/mnt/data/ljz/opentacbench/shadow_piano_evidence_v1}
+shadow_piano_evidence_mode: none
+shadow_piano_evidence_trigger: repair_only
+shadow_piano_repair_scope: public_contract
+shadow_piano_initial_source: null
+shadow_piano_initial_source_sha256: null
+shadow_piano_evidence_ablation: 'off'
+shadow_piano_evidence_fixture: null
+shadow_piano_action_memory: false
+shadow_piano_independent_memory: true
+shadow_piano_skill_retrieval: language
+shadow_piano_retrieval_representation: window4
+shadow_piano_text_encoder: /mnt/data/ljz/opentacbench/repair_text_encoder_v1/multilingual-e5-small
+shadow_piano_ablation_round: 1
+shadow_piano_ablation_max_rounds: 1
+shadow_piano_ablation_capture_reason: ${oc.env:CAPX_SHADOW_ABLATION_CAPTURE_REASON,press_timeout}
+shadow_piano_ablation_next_fixture: null
+shadow_piano_ablation_regenerate: false
+max_code_block_actions: 2000
+shadow_piano_continual_prompt: "任务：用 Franka＋Shadow Hand 食指依次尝试 request 指定的音符、力度和持音时间。通过公开位置状态及实时\
+  \ DIGIT 测力自行设计接近、按压、保持和释放策略，合理分配动作预算。失败尝试合法释放后继续，原生终止后停止。全部尝试结束后由宿主提交 END。\n\n输入与输出：返回一个\
+  \ JSON 对象，source 是完整 Python 模块，入口 run_piano(request, piano_state)，另外返回 reason、expected_effect、experience。宿主只调用入口一次；顶层只定义常量及函数，不执行动作。只可\
+  \ import math，API 是直接绑定的全局函数；piano_state 是普通字典，不是 API 对象。禁止文件、任务对象、私有属性、动态查找及 eval/exec/getattr/globals。使用\
+  \ request['notes']、request['dynamics']、request['hold_seconds']，不写死音序或逐音坐标。每个 episode\
+  \ 清空进度。\n\n公开任务与执行契约：原样定义 frozen_constants_source 中的常量。FORCE_SETTINGS 每项只有(target_force_N,tolerance_N,hold_gate_N)；探针高度参考单独列在下文，不改变该三元组。这些保持门槛沿用本实验已有公开控制契约，不能改成更低要求。运行时只用新鲜、有限、quality=ok\
+  \ 的估计判断保持；连续落在 [hold_gate_N,target_force_N+tolerance_N] 达到 request 持音时间才报告 public_hold_confidence=True，否则如实报告。用\
+  \ sample_step 的实际间隔计时；重复读取不计时间，不合格采样重置计时。公开通过不代表原生得分。动作间隔固定为 ACTION_SECONDS；所有动作都计入\
+  \ EPISODE_ACTION_BUDGET。每次动作调用 steps=1，以便逐动作获得反馈；自主规划每音预算和释放余量，不通过其他动作接口绕过总预算。首轮无经验；仅提供下述专家接触探针，其他控制策略自行设计。\n\
+  \n唯一专家策略先验：接触探针（A/B 相同，来自已有专家轨迹与原探针配置）。先用公开映射选择本音腕部 X/Y，并通过现有实测到位及速度条件。探针高度 z_probe\
+  \ = clip(press_lift_z_m + trim_m, -0.006, 0.05)：white/light 的 trim_m=-0.00069 m，white/heavy=-0.00286\
+  \ m，black/light=-0.00090 m，black/heavy=-0.00209 m。这四个偏移是类别级参考，不是逐音坐标、实测力或接触证明。\n\
+  到位后保持食指伸直，从悬停到 z_probe 用约0.50秒平滑降腕（约30个动作，每次steps=1），不要同时降腕并弯指。确认实际腕部已到探针位置后，在探针高度按\
+  \ theta(t)=0.50*(3*u*u-2*u*u*u) rad、u=clip(t/0.45秒,0,1) 渐进弯指（约27个动作），逐动作读取公开反馈并遵守边界和终止规则。这只是建立接触姿态的参考，不保证力估计准确或原生通过，不能把完成弯曲当作保持达标。\n\
+  除该探针先验外，保持控制、反馈增益、微调节奏、释放及恢复策略由你根据公开反馈自行设计；不提供专家保持时长、按压阶段步数上限或固定释放流程。任务持音要求和既有公开执行检查仍须满足。\n\
+  \n每个音按压尝试结束时，打印 PIANO_NOTE 加一个 dict，字段 index、quality、had_valid_contact、public_hold_confidence、abort_reason，反映真实公开观测。随后完成释放并调用\
+  \ finish_piano_note_attempt(index)，再进入下一音；失败也需合法提交，不能跳音或伪造成功。PIANO_STOP 只表示整条无法继续。native_done\
+  \ 仅表示终止，立即停止动作并正常返回，由宿主处理已完成尝试与 END，不推断原生成功。\n\n公开 API（读取不推进物理；动作目标均为控制坐标系绝对值，不是增量，也不是世界坐标）：\n\
+  1. get_keyboard_endpoints() -> dict：A0/C8 含 midi、world_key_top_center_m、display_image_center_px；还有\
+  \ frame、mirrored、display_image_size_px、camera_picture_origin_px、white_center_spacing_m、calibration_ready、calibration_id、mapped_keys。标定有效时\
+  \ mapped_keys 已含本次音符，返回每键的 midi、color、wrist_x_offset_m、wrist_y_m、press_lift_z_m、hover_lift_z_m。世界键中心不是腕部动作目标。\n\
+  2. locate_visual_keys(pixels) -> 每键目标 dict：输入恰好 A0/C8（均白键）或所有不同请求音；每项 {u,v,color}。显示图像为镜像\
+  \ HEAD 960×662，去掉顶部22像素，u=x/960、v=(y-22)/640，不再次镜像。返回目标字段同 mapped_keys；无效颜色、顺序、工作区或标定会抛错。几何\
+  \ press_lift_z_m 不保证接触或达到目标力。\n3. get_hand_state() -> dict：wrist_x_offset_m、wrist_y_m、wrist_z_m（m），index_flexion_rad，wrist_and_index_velocity=[Y速度m/s,Z速度m/s,食指速度rad/s]，arm_joint_position_rad、arm_joint_velocity_rad_s（各7维），visual_key_map_ready。发送目标不代表实际到位；缺值不可补零。\n\
+  4. move_shadow_index(wrist_x_offset_m,wrist_y_m,lift_z_m,index_flexion_rad,steps=1)\
+  \ -> {ok,steps_executed,native_done}。目标必须有限；X范围[-0.01,0.09]m、Y[-0.32,0.26]m、Z[-0.006,0.05]m、弯指[0,0.50]rad。steps_executed\
+  \ 是动作数，一个动作推进4个240Hz物理步。ok 仅表示调用返回。\n   接口实际前置条件：标定后，目标Z<0.035m或弯指>0.05rad的动作要求当前实测XY距目标<=0.002m，且abs(Y速度)<=0.015m/s。检查在步进前执行，失败抛\
+  \ ValueError，该次动作未执行；之前已执行动作保留。仅目标Z>=0.035且弯指<=0.05时不检查XY。这是适配器条件，不是音符判分。\n5. wait_steps(steps)\
+  \ -> 同上：重复最后目标并推进物理，仍检查相同边界与XY；不冻结机器人、不自动选择姿态。本实验 steps 同样固定为1。\n6. get_index_tactile_rgb()\
+  \ -> uint8[H,W,3]：食指当前 DIGIT RGB；无效时可抛错，不返回力或评分。\n7. estimate_key_force(note) ->\
+  \ {estimated_key_force_N,sample_step,age_steps,quality,calibration_version}：note\
+  \ 为音名/MIDI，只选择黑白键标定，不验证实际碰了哪个键。sample_step/age_steps 单位为动作步。仅 quality=ok、age_steps=0\
+  \ 且有限数值可用。no_contact 的力为 None；ood、insufficient_history、invalid_shape、invalid_depth、nonfinite_depth、invalid_color_or_stale、unavailable\
+  \ 及未知状态均不可用，不能解释为零力或伪造数值。insufficient_history 表示历史不足，不是OOD；重复读取不增加历史。宿主 reset 已做真实历史预热，原始缺失仍需如实处理。保留校准版本。\n\
+  8. finish_piano_note_attempt(index) -> {ok,native_done}：按 request 顺序、每音一次。活动期间必须实测abs(index_flexion_rad)<=0.02rad、abs(wrist_z_m-HOVER_Z)<=0.002m，连续至少0.12物理秒。到位后开始累计，偏离会重置；只发送目标或重复读取不满足条件。提前/重复/乱序提交抛错；此调用不推进物理、不透露评分。原生已终止时不再动作，正常返回给宿主。\n\
+  get_note_target、get_key_angles、query_tactile_skill、record_tactile_skill 不可用；没有额外的记忆\
+  \ API。\n\n整轮结束反馈：final_note_results 对 A/B 提供同样格式的逐音最终结果，index 对应本轮 request 音序；passed/failed\
+  \ 是环境最终通过/未通过，unresolved 表示缺少已结算结果，不得当成失败或成功。available=false 时保持未知。这些结果只在执行结束后用于更新，运行中不能查询。结果不附带原生失败原因、真实力、琴键角度或内部评分过程。\n\
+  根据最终结果和本组实际提供的证据，结合当前源码、动作和实际状态总结原因，再提出下一轮可验证的策略调整，包括探针、接近、下压、保持和释放。原因必须由可见证据推断，区分观察和假设；不能因某音失败就断言测力错误或编造真实牛顿数，也不能因一次通过就扩大策略适用范围。\n\
+  更新证据边界：A 不接收历史触觉数值、图像、特征，也不接收 quality、OOD、接触标记、公开保持结果或触觉派生的失败原因。A 的 notes 没有 report\
+  \ 字段；只能依据源码、任务目标、动作与实测姿态、动作数、姿态释放检查、通用程序错误以及最终逐音结果总结经验。B 额外接收本组逐音触觉报告、估计力历史、质量及算术摘要。缺失反馈不等于未发生接触或传感器正常；不得把假设写成已观测事实。两组都可自行提出控制假设，宿主只校验经验格式，不审查推断内容。两组都不接收真实力和原生失败原因；运行时都使用同一实时测力API。历史窗口由两组相同的动作目标规则选择，不依赖触觉读数。\n\
+  \n轮末更新：参考本组当前程序（若提供）、整轮公开反馈和本组累计经验，生成下一轮完整程序与经验。两组运行时同样能测力；缺少数值更新材料时保持未知，不从错误类别猜数值。分清观测、源码事实和假设，不能从\
+  \ quality=ok 推断估计完全准确，不能把30Hz窗口当全部60Hz控制或240Hz物理步。反馈的单位、列和缺失标记以字段说明为准。提升完成机会，在不削弱任务要求和边界的前提下改进效率，不得通过提前放弃失败尝试减少动作数。\n\
+  experience 首次必须=[]；之后最多16条、8KiB，每项包含 id、conditions、advice、basis（observed或hypothesis），可附\
+  \ numeric_correction 和公开来源 evidence。规则可以描述具体控制数值，但新方案仅是待验证假设；下一轮结果可支持或反驳。可按 final_note_results\
+  \ 记录逐音最终结果；不得推断其未提供的失败原因或真实力，不推断另一组情况。源码只返回一份，建议控制在9KiB，经验建议约1KiB；完整代码可以重写，不限制为局部补丁。"
+shadow_piano_continual_arm: B
+shadow_piano_continual_overflow_policy: retain5_regenerate1to3.v1
+shadow_piano_continual_root: ${oc.env:CAPX_SHADOW_CONTINUAL_ROOT}
+shadow_piano_continual_round: ${oc.env:CAPX_SHADOW_CONTINUAL_ROUND,0}
+shadow_piano_continual_prior: expert_probe_only.v1
+shadow_piano_continual_rounds: ${oc.env:CAPX_SHADOW_CONTINUAL_ROUNDS,10}
+shadow_piano_continual_final_results: true
+shadow_piano_continual_feedback_contract: strict_tactile_ablation.v1

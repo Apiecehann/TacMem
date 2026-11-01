@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import uuid
+from functools import wraps
+import sys
 
 import numpy as np
 
@@ -17,6 +19,22 @@ from capx.integrations.opentac_shadow_vision import (
 SCHEMA = "shadow_piano_public_endpoint_calibration.v1"
 
 
+def untraced_host_recording(function):
+    """Do not trace host serialization/I/O as if it were generated policy code."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        previous = sys.gettrace()
+        if previous is not None:
+            sys.settrace(None)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            if previous is not None:
+                sys.settrace(previous)
+    return wrapped
+
+
+@untraced_host_recording
 def atomic_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")

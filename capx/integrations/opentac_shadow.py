@@ -128,6 +128,7 @@ class ShadowPianoVisualForceApi(ApiBase):
         requested-note target or proof that a pictured key is unobstructed.
         In endpoint-calibration mode, mapped_keys contains the current requested
         wrist targets when calibration_ready is true. Reuse these without images.
+        This read advances no physics. World key centers are not wrist commands.
         """
         return self._env.get_keyboard_endpoints()
 
@@ -144,6 +145,12 @@ class ShadowPianoVisualForceApi(ApiBase):
         This returns all current requested targets computed from public endpoints,
         musical white-key intervals and generic black/white geometry. It saves
         the reusable endpoint calibration for subsequent episodes.
+
+        Use u=x/960 and v=(y-22)/640 in the displayed mirrored HEAD picture;
+        do not mirror twice. Each returned target has midi, color,
+        wrist_x_offset_m, wrist_y_m, press_lift_z_m and hover_lift_z_m.
+        Invalid color/order/workspace/calibration raises without accepting a map.
+        Calibration advances no physics; projected_world_xyz_m is not an action.
         """
         return self._env.locate_visual_keys(pixels)
 
@@ -152,7 +159,11 @@ class ShadowPianoVisualForceApi(ApiBase):
 
         wrist_x_offset_m and wrist_y_m are measured positions, not the last
         commanded target. wrist_and_index_velocity[0] is wrist Y speed in m/s.
-        Compare measured X/Y with locate_visual_keys() targets before pressing.
+        The next two velocity entries are Z speed (m/s) and index speed (rad/s).
+        wrist_z_m and index_flexion_rad are measured; arm joint position/velocity
+        arrays each contain seven values. Missing data is unknown, not zero.
+        Compare measured X/Y with locate_visual_keys() targets before EVERY
+        guarded action, including descent and hold. Reads advance no physics.
         """
         state = self._env.get_observation()["hand_state"]
         marker = getattr(self._env, 'note_public_recovery_read', None)
@@ -164,6 +175,18 @@ class ShadowPianoVisualForceApi(ApiBase):
                           steps: int = 1) -> dict:
         """Send a bounded wrist/index target for 1..240 ACTION repetitions.
 
+        Absolute task-control targets, not world XYZ or increments. Current DIGIT
+        bounds: X [-0.01,0.09]m, Y [-0.32,0.26]m, Z [-0.006,0.05]m,
+        flexion [0,0.50]rad; all finite. steps is an integer, not a Boolean.
+        After visual calibration, EVERY target with Z<0.035 OR flexion>0.05
+        requires measured Euclidean XY error<=0.002m AND absolute wrist Y
+        speed<=0.015m/s. Only BOTH Z>=0.035 and flexion<=0.05 bypass that guard.
+        Recheck before each descent/press/hold/release action; one earlier
+        acceptable sample does not guarantee continued stability. On drift,
+        use bounded extended hover and recheck instead of repeating low targets.
+        The guard raises before the invalid action steps; previously completed
+        actions remain executed. These are adapter preconditions, not scoring.
+
         steps counts native actions, NOT physics ticks. Each action advances
         the configured action_repeat physics ticks at 240 Hz. In the 60 Hz
         configuration (action_repeat=4): steps=1 advances 4 ticks (1/60 s),
@@ -174,6 +197,7 @@ class ShadowPianoVisualForceApi(ApiBase):
         it does not request four physics ticks or provide intermediate readings.
 
         Returns ok, steps_executed (completed ACTION repetitions), native_done.
+        ok is not evidence of measured arrival, contact or force stability.
         For a nonterminal return, elapsed simulated seconds are
         steps_executed * action_repeat / 240, NOT steps_executed / 240.
         Termination may shorten execution; never move or wait after native_done.
@@ -191,12 +215,17 @@ class ShadowPianoVisualForceApi(ApiBase):
         wait_steps(1) advances 4 physics ticks; wait_steps(4) advances 16.
         During press/hold use wait_steps(1), then estimate_key_force(note).
         Holding a target does not freeze the hand, force, or simulation time.
-        Never wait after native_done.
+        The SAME XY guard is checked on each repetition; wait does not select
+        an extended hover for you. Never wait after native_done.
         """
         return self._env.wait_steps(steps)
 
     def get_index_tactile_rgb(self) -> np.ndarray:
-        """Return one public DIGIT RGB image, without native force labels."""
+        """Return current single-index DIGIT RGB as uint8 HxWx3, without force labels.
+
+        This read advances no physics. Invalid/unavailable image state can raise;
+        RGB appearance is not a calibrated force reading.
+        """
         return self._env.get_index_tactile_rgb()
 
     def estimate_key_force(self, note: str | int) -> dict:
@@ -204,11 +233,23 @@ class ShadowPianoVisualForceApi(ApiBase):
 
         quality values are lowercase and case-sensitive: 'ok', 'no_contact',
         'ood', 'insufficient_history', or another unavailable/invalid state.
+        Returns estimated_key_force_N, sample_step, age_steps, quality and
+        calibration_version. Missing force/steps can be None. The intended note
+        name/MIDI selects black/white calibration, not actual key identity.
+        Do not substitute numbers for unavailable force or clip away overforce.
         Only fresh 'ok' has a usable estimated_key_force_N. Branch on 'ood',
         never 'OOD'; release and use the configured re-probe policy.
         'no_contact' intentionally has None force and is normal before contact.
         Handle it before checking for a finite force: keep the bounded initial
         curl and reset hold counters; it is not an invalid estimate by itself.
+
+        Reset collects real open-finger hover samples for the 5D estimator's
+        8-physics-tick history (1/30 s, two actions at action_repeat=4).
+        'insufficient_history' means missing history, not OOD or zero force.
+        If encountered, keep an open-finger hover and advance steps=1 before
+        re-reading; do not lower/curl, count hold time or finalize the note for
+        this transient state. Persistent missing/invalid samples are a sensor
+        availability error, not a reason to invent force. Reads alone add no history.
 
         sample_step and age_steps use native ACTION units, not physics ticks.
         This read does not advance simulation. Repeated reads without an action
@@ -225,8 +266,14 @@ class ShadowPianoVisualForceApi(ApiBase):
     def finish_piano_note_attempt(self, index: int) -> dict:
         """After safely releasing note index (zero based), consume that attempt.
 
-        Returns only whether the native episode has ended. Native per-note
+        Returns {ok: bool, native_done: bool}. Native per-note
         success, failure and measured force remain private.
+        index must be an integer (not bool), the next zero-based attempt, once
+        in order. While active, actual abs(index_flexion_rad)<=0.02 and
+        abs(wrist_z_m-0.04)<=0.002 must persist for >=0.12 simulated seconds
+        from the first observed ready pose. A violation resets that clock;
+        repeated reads do not advance it. Early/duplicate/out-of-order calls
+        raise. This submission does not step physics; ok is not musical success.
         The measured release-pose guard applies while the episode is active.
         If motion returns native_done, do not wait for hover or label it a release
         timeout: return normally from run_piano. The host reconciles attempts

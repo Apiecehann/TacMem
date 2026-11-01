@@ -16,6 +16,494 @@ SOURCE='''def run_piano(request, piano_state):
 '''
 
 
+def test_continual_public_feedback_isolates_numeric_force_and_future(tmp_path):
+    from capx.integrations.opentac_shadow_online_skills import continual_episode_feedback
+    request={'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}
+    mem.atomic_json(tmp_path/'shadow_public_episode.json',{'seed':3300,'sequence':request,
+        'clear_action_steps':0,'force_history_warmup_action_steps':0})
+    rows=[]
+    for step in range(4,141,4):
+        hand={'wrist_x_offset_m':.001,'wrist_y_m':.002,'wrist_z_m':.003,'index_flexion_rad':.5,
+              'wrist_and_index_velocity':[.004,0,0]}
+        rows.append({'kind':'action','action_step':step//4,'physics_step':step,'target':[0,0,0,.5],'hand_state':hand})
+        if step<=128:
+            rows.append({'kind':'force_estimate','action_step':step//4,'physics_step':step,'note':'C4',
+                         'estimate':{'estimated_key_force_N':.314159,'quality':'ok','age_steps':0,'calibration_version':'test'}})
+    rows.extend([{'kind':'attempt_finalized','index':0,'action_step':35,'physics_step':140,'release_verified':True},
+        {'kind':'code_execution','action_step':35,'physics_step':140,'public_messages':[
+            "PIANO_NOTE {'index':0,'quality':'ok','public_hold_confidence':True,'abort_reason':None}",
+            'PIANO_FORCE estimated_key_force_N=123456.789']}, {'kind':'policy_end'}])
+    (tmp_path/'shadow_public_observations.jsonl').write_text('\n'.join(json.dumps(x) for x in rows))
+    a,b=continual_episode_feedback(tmp_path,'A'),continual_episode_feedback(tmp_path,'B')
+    assert a['actions_and_state']==b['actions_and_state']
+    assert '.314159' not in json.dumps(a) and '123456.789' not in json.dumps(b)
+    history=b['estimated_force_history']
+    window=dict(zip(history['columns'],history['rows'][0]))
+    assert window['physics_step_start']==8 and len(window['estimated_force_N'])==16
+    assert window['calibration_id_segments']==[[0,16,0]] and history['calibration_ids']==['test']
+    summary=b['computed_summary']
+    assert dict(zip(summary['columns'],summary['rows'][0]))['valid_samples']==32
+    assert summary['scope']=='all_force_reads_in_attempt'
+    motion=b['actions_and_state'];w=motion['windows'][0]
+    assert w['target_by_column']==[0,0,0,.5] and w['missing_target_samples']==[]
+    assert motion['samples']==16 and motion['physics_step_stride']==8
+    # Missing actual X is never silently replaced by a zero.
+    next(r for r in rows if r['kind']=='action' and r['physics_step']==8)['hand_state'].pop('wrist_x_offset_m')
+    (tmp_path/'shadow_public_observations.jsonl').write_text('\n'.join(json.dumps(x) for x in rows))
+    assert continual_episode_feedback(tmp_path,'A')['actions_and_state']['windows'][0]['actual'][0][0] is None
+    # Every changing target and absent frame survives column compression.
+    rows=[r for r in rows if not (r['kind']=='action' and r['physics_step']==16)]
+    next(r for r in rows if r['kind']=='action' and r['physics_step']==24)['target'][2]=-.001
+    (tmp_path/'shadow_public_observations.jsonl').write_text('\n'.join(json.dumps(x) for x in rows))
+    w=continual_episode_feedback(tmp_path,'B')['actions_and_state']['windows'][0]
+    assert w['missing_target_samples']==[1]
+    decoded=[[v[i] if isinstance(v,list) else v for v in w['target_by_column']] for i in range(16)]
+    assert decoded[0]==[0,0,0,.5] and decoded[1]==[None]*4 and decoded[2]==[0,0,-.001,.5]
+
+
+@pytest.mark.parametrize('arm',['a','b'])
+def test_continual_launcher_preserves_strict_feedback_contract(tmp_path,monkeypatch,arm):
+    from capx.envs.launch import LaunchArgs
+    from capx.utils.launch_utils import _load_config
+    monkeypatch.setenv('CAPX_SHADOW_CONTINUAL_ROOT',str(tmp_path/'suite'))
+    monkeypatch.setenv('CAPX_SHADOW_KEYBOARD_CACHE',str(tmp_path/'keyboard.json'))
+    _,config,_=_load_config(LaunchArgs(config_path=str(Path(__file__).resolve().parents[1]/
+        f'env_configs/opentac/play_piano_shadow_digit_continual_{arm}.yaml')))
+    assert config['shadow_piano_continual_feedback_contract']=='strict_tactile_ablation.v1'
+    assert config['shadow_piano_continual_arm']==arm.upper()
+
+
+def test_continual_strict_a_removes_tactile_outcomes_and_read_timing(tmp_path,monkeypatch):
+    from capx.integrations.opentac_shadow_online_skills import continual_episode_feedback
+    request={'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}
+    mem.atomic_json(tmp_path/'shadow_public_episode.json',{'seed':3300,'sequence':request})
+    events=[{'kind':'action','action_step':i,'physics_step':i*4,'target':[0,0,0,.5],
+             'hand_state':{'wrist_z_m':.01}} for i in range(1,41)]
+    events += [{'kind':'force_estimate','action_step':i,'physics_step':i*4,'estimate':{
+        'estimated_key_force_N':.314159,'quality':'ood','age_steps':0,'calibration_version':'test'}} for i in range(1,33)]
+    events += [{'kind':'code_execution','public_messages':[
+        "PIANO_NOTE {'index':0,'quality':'ood','had_valid_contact':True,'public_hold_confidence':False,'abort_reason':'overforce'}",
+        'PIANO_STOP ood_reprobe', 'ValueError: no_contact 123456.789']},
+        {'kind':'attempt_finalized','index':0,'action_step':40,'release_verified':True}]
+    path=tmp_path/'shadow_public_observations.jsonl'
+    path.write_text('\n'.join(json.dumps(e) for e in events))
+    contract='strict_tactile_ablation.v1'
+    a=continual_episode_feedback(tmp_path,'A',feedback_contract=contract)
+    b=continual_episode_feedback(tmp_path,'B',feedback_contract=contract)
+    assert 'report' not in a['notes'][0] and b['notes'][0]['report']['quality']=='ood'
+    assert a['public_errors']==['program_reported_stop','program_exception']
+    assert a['actions_and_state']==b['actions_and_state']
+    assert a['actions_and_state']['windows'][0]['physics_step_start']==40
+    assert all(s not in json.dumps(a) for s in ('ood','contact','confidence','overforce','.314159','123456'))
+    # Change/remove all sensor observations and messages, leaving motion and
+    # generic program outcome unchanged: A's entire update evidence is invariant.
+    events=[e for e in events if e['kind']!='force_estimate']
+    next(e for e in events if e['kind']=='code_execution')['public_messages']=[
+        "PIANO_NOTE {'index':0,'quality':'ok','public_hold_confidence':True}",
+        'PIANO_STOP different_contact_reason', 'ValueError: another sensor detail']
+    path.write_text('\n'.join(json.dumps(e) for e in events))
+    assert continual_episode_feedback(tmp_path,'A',feedback_contract=contract)==a
+    monkeypatch.setenv('CAPX_REASONING_EFFORT','low')
+    monkeypatch.setattr(mem,'_query',lambda *a,**k:pytest.fail('Must reject before transport'))
+    a['notes'][0]['report']={'quality':'ood'}
+    with pytest.raises(ValueError,match='tactile-derived'):
+        mem._continual_query(SimpleNamespace(model='gpt-6.1-sol'),{
+            'shadow_piano_continual_arm':'A','shadow_piano_continual_feedback_contract':contract},
+            {'feedback':a},tmp_path/'blocked','test')
+
+
+def test_continual_bootstrap_inheritance_and_rejected_source(tmp_path,monkeypatch):
+    source=mem.CONTINUAL_CONSTANTS+'\ndef run_piano(request, piano_state):\n    pass\n'
+    request={'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'same'})
+    calls=[]
+    def query(args,config,payload,output,phase):
+        calls.append((phase,payload))
+        if phase=='continual_initial':return {'source':source,'experience':[]}
+        return {'source':'invalid python %%%','experience':[{'id':'release','conditions':'released',
+            'advice':'Wait for measured release','basis':'hypothesis'}]}
+    monkeypatch.setattr(mem,'_continual_query',query)
+    def cfg(arm,iteration):
+        run=tmp_path/f'run_{arm}_{iteration}';run.mkdir()
+        mem.atomic_json(run/'shadow_public_episode.json',{'seed':3300+iteration,'sequence':request,'clear_action_steps':0})
+        (run/'shadow_public_observations.jsonl').write_text('')
+        return {'shadow_piano_continual_root':str(tmp_path/'suite'),'shadow_piano_continual_arm':arm,
+            'shadow_piano_continual_round':iteration,'output_dir':str(run),'_piano_public_request':request}
+    a,b=cfg('A',0),cfg('B',0)
+    acode=mem._continual_initial(None,a)[0];bcode=mem._continual_initial(None,b)[0]
+    assert acode==bcode and len(calls)==1
+    result=mem._finish_continual(a,None)
+    assert result['source_rejected'] and not result['experience_rejected']
+    assert result['next']['version']==mem.digest(mem.validate_source(source))
+    next_config=cfg('A',1);mem._continual_initial(None,next_config)
+    sess=json.loads(mem._session_path(next_config).read_text())
+    assert sess['continual']['fallback'] and sess['request']==request
+    assert len(calls)==2  # Loading next candidate makes no initial-generation API call.
+    assert not list((tmp_path/'suite').rglob('active.json'))
+    # Final round archives feedback without a nineteenth update request.
+    final=cfg('A',9);mem.atomic_json(mem._session_path(final),sess)
+    assert mem._finish_continual(final,None)['status']=='complete' and len(calls)==2
+
+
+def test_request_retry_does_not_abort_batch_or_reexecute_policy(tmp_path,monkeypatch):
+    from capx.llm import client
+    abort=tmp_path/'abort.json'
+    monkeypatch.setenv('CAPX_LLM_ABORT_FILE',str(abort))
+    monkeypatch.setenv('CAPX_OUTPUT_DIR',str(tmp_path))
+    monkeypatch.setenv('CAPX_LLM_REQUEST_RETRIES','2')
+    monkeypatch.setattr(client.time,'sleep',lambda _:None)
+    calls=[]
+    def request(args,messages,**kwargs):
+        assert not abort.exists()
+        calls.append(messages)
+        if len(calls)==1:raise client.LLMEmptyResponseError('empty')
+        return {'content':'source','usage':{}}
+    monkeypatch.setattr(mem,'_query_impl',request)
+    reply=mem._query(SimpleNamespace(model='test',api_key=None),[{'role':'user','content':'same request'}])
+    assert reply['request_attempts']==2 and calls[0]==calls[1] and not abort.exists()
+    events=[json.loads(l) for l in (tmp_path/'piano_api_requests.jsonl').read_text().splitlines()]
+    assert [e['event'] for e in events]==['started','attempt_started','retry','attempt_started','completed']
+
+
+def test_continual_experience_checks_format_not_model_inference():
+    row={'id':'evidence_limits','conditions':'本组estimated_force_history和computed_summary均withheld',
+         'advice':'未知观测保持未知；释放要求为0.12秒。','basis':'observed'}
+    for arm in ('A','B'):
+        assert mem._continual_experience([row],arm)==[row]
+        inferred={**row,'basis':'hypothesis','advice':'假设 estimated_force_N=0.4；private_key_top_force 未知。'}
+        assert mem._continual_experience([inferred],arm)==[inferred]
+        for invalid in ([row]*17,[{**row,'basis':'invalid'}],[{**row,'advice':None}],
+                        [{**row,'advice':'x'*8192}],[{**row,'number':float('nan')}]):
+            with pytest.raises(ValueError):mem._continual_experience(invalid,arm)
+
+
+def test_continual_validator_preserves_constraints_and_api():
+    source=mem.CONTINUAL_CONSTANTS+'\ndef run_piano(request, piano_state):\n    get_hand_state()\n'
+    assert mem._continual_validate(source)
+    with pytest.raises(ValueError):mem._continual_validate(source.replace('2000','2001'))
+    with pytest.raises(ValueError):mem._continual_validate(source.replace('get_hand_state','unknown_api'))
+    with pytest.raises(ValueError):mem._continual_validate(source.replace('get_hand_state()',"getattr(piano_state, 'get_hand_state')()"))
+
+
+def test_continual_final_note_results_only_after_end_and_no_diagnosis():
+    score=SimpleNamespace(repetitions=3,count=2,successful_notes=1,events=[
+        {'kind':'press','attempt_index':0,'force_N':9.87654321,'step':20},
+        {'kind':'release','attempt_index':0,'step':40},
+        {'kind':'miss','attempt_index':1,'reason':'wrong_note_force','step':80}])
+    low=SimpleNamespace(_task=SimpleNamespace(score=score),_policy_end_submitted=False,_native_done=False)
+    read=lambda:ShadowPianoLowLevelEnv._continual_final_note_results(low,3)
+    assert read()['reason']=='episode_not_ended'
+    low._policy_end_submitted=True
+    result=read()
+    assert result['notes']==[{'index':0,'outcome':'passed'},{'index':1,'outcome':'failed'},
+                             {'index':2,'outcome':'unresolved'}]
+    assert all(k not in json.dumps(result) for k in ('9.87654321','wrong_note_force','step','force_N'))
+    score.events.append({'kind':'miss','attempt_index':0})
+    assert read()['reason']=='inconsistent_final_results'
+
+
+def test_continual_update_receives_final_results_but_a_never_numeric_tactile(tmp_path,monkeypatch):
+    monkeypatch.setenv('CAPX_REASONING_EFFORT','low')
+    source=mem.CONTINUAL_CONSTANTS+'\ndef run_piano(request, piano_state):\n    pass\n'
+    request={'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}
+    calls=[]
+    def query(args,messages,**kwargs):
+        calls.append(json.loads(messages[1]['content']))
+        return {'content':json.dumps({'source':source,'experience':[]})}
+    monkeypatch.setattr(mem,'_query',query)
+    score=SimpleNamespace(repetitions=1,count=1,successful_notes=0,events=[
+        {'kind':'miss','attempt_index':0,'reason':'secret_failure_reason','force_N':9.87654321}])
+    low=SimpleNamespace(_task=SimpleNamespace(score=score),_policy_end_submitted=True,_native_done=True)
+    low._continual_final_note_results=lambda n:ShadowPianoLowLevelEnv._continual_final_note_results(low,n)
+    for arm in 'AB':
+        run=tmp_path/arm;run.mkdir()
+        mem.atomic_json(run/'shadow_public_episode.json',{'seed':3300,'sequence':request})
+        events=[{'kind':'action','physics_step':4,'action_step':1,'target':[0,0,0,.2],
+                 'hand_state':{'wrist_x_offset_m':0,'wrist_y_m':0,'wrist_z_m':0,'index_flexion_rad':.2,
+                               'wrist_and_index_velocity':[0,0,0]}},
+                {'kind':'force_estimate','physics_step':4,'action_step':1,'note':'C4',
+                 'estimate':{'estimated_key_force_N':.314159,'quality':'ok','age_steps':0,'calibration_version':'test'}},
+                {'kind':'attempt_finalized','index':0,'action_step':1,'physics_step':4,'release_verified':True},
+                {'kind':'policy_end'}]
+        (run/'shadow_public_observations.jsonl').write_text('\n'.join(json.dumps(e) for e in events))
+        cfg={'shadow_piano_continual_root':str(tmp_path/'suite'),'shadow_piano_continual_arm':arm,
+             'shadow_piano_continual_round':0,'shadow_piano_continual_rounds':2,
+             'shadow_piano_continual_final_results':True,'shadow_piano_continual_prompt':'task and API',
+             'output_dir':str(run)}
+        record=mem._continual_store(tmp_path/'suite/arms'/arm,source,[],{'test':'same'})
+        mem.atomic_json(mem._session_path(cfg),{'source':source,'request':request,'compatibility':{'test':'same'},
+                                              'continual':{'input':record}})
+        result=mem._finish_continual(cfg,SimpleNamespace(model='gpt-6.1-sol'),host=low)
+        assert result['status']=='ready_for_next'
+    a,b=calls
+    assert a['feedback']['final_note_results']==b['feedback']['final_note_results']
+    assert a['feedback']['final_note_results']['notes']==[{'index':0,'outcome':'failed'}]
+    assert '.314159' not in json.dumps(a) and '.314159' in json.dumps(b)
+    for payload in calls:
+        assert all(s not in json.dumps(payload) for s in ('9.87654321','secret_failure_reason'))
+
+
+@pytest.mark.parametrize('channel',['estimated_force_history','computed_summary','nested'])
+def test_continual_a_update_blocks_tactile_channels_before_api(tmp_path,monkeypatch,channel):
+    monkeypatch.setenv('CAPX_REASONING_EFFORT','low')
+    monkeypatch.setattr(mem,'_query',lambda *a,**k:pytest.fail('Must reject before transport'))
+    feedback={k:{'available':False,'reason':'withheld_by_ablation'}
+              for k in ('estimated_force_history','computed_summary')}
+    if channel=='nested':feedback['notes']=[{'report':{'estimated_key_force_N':.314159}}]
+    else:feedback[channel]={'value':.314159}
+    with pytest.raises(ValueError,match='A update'):
+        mem._continual_query(SimpleNamespace(model='gpt-6.1-sol'),{'shadow_piano_continual_arm':'A'},
+            {'feedback':feedback},tmp_path/'request','test')
+    assert not (tmp_path/'request/attempt.json').exists()
+
+
+@pytest.mark.parametrize('prior',['task_api_only.v1','expert_probe_only.v1'])
+def test_continual_task_api_profile_removes_recipe_and_supports_short_pilot(tmp_path,prior):
+    cfg={'shadow_piano_continual_prior':prior,'shadow_piano_continual_rounds':2,
+         'shadow_piano_continual_arm':'A','shadow_piano_continual_round':1,
+         'shadow_piano_continual_root':str(tmp_path/'suite'),'output_dir':str(tmp_path/'run')}
+    constants=mem._continual_constants(cfg)
+    assert 'RELEASE_ACTION_RESERVE' not in constants and '-0.00069' not in constants
+    namespace={};exec(constants,namespace)
+    assert namespace['FORCE_SETTINGS']==mem.PUBLIC_PIANO_FORCE_LIMITS
+    source=constants+'\ndef run_piano(request, piano_state):\n    get_hand_state()\n'
+    assert mem._continual_validate(source,cfg)
+    with pytest.raises(ValueError):mem._continual_validate(source)
+    with pytest.raises(ValueError):mem._continual_validate(source.replace('2000','2001'),cfg)
+    run=Path(cfg['output_dir']);run.mkdir()
+    mem.atomic_json(run/'shadow_public_episode.json',{'seed':3301,'sequence':{
+        'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}})
+    (run/'shadow_public_observations.jsonl').write_text('')
+    record=mem._continual_store(tmp_path/'suite/arms/A',source,[],{'test':'same'})
+    mem.atomic_json(mem._session_path(cfg),{'source':source,'continual':{'input':record}})
+    result=mem._finish_continual(cfg,None)
+    assert result['status']=='complete' and result['update_api_calls']==0
+    cfg['shadow_piano_continual_round']=2
+    with pytest.raises(ValueError):mem._continual_context(cfg)
+
+
+@pytest.mark.parametrize('count,expected',[(0,'retain'),(1,'weak'),(2,'weak'),(3,'weak'),(4,'retain'),(5,'strong'),(6,'strong')])
+def test_continual_overflow_private_strength(count,expected):
+    audits=[]
+    low=SimpleNamespace(_task=SimpleNamespace(score=SimpleNamespace(successful_notes=count,
+        events=[{'kind':'release','attempt_index':i} for i in range(count)])),
+        _native_info={'piano_sequence':{'notes':['C4']*6}},_policy_end_submitted=True,
+        _append_private_audit=lambda name,row:audits.append(row))
+    assert ShadowPianoLowLevelEnv._private_continual_source_policy(low)==expected
+    assert audits[-1]['native_successful_count']==count
+    low._task.score.events=[]
+    if count:assert ShadowPianoLowLevelEnv._private_continual_source_policy(low)=='retain'
+
+
+def test_continual_overflow_source_reference_is_host_only(tmp_path,monkeypatch):
+    monkeypatch.setenv('CAPX_REASONING_EFFORT','low')
+    calls=[];selections=[]
+    def query(args,messages,**kwargs):
+        calls.append(json.loads(messages[1]['content']))
+        return {'content':'{}'}
+    monkeypatch.setattr(mem,'_query',query)
+    args=SimpleNamespace(model='gpt-6.1-sol')
+    cfg={'shadow_piano_continual_prompt':'task and API',
+         '_continual_source_policy':lambda:selections.append('weak') or 'weak'}
+    small={'current_source':'small','experience':[],'feedback':{'public_errors':[]}}
+    mem._continual_query(args,cfg,small,tmp_path/'fits','test')
+    assert not selections and calls[-1]['current_source']=='small'
+    oversized={**small,'current_source':'source'*5000}
+    mem._continual_query(args,cfg,oversized,tmp_path/'weak','test')
+    assert selections==['weak'] and 'current_source' not in calls[-1]
+    assert calls[-1]['operation']=='generate_next_episode_without_source'
+    assert calls[-1]['frozen_constants_source']==mem.CONTINUAL_CONSTANTS
+    assert oversized['current_source']=='source'*5000  # Stored source remains intact.
+    assert 'weak' not in json.dumps(calls[-1]) and 'native_successful_count' not in json.dumps(calls[-1])
+    cfg['_continual_source_policy']=lambda:'strong'
+    errors=['repeated_public_error_'+'x'*500]*60
+    full={**small,'current_source':'keep source','feedback':{'public_errors':errors}}
+    mem._continual_query(args,cfg,full,tmp_path/'strong','test')
+    wire=calls[-1];packed=wire['feedback']['public_errors_compact']
+    assert wire['current_source']=='keep source'
+    assert [packed['messages'][i] for i in packed['order']]==errors
+    for policy in ('strong','retain'):
+        cfg['_continual_source_policy']=lambda p=policy:p
+        before=len(calls)
+        blocked=tmp_path/('blocked_'+policy)
+        with pytest.raises(ValueError,match='not sent'):
+            mem._continual_query(args,cfg,oversized,blocked,'test')
+        assert len(calls)==before and not (blocked/'attempt.json').exists()
+    mem._continual_query(args,cfg,{'current_source':None,'feedback':None},tmp_path/'initial','test')
+    assert calls[-1]=={'current_source':None,'feedback':None}
+
+
+def test_continual_invalid_initial_program_pauses_without_second_query(tmp_path,monkeypatch):
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'same'})
+    request={'notes':['C4'],'dynamics':['light'],'hold_seconds':[.12]}
+    run=tmp_path/'run';run.mkdir()
+    mem.atomic_json(run/'shadow_public_episode.json',{'seed':3300,'sequence':request})
+    cfg={'shadow_piano_continual_root':str(tmp_path/'suite'),'shadow_piano_continual_arm':'A',
+         'shadow_piano_continual_round':0,'output_dir':str(run),'_piano_public_request':request}
+    calls=[]
+    def query(args,config,payload,output,phase):
+        calls.append(phase)
+        mem.atomic_json(output/'prompt.json',payload)
+        return {'source':mem.CONTINUAL_CONSTANTS+"\ndef run_piano(request, piano_state):\n    getattr(piano_state, 'api')()\n"}
+    monkeypatch.setattr(mem,'_continual_query',query)
+    with pytest.raises(ValueError,match='getattr'):mem._continual_initial(None,cfg)
+    with pytest.raises(ValueError,match='already attempted'):mem._continual_initial(None,cfg)
+    assert calls==['continual_initial']
+    mem.record_continual_private_result(cfg)
+    root=tmp_path/'suite'
+    assert json.loads((root/'experiment_state.json').read_text())['status']=='paused_before_policy_execution'
+    assert not (root/'arms/A/rounds/00/execution.json').exists()
+
+
+@pytest.mark.parametrize('successes,expected',[(4,False),(5,True),(6,True)])
+def test_independent_native_gate_counts_only_owned_notes(successes,expected):
+    from capx.integrations.opentac_shadow_online_skills import _evidence_hash
+    events=[]
+    for i in range(successes):
+        events.extend([{'kind':'press','attempt_index':i,'step':i*20+10},
+                       {'kind':'release','attempt_index':i,'step':i*20+18}])
+    score=SimpleNamespace(events=events,successful_notes=successes)
+    audits=[]
+    low=SimpleNamespace(_task=SimpleNamespace(score=score),_policy_end_submitted=True,
+        _write_private_piano_timeline=lambda:None,_append_private_audit=lambda name,row:audits.append(row))
+    manifest={'executions':[{'execution_id':'e','source_version':'current','parameter_version':_evidence_hash({}),
+                             'start':{'physics_step':0},'end':{'physics_step':200}}],
+              'samples':[{'execution_id':'e','attempt':i,'physics_step':i*20+4} for i in range(successes)]}
+    program={'version':'version','source_version':'current','parameters':{}}
+    gate=ShadowPianoLowLevelEnv._private_program_reuse_gate(low,manifest,program)
+    assert gate=={'eligible':expected}
+    assert 'native_successful_count' in audits[-1] and 'native_successful_count' not in gate
+    # A preceding version cannot donate its notes to the patched version.
+    manifest['executions'][0]['source_version']='old'
+    assert not ShadowPianoLowLevelEnv._private_program_reuse_gate(low,manifest,program)['eligible']
+
+
+def test_independent_program_store_requires_qualified_active_and_supported_input(tmp_path):
+    cfg={'shadow_piano_evidence_memory':str(tmp_path),'_piano_public_request':{
+        'notes':['F4'],'dynamics':['heavy'],'hold_seconds':[.12]}}
+    program=mem._archive_program(cfg,SOURCE,{'sensor':'same'},{})
+    assert mem._read_program(cfg,{'sensor':'same'})[0] is None
+    mem.atomic_json(tmp_path/'programs/active.json',{'version':program['version'],'gate':'old_public_gate'})
+    assert mem._read_program(cfg,{'sensor':'same'})[0] is None
+    mem.atomic_json(tmp_path/'programs/active.json',{'version':program['version'],'gate':'native_five_and_public.v1'})
+    assert mem._read_program(cfg,{'sensor':'same'})[0]['source']==mem.validate_source(SOURCE)
+    assert mem._read_program(cfg,{'sensor':'changed'})[0] is None
+    parameters=tmp_path/'programs/versions'/program['version']/'parameters.json'
+    mem.atomic_json(parameters,{'white_light':{'probe_trim_m':-.001}})
+    assert mem._read_program(cfg,{'sensor':'same'})[0] is None
+    mem.atomic_json(parameters,{})
+    cfg['_piano_public_request']['hold_seconds']=[-1]
+    assert mem._read_program(cfg,{'sensor':'same'})[0] is None
+
+
+def test_independent_full_module_release_repair_creates_skill_without_active(tmp_path,monkeypatch):
+    from capx.integrations.opentac_shadow_online_skills import RepairSkillStore
+    cfg,rec,env=live_repair_fixture(tmp_path)
+    cfg.update(shadow_piano_independent_memory=True,shadow_piano_repair_scope='public_contract',
+               shadow_piano_skill_retrieval='tactile',max_regenerations=1)
+    rec.error_windows_only=True
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    calls=[]
+    def query(args,messages,**kw):
+        calls.append(kw['phase'])
+        if kw['phase']=='code_memory_initial':return {'content':REPAIR_SOURCE}
+        evidence=json.loads(messages[1]['content'])
+        assert evidence['current_source']==mem.validate_source(REPAIR_SOURCE)
+        assert not evidence['historical_skills'] and not evidence['historical_repairs']
+        source=REPAIR_SOURCE.replace('if index == 0:', 'if index >= 0:')
+        return {'content':json.dumps({'source':source,'skill_draft':{
+            'repair_advice':'After actual extension and hover arrival, wait until the existing release guard passes.',
+            'applicable_conditions':{'phase':'release'},'numeric_correction':[],
+            'code_snippets':[],'cited_skill_ids':[]}})}
+    monkeypatch.setattr(mem,'_query',query)
+    code,_,_=mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})
+    env.step(code)
+    patch=mem.repair(SimpleNamespace(),cfg,env=env)
+    assert patch
+    assert RepairSkillStore(tmp_path/'evidence').records()[0]['status']=='unexecuted'
+    _,_,_,_,info=env.step(patch)
+    assert info['sandbox_rc']==0,info
+    result=mem.finish_episode(cfg,host=env)
+    assert result['skill_status']=='local_verified',result
+    assert not result['program_promoted']  # no private scorer in this mock, two notes only
+    assert not (tmp_path/'evidence/programs/active.json').exists()
+    assert calls==['code_memory_initial','tactile_error_repair']
+    assert mem.repair(SimpleNamespace(),cfg,env=env) is None
+    assert len(calls)==2
+
+
+def test_independent_invalid_skill_does_not_reject_valid_replacement(tmp_path,monkeypatch):
+    cfg,rec,env=live_repair_fixture(tmp_path)
+    cfg.update(shadow_piano_independent_memory=True,shadow_piano_repair_scope='public_contract',
+               shadow_piano_skill_retrieval='tactile',max_regenerations=1)
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    def query(args,messages,**kw):
+        if kw['phase']=='code_memory_initial':return {'content':REPAIR_SOURCE}
+        return {'content':json.dumps({'source':REPAIR_SOURCE.replace('if index == 0:','if index >= 0:'),
+                                     'skill_draft':{'success':True}})}
+    monkeypatch.setattr(mem,'_query',query)
+    env.step(mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})[0])
+    patch=mem.repair(SimpleNamespace(),cfg,env=env);assert patch
+    env.step(patch)
+    result=mem.finish_episode(cfg,host=env)
+    assert result['skill_status']=='local_verified' and result['skill_searchable']
+
+
+@pytest.mark.parametrize('history', [False, True])
+def test_skillopt_selection_and_code_execute_in_same_bounded_request(tmp_path, monkeypatch, history):
+    cfg, rec, env = live_repair_fixture(tmp_path)
+    assets = tmp_path / 'skillopt'; assets.mkdir()
+    texts = {
+        'cards': json.dumps([{'skill_id':'release_intervals','status':'candidate_offline',
+                             'actions':'Count elapsed physical intervals, not observations.'}]),
+        'library': '# Release intervals\n', 'template': 'Analyze the public failure and edit skills.',
+        'editor': 'def apply_patch_with_report(text, patch):\n    return text, []\n',
+    }
+    setting = {'history_enabled': history}
+    for name, text in texts.items():
+        path = assets / (name + '.py' if name == 'editor' else name + '.txt')
+        path.write_text(text)
+        setting[name+'_path'] = str(path)
+        setting[name+'_sha256'] = mem.digest(path.read_bytes())
+    cfg.update(shadow_piano_independent_memory=True, shadow_piano_repair_scope='public_contract',
+               shadow_piano_skill_retrieval='tactile', max_regenerations=1,
+               shadow_piano_skillopt_experiment=setting)
+    monkeypatch.setattr(mem, 'compatibility', lambda _: {'test':'fixed'})
+    calls = []
+    def query(args, messages, **kwargs):
+        calls.append(kwargs['phase'])
+        if kwargs['phase'] == 'code_memory_initial':
+            return {'content':REPAIR_SOURCE}
+        data = json.loads(messages[1]['content'])
+        assert bool(data['historical_skills']) == history
+        assert 'SELECTION AND REPAIR MUST BE RETURNED TOGETHER' in messages[0]['content']
+        assert len(json.dumps(data, ensure_ascii=False).encode()) <= 24*1024
+        return {'content':json.dumps({'source':REPAIR_SOURCE.replace('if index == 0:', 'if index >= 0:'),
+            'skillopt':{'selected_skill_ids':['release_intervals'] if history else [], 'patch':{'edits':[]}}})}
+    monkeypatch.setattr(mem, '_query', query)
+    env.step(mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})[0])
+    patch = mem.repair(SimpleNamespace(),cfg,env=env)
+    assert patch
+    assert env.step(patch)[-1]['sandbox_rc'] == 0
+    out = Path(cfg['output_dir']) / 'tactile_error_repair/skillopt_selection.json'
+    assert json.loads(out.read_text())['selection_valid'] is True
+    assert calls == ['code_memory_initial', 'tactile_error_repair']
+    assert mem.repair(SimpleNamespace(),cfg,env=env) is None
+
+
+def test_skillopt_options_survive_actual_launch_config_loader(monkeypatch):
+    from capx.envs.launch_univtac import build_parser
+    from capx.utils import launch_utils
+    path = Path(__file__).resolve().parents[1] / 'env_configs/opentac/play_piano_shadow_digit_evidence_memory.yaml'
+    raw = launch_utils.DictLoader.load([str(path)])
+    setting = {'history_enabled': True, 'library_path': 'pinned-public-library'}
+    raw['shadow_piano_skillopt_experiment'] = setting
+    monkeypatch.setattr(launch_utils.DictLoader, 'load', lambda _: raw)
+    args = build_parser().parse_args(['--config-path', str(path)])
+    _, config, _ = launch_utils._load_config(args)
+    assert config['shadow_piano_skillopt_experiment'] == setting
+
+
 REGION_SOURCE='''def run_piano(request, piano_state):
     notes = request['notes']
     def command(x, y, z, flex):
@@ -246,9 +734,10 @@ def test_policy_terminal_finalization_is_legal_but_not_release_verification(tmp_
     manifest['events']=[e for e in manifest['events'] if e['kind'] not in ('release_rejected','code_execution')]
     manifest['events'] += [
         {'kind':'attempt_finalized','index':0,'release_verified':False,'finalization_source':'policy',
-         'terminal_before_finalize':stopped,'event_seq':10000,'physics_step':40},
+         'terminal_before_finalize':stopped,'event_seq':10000,'physics_step':40,
+         'execution_id':execution['execution_id']},
         {'kind':'code_execution','has_exception':False,'public_messages':[],
-         'event_seq':10001,'physics_step':40}]
+         'event_seq':10001,'physics_step':40,'execution_id':execution['execution_id']}]
     manifest['invocations']=[]
     check=mem._check_execution_suffix(manifest,source)
     assert check['public_chain_complete'] is stopped and check['passed'] is stopped
@@ -353,6 +842,210 @@ def repair_proposal(messages, *, fail_again=False):
         'expected_effect':'Inspect pose and extend at hover before retrying the public release guard.',
         'evidence':{'error_event_seq':e['failure']['error_event_seq'],
                     'clip_ids':list({s['clip_id'] for s in e['samples']})}})}
+
+
+def public_report_source(fail_index, *, finalize_before_failure=False):
+    return f'''def perform(index):
+    hover_ready = True
+    for k in range(9):
+        move_shadow_index(0., 0., .04, 0.)
+    if index == {fail_index}:
+        if {finalize_before_failure!r}:
+            finish_piano_note_attempt(index)
+        print('PIANO_NOTE', index, 'quality=ok had_valid_contact=True public_hold_confidence=False abort_reason=press_budget')
+        move_shadow_index(0., 0., .04, 0.)
+    else:
+        print('PIANO_NOTE', {{'index':index, 'quality':'ok', 'had_valid_contact':True,
+            'public_hold_confidence':True, 'abort_reason':None}})
+        finish_piano_note_attempt(index)
+
+def run_piano(request, piano_state):
+    if piano_state.get('recovery', {{}}).get('resuming'):
+        get_hand_state()
+        estimate_key_force(request['notes'][piano_state['completed']])
+    for index in range(piano_state['completed'], len(request['notes'])):
+        perform(index)
+        piano_state['completed'] = index + 1
+'''
+
+
+def test_legacy_public_failure_interrupts_before_next_action_and_resumes_host_ledger(tmp_path,monkeypatch):
+    from capx.envs.trial import _should_query_multiturn_after_block
+    cfg,rec,env=live_repair_fixture(tmp_path)
+    cfg.update(shadow_piano_repair_scope='public_contract',max_regenerations=1)
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    inputs=[]
+    def query(args,messages,**kw):
+        if kw['phase']=='code_memory_initial':
+            return {'content':public_report_source(0,finalize_before_failure=True)}
+        e=json.loads(messages[1]['content']);inputs.append(e)
+        assert e['mode']=='module' and e['review']=='public_contract'
+        assert e['recovery']['current_attempt']==1 and e['failure']['attempt']==0
+        # Missing metadata is attached by the host; only full source is required.
+        return {'content':json.dumps({'source':public_report_source(-1),'comment':'public recovery'})}
+    monkeypatch.setattr(mem,'_query',query)
+    code,_,_=mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})
+    _,_,_,_,info=env.step(code)
+    assert 'press_budget' in info['stdout'] and 'recoverable_failure' in info['stdout']
+    assert env.low_level_env._sim_step_count==9
+    assert not env.low_level_env._policy_end_submitted
+    assert _should_query_multiturn_after_block(info,config=cfg,code_block_idx=1,total_code_blocks=1)
+    assert [e['index'] for e in rec.events if e['kind']=='attempt_finalized']==[0]
+    patched=mem.repair(SimpleNamespace(),cfg,env=env)
+    assert patched
+    _,_,_,_,info=env.step(patched)
+    assert info['sandbox_rc']==0 and env.low_level_env._policy_end_submitted
+    assert env.low_level_env._sim_step_count==18
+    assert [e['index'] for e in rec.events if e['kind']=='attempt_finalized']==[0,1]
+    assert mem.finish_episode(cfg)['status']=='promoted'
+    assert len(inputs)==1
+
+
+def test_full_sequence_failed_note_is_recorded_without_interrupting_release(tmp_path):
+    from capx.envs.tasks.exceptions import RecoverableTaskFailure
+    cfg, rec, env = live_repair_fixture(tmp_path)
+    low = env.low_level_env
+    low.defer_public_note_failures = True
+    low.observe_public_policy_stdout("PIANO_NOTE {'index':0,'quality':'ood',"
+        "'had_valid_contact':True,'public_hold_confidence':False,'abort_reason':'ood_reprobe'}\n")
+    assert any(e['kind']=='public_note_report' for e in rec.events)
+    assert any(e['kind']=='public_stop' for e in rec.events)
+    assert not getattr(low, '_public_control_pause', None)
+    assert low._public_attempts_finalized == 0
+    # Deferral does not consume the attempt, bypass release, or hide fatal errors.
+    with pytest.raises(ValueError, match='release has not completed'):
+        low.finish_piano_note_attempt(0)
+    with pytest.raises(RecoverableTaskFailure):
+        low.observe_public_policy_stdout('PIANO_STOP release_budget_exhausted\n')
+
+
+def test_full_sequence_deferral_is_opt_in(tmp_path):
+    from capx.envs.tasks.exceptions import RecoverableTaskFailure
+    cfg, rec, env = live_repair_fixture(tmp_path)
+    with pytest.raises(RecoverableTaskFailure):
+        env.low_level_env.observe_public_policy_stdout(
+            "PIANO_NOTE {'index':0,'quality':'ood','public_hold_confidence':False}\n")
+    assert env.low_level_env._public_attempts_finalized == 0
+
+
+def test_multiple_public_repairs_keep_separate_boundaries_and_budget(tmp_path,monkeypatch):
+    cfg,rec,env=live_repair_fixture(tmp_path,count=3)
+    cfg.update(shadow_piano_repair_scope='public_contract',max_regenerations=2)
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    calls=[]
+    def query(args,messages,**kw):
+        calls.append(kw['phase'])
+        # Fail 0, then fail 1, then complete the remaining public chain.
+        failure=[0,1,-1][len(calls)-1]
+        return {'content':public_report_source(failure)}
+    monkeypatch.setattr(mem,'_query',query)
+    code,_,_=mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})
+    env.step(code)
+    first=mem.repair(SimpleNamespace(),cfg,env=env);assert first
+    env.step(first)
+    assert [e['index'] for e in rec.events if e['kind']=='attempt_finalized']==[0]
+    second=mem.repair(SimpleNamespace(),cfg,env=env);assert second
+    env.step(second)
+    assert [e['index'] for e in rec.events if e['kind']=='attempt_finalized']==[0,1,2]
+    session=json.loads(mem._session_path(cfg).read_text())
+    assert session['repair_calls']==2 and len(session['repairs'])==2
+    assert session['repairs'][0]['output_dir']!=session['repairs'][1]['output_dir']
+    assert mem.finish_episode(cfg)['status']=='promoted'
+    checks=[json.loads((Path(r['output_dir'])/'verification.json').read_text())
+            for r in session['repairs']]
+    assert not checks[0]['verification']['passed']
+    assert checks[1]['verification']['passed']
+    assert checks[0]['verification']['execution_id']!=checks[1]['verification']['execution_id']
+    assert len(calls)==3
+
+
+@pytest.mark.parametrize('limit',[0,1])
+def test_public_failure_budget_exhaustion_is_explicit(tmp_path,monkeypatch,limit):
+    cfg,rec,env=live_repair_fixture(tmp_path)
+    cfg.update(shadow_piano_repair_scope='public_contract',max_regenerations=limit)
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    calls=[]
+    def query(*a,**kw):
+        calls.append(kw['phase'])
+        return {'content':public_report_source(0 if len(calls)==1 else 1)}
+    monkeypatch.setattr(mem,'_query',query)
+    code,_,_=mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})
+    env.step(code)
+    if limit:
+        patch=mem.repair(SimpleNamespace(),cfg,env=env)
+        assert patch
+        env.step(patch)  # a new error must not receive a second repair
+    monkeypatch.setattr(mem,'_query',lambda *a,**kw:pytest.fail('Budget exhausted'))
+    assert mem.repair(SimpleNamespace(),cfg,env=env) is None
+    skipped=json.loads((Path(cfg['output_dir'])/'piano_repair_skipped.json').read_text())
+    assert skipped['reason']=='repair_budget_exhausted' and skipped['repair_calls']==limit
+    assert len(calls)==1+limit
+
+
+def test_normal_return_with_unfinished_public_request_triggers_repair(tmp_path,monkeypatch):
+    cfg,rec,env=live_repair_fixture(tmp_path)
+    monkeypatch.setattr(mem,'compatibility',lambda _: {'test':'fixed'})
+    monkeypatch.setattr(mem,'_query',lambda *a,**kw:{'content':
+        'def run_piano(request, piano_state):\n    get_hand_state()\n    return\n'})
+    code,_,_=mem.initial_code(SimpleNamespace(),cfg,{'full_prompt':[]})
+    _,_,_,_,info=env.step(code)
+    assert 'incomplete_public_attempt_chain' in info['stdout']
+    manifest,_=mem._linked_manifest(cfg)
+    assert mem.public_failure_context(manifest)['kind']=='public_stop'
+    assert not env.low_level_env._policy_end_submitted
+
+
+def test_parameter_aliases_preserve_policy_lookup_without_changing_fixed_targets():
+    value={'white/light':{'trim_m':-.001,'target_force_N':.35}}
+    assert mem.validate_parameters(value)==value
+    with pytest.raises(ValueError,match='Duplicate'):
+        mem.validate_parameters({**value,'white_light':{}})
+    with pytest.raises(ValueError,match='Fixed'):
+        mem.validate_parameters({'white/light':{'target_force_N':.36}})
+
+
+def test_relaxed_module_review_allows_control_restructure_but_not_private_access():
+    evidence={'review':'public_contract','mode':'module','failure':{'error_event_seq':5},'samples':[]}
+    old='def run_piano(request, piano_state):\n    return\n'
+    source='def approach(hover_ready):\n    return get_hand_state()\n\ndef run_piano(request, piano_state):\n    approach(True)\n'
+    valid,changes=mem._validate_repair_proposal({'source':source},evidence,old)
+    assert valid and {c['name'] for c in changes}=={'approach','run_piano'}
+    for body in ("open('/tmp/private')", 'env.task.key_forces', "request['notes'] = []"):
+        with pytest.raises((ValueError,SyntaxError)):
+            mem._validate_repair_proposal({'source':'def run_piano(request, piano_state):\n    '+body+'\n'},evidence,old)
+
+
+def test_public_report_observer_drops_untrusted_fields_and_keeps_invalid_report_failure(tmp_path):
+    from test_shadow_piano_online_skills import evidence_recorder
+    rec=evidence_recorder(tmp_path,failure_triggered=True)
+    report={'index':0,'quality':'ok','public_hold_confidence':False,
+            'private_key_top_force_N':99,'metadata':{'success':True}}
+    rec.write('PIANO_NOTE '+json.dumps(report)+'\n')
+    assert rec.events[-1]['control_failure']['reason']=='hold_uncertain'
+    assert all(s not in json.dumps(rec.events) for s in ('private_key_top_force','metadata','success'))
+    rec.write('PIANO_NOTE not a dictionary\n')
+    assert rec.events[-1]['control_failure']['reason']=='invalid_public_note_report'
+    rec.close()
+
+
+@pytest.mark.parametrize('value,expected',[(1,True),(0,False),('true',True),('False',False),
+                                         ('unknown',None),(.5,None)])
+def test_equivalent_public_reports_do_not_create_protocol_errors(value,expected):
+    request={'notes':['F4']}
+    line='PIANO_NOTE '+repr({'index':0,'quality':'ok','public_hold_confidence':value})
+    assert mem._public_note_report(line,request)['public_hold_confidence'] is expected
+    issue=mem._public_note_control_failure(line,request,1)
+    assert (issue is None) is (expected is True)
+
+
+def test_inert_parameter_constructors_allowed_but_eager_actions_rejected():
+    source="P = {'white_light':dict(target_force_N=.35, trim_m=-.001)}\n\ndef run_piano(request, piano_state):\n    return\n"
+    assert mem.validate_source(source)
+    for prefix in ('P=dict(state=get_hand_state())\n',
+                   'dict=get_hand_state\nP=dict()\n',
+                   'def dict():\n    return get_hand_state()\nP=dict()\n'):
+        with pytest.raises(ValueError):
+            mem.validate_source(prefix+'def run_piano(request, piano_state):\n    return\n')
 
 
 def test_pinned_historical_policy_is_not_a_memory_hit(tmp_path,monkeypatch):
@@ -713,7 +1406,12 @@ def test_linked_config_and_plain_runner_wiring(tmp_path,monkeypatch):
     assert not mem.action_memory_enabled(cfg)
     assert cfg['max_regenerations']==1
     assert cfg['shadow_piano_evidence_trigger']=='repair_only'
-    assert cfg['shadow_piano_repair_scope']=='release_regions_v1'
+    assert cfg['shadow_piano_repair_scope']=='public_contract'
+    assert mem.independent_memory(cfg)
+    assert cfg['shadow_piano_skill_retrieval']=='joint'
+    assert cfg['shadow_piano_retrieval_representation']=='tactile_action'
+    assert cfg['shadow_piano_text_encoder'].endswith('/multilingual-e5-small')
+    assert factory['cfg']['low_level']['error_windows_only'] is True
 
 
 @pytest.mark.parametrize('mode,text,history,updates',[
@@ -1298,13 +1996,14 @@ def test_ambiguous_or_malformed_public_reports_do_not_invent_control_failures():
     request={'notes':['F4']}
     messages=[
         "PIANO_NOTE {'index':0,'outcome':'uncertain'}",
-        "PIANO_NOTE {'index':0,'public_hold_confidence':False}",
         "PIANO_NOTE {'index':0,'public_hold_confidence':True,'abort_reason':'public_hold_provisional'}",
         "PIANO_NOTE {'index':99,'abort_reason':'ood'}",
         "PIANO_NOTE {'index':True,'abort_reason':'ood'}",
         'PIANO_NOTE not a dictionary',
     ]
     assert all(mem._public_note_control_failure(s,request,1) is None for s in messages)
+    issue=mem._public_note_control_failure("PIANO_NOTE {'index':0,'public_hold_confidence':False}",request,1)
+    assert issue['reason']=='hold_uncertain'
 
 
 @pytest.mark.parametrize('used_budget,read_only,reason,decision',[

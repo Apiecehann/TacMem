@@ -1,5 +1,125 @@
 # 钢琴可执行代码记忆实验
 
+## 2026-10-29：完整程序与修复技能独立维护
+
+当前 `play_piano_shadow_digit_evidence_memory.yaml` 启用 `shadow_piano_independent_memory: true`。
+仍通过 t-cap 的 `./run_responses` 启动。按后续授权，在必要 CPU 检查后运行单条 GPU smoke；结果见本节末尾。下文旧 A/B/C、函数拼接、bundle 晋升规则为历史记录，不用于此配置。
+
+### 两个独立存储
+
+数据根由 `CAPX_SHADOW_EVIDENCE_ROOT` 指定，位于 `/mnt/data/ljz/opentacbench`。
+
+| 路径 | 内容 |
+|---|---|
+| `programs/versions/<version>/` | 完整 `policy.py`、独立 `parameters.json` 与校验值、接口/传感器/力模型/任务要求兼容条件、函数 AST 版本、差异与公开验证记录 |
+| `programs/active/` | 每种兼容契约的合格 active 指针；全局 `active.json` 和历史日志便于追溯 |
+| `programs/rejected/` | 未通过静态检查的完整提案，不可执行 |
+| `repair_skills/skill_<identity>/` | 不可变修订 JSON 与原子 head 指针；不依赖来源程序文件可读 |
+| `episodes/` | 连续公开实验日志、RGB/depth/有效掩码附件与调用记录；不逐帧建立检索条目 |
+
+完整程序只按兼容契约及输入类型选择。**同一次运行、同一源码及执行参数版本至少有 5 个原生成功音，且完整公开执行和 END 检查通过，才可直接复用。** 旧公开验证标记、pending、跨 seed 累计和跨版本完成的音均不能绕过该门槛。5/6 正常收尾允许晋升；不要求整条任务成功。原生结果只在宿主私有 `shadow_program_qualification.jsonl` 中记录，技能和 LLM 输入不含判分。没有合格代码时重新生成完整程序，不拼接历史函数。
+
+### 技能记录和状态
+
+每条记录包含 `skill_id/version/status/applicable_conditions/failure_context/numeric_correction/repair_advice/public_validation/provenance`，以及错误 `keys`、实际修改摘要与可选代码差异。来源程序不参与加载依赖。Skill Library 与修复经验共用一套存储，`verified_view()` 仅是可选的已验证展示，不是检索入口。
+
+2026-10-29 起：**接受并产生实际代码修改就保存为可检索经验，验证状态不作为入库或检索门槛。** `has_code_change` 由宿主源码版本差异给出，`available_at_ns` 记录当前修订的保存时间；拒绝的代码、没有修改的请求保留日志但不冒充修改经验。旧记录保留，不自动导入新冷启动。
+
+`numeric_correction` 保存 `parameter/before/after` 或 `rule`、`unit/limitations`。未知值为 null；数值是报告设置或拟议修正，不宣称逐项实测。不再要求 AST、变量、默认参数或采样字段来源匹配。任务目标、保持／释放要求、硬边界与估计器不能被建议覆盖。
+
+修改未执行记 `unexecuted`；执行后原检查明确失败记 `executed_failed`；修改实际执行且原检查通过记 `local_verified`；执行了但未观察到对应检查记 `executed_unverified`。后续其他错误独立保留，不抹去原检查通过。缺失或不合格的经验草稿不会丢弃合法代码修改：保存宿主修改差异与结果，建议保持未知。代码静态检查拒绝才记 `rejected`。
+
+上述实际修改无论成功、失败或未执行都可检索，返回内容明确状态和限制；“有修改”不等于“有效”。相同建议、数值和条件追加经历，数值或条件变化保留变体；反例留在经验中，不因失败自动隐藏。主动撤销、兼容性、同 episode 排除和错误前时间边界仍生效。完整代码的 5/6 晋升条件独立不变。
+
+结构示例（占位符表示宿主绑定值，不是实测结果）：
+
+```json
+{
+  "skill_id": "skill_<correction_sha256>",
+  "version": 1,
+  "status": "unexecuted",
+  "has_code_change": true,
+  "available_at_ns": "<host revision timestamp>",
+  "applicable_conditions": {"compatibility": {}, "phase": "release", "public_conditions": {}},
+  "failure_context": {"kind": "release_rejected", "physics_step": 0, "error_event_seq": 0},
+  "numeric_correction": [],
+  "repair_advice": "从实际到达释放姿态后累计连续时间，继续使用原公开释放检查。",
+  "public_validation": {"executed": false, "passed": false},
+  "provenance": {"episode_id": "<source episode>", "before_source_version": "<sha256>"},
+  "keys": {"language": {"template": "public_error_template.v2", "basis": "pre_repair_error", "context": {}, "context_sha256": "<sha256>", "text": "<canonical error text>", "text_sha256": "<sha256>"}, "tactile": []}
+}
+```
+
+局部验证使用宿主实际记录的释放、XY 到位或公开测力采样检查。公开保持检查仍只是动作步采样证据，不冒充原生逐物理步达标。无法对应原检查时保持未验证，但仍可检索；数值来源解析不再影响该检查结果。
+
+### 仅在错误时检索
+
+首次生成、正常动作和正常结束不搜索技能，也不额外调用整理 LLM。原生终止、END、动作预算或修复预算耗尽时停止。每 episode 最多一次修复。
+
+语言 key 由固定模板构造，不做 LLM 摘要，不加入 depth/估计力序列或触觉诊断。CPU 文本编码器为 `intfloat/multilingual-e5-small`，revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`；双方 `query:` 前缀、512 token 上限、掩码均值池化、L2 归一化、余弦排序。模型、tokenizer、运行库版本和 SHA256 在 `/mnt/data/ljz/opentacbench/repair_text_encoder_v1/multilingual-e5-small/freeze.json`。隔离 `cpu-env` 只安装文本依赖，不修改 Isaac 环境的包。模型请求只读本地文件，不在实验过程中下载。
+
+语言检索使用 `public_error_template.v2`：
+
+| 内容 | 使用时机 |
+|---|---|
+| 当前错误的规范化修复前描述 | 查询文本 |
+| 历史技能对应的修复前描述，使用完全相同的模板 | 被编码、被搜索的文本 |
+| 历史修正建议、具体修正值、适用条件与验证证据 | 命中后加载，交给修复 LLM |
+
+`make_repair_language_key` 统一生成当前和历史 key；历史记录直接保留当时冻结的 key，不在修复后用新状态重建。固定字段为任务、公开请求、错误类别、原检查、API、函数调用、职责、阶段及修复前控制设置。音名规范为 MIDI；力度去空白并统一大小写；等价整数/浮点和参数组别名统一；未知字符串为 `unknown`，未知数值为 null，不补 0。调用职责未知时不从函数名猜测。编码文本是排序、紧凑的 JSON，同样由 E5 添加 `query:`。
+
+记录包含结构化 context、规范化 text、两者 SHA256、模板版本和 `pre_repair_error` 来源标记；错误 episode/step/event 序号另存审计来源，不进入文本。查找时从 context 重建并核验文本，不允许把建议、修复后数值或验证结论塞进被搜索文本。旧 v1、未标版本或校验不符的 key 不混入语言通道，记录跳过原因；不自动迁移或删除旧经历。
+
+每条技能修订同时保存只含资格条件和 key 的 `search_<sha256>.json`。检索先读这些索引，排名后仅加载最多两条命中的完整技能修订；读取绑定到候选快照中的版本，避免过程中 head 变化带入新的修正方法。这是修复技能库内部的索引视图，不另建技能库，不依赖历史完整程序。建议和数值的变更不能反向改写原错误 key。
+
+2026-10-28 19:03 UTC 的 v2 smoke 按用户要求只跑 GPU、未跑 CPU 测试。运行：`language_key_v2_seed3300_smoke_rep1_20261028T190349Z`，空库、GPU 0、gpt-6-sol。首次 `approach_timeout` 后生成 v2 key；一次补丁实际执行，正常路径检索 0 次。运行产物确认 `retrieval.json` 的语言 key 与技能正文、搜索索引中的 key 完全相同，索引不含建议、修正数值或验证详情。当前无合格历史候选，因此只验证空库 miss 与错误 key 原样入库，没有实测历史命中或排名收益。
+
+结果为原生 1/6、原生尝试 1、公开完成记录 0、生成/清场动作 241/220、代码块 2、修复 1、END=False、exit=1。修正版正确报告 `quality=ok`，但 `press_timeout/public_hold_confidence=False` 触发原有停止机制。经验条件字段类型已正确；草稿把旧 90 步的源码出处错误标为 `task_request.current_source._approach`，数值来源核验失败，仍为 rejected，代码未晋升。该来源不是公开请求字段，未替模型伪造来源或认定技能有效。
+
+初次/修复 API 请求耗时分别 51.341/49.538 秒，provider-reported token 为 32375。产物与源码快照位于 `/mnt/data/ljz/opentacbench/shadow_piano_language_key_v2_3300_20261028T190345Z`。
+[运行日志](/mnt/data/ljz/opentacbench/capx-runs/language_key_v2_seed3300_smoke_rep1_20261028T190349Z/run.log) · [错误查询记录](/mnt/data/ljz/opentacbench/capx-runs/language_key_v2_seed3300_smoke_rep1_20261028T190349Z/tactile_error_repair/retrieval.json) · [私有 smoke 审计](/mnt/data/ljz/opentacbench/capx-private-audits/shadow_piano_visual_force_v1/language_key_v2_seed3300_smoke_rep1_20261028T190349Z_6db7098d949342eda9d61fc4e964ee51/language_key_v2_smoke_review.json)
+
+触觉 key 默认冻结为 `tactile_action`。最近 0.5 秒由物理时间选取 16 个 30 Hz 点，不能直接取 60 Hz 的最后 16 条。使用错误事件之前的观测；同一物理 step 的晚到事件也被排除。不跨 reset，不补造动作或实际状态。纯判断调用记录借用观测的来源和年龄。无接触与缺失分开；5D 力估计链路保持原样。修复后数据只用于验证，不进入查询 key。
+
+触觉距离沿用 `sqrt(mean((query - history)**2))`，按距离升序。默认输入 16 帧触觉、动作和实际状态，比较冻结编码器输出的 32D 归一化向量；显式选择 `window4` 时才是标准化后展开的 64D 向量。不同编码/预处理契约不比较距离。
+
+`CAPX_SHADOW_SKILL_RETRIEVAL=language|tactile|joint` 选择排序。候选须已保存实际代码修改、其当前修订早于错误、来自其他 episode、未主动撤销且无明确适用冲突；验证状态仅作为返回内容。两路各取前 5 个不同修正；joint 使用等权 RRF `c=60`，最多返回 2 条。触觉缺失时 joint 明确回退语言，tactile 不回退语言；文本编码器失败也不会伪装成词法检索。没有候选按原路径无历史修复；分数不是成功概率，不设未标定的阈值。
+
+修复请求只传当前完整源码一份、公开错误/调用/进度、当前公开观测摘要与最多两条技能。不发送完整历史程序、轨迹或向量；宿主绑定 hash。证据大小和原有 300 秒／8192 输出 token 预算保持，API 清除代理。
+
+`repair_skills/usage.jsonl` 分别记录 retrieved、cited、applied、locally_verified；不能证明具体建议实际应用时 applied 为 null。`piano_independent_memory_result.json` 分别报告代码晋升和技能局部状态。完整程序的原生成功不能给所有候选技能自动记功。
+
+### 验证边界
+
+CPU 测试与真实编码器日志保存在 `/mnt/data/ljz/opentacbench/test-tmp/independent-memory/`。包括模拟错误→完整模块修复→公开释放检查→技能入库、5/6 宿主筛选、检索去重/缺失处理/因果边界、数值来源与私有隔离。真实文本编码器和冻结触觉编码器也单独在 CPU 检验；这不等于新的 GPU 任务成功率验证。保持旧环境和历史数据，不自动导入旧候选；新实验需指定空数据根。
+
+后续按用户要求缩减 CPU 测试：最终关键链路 7 项通过（`final-critical.log`），语言模板隔离 1 项通过（`language-final.log`）。真实 CPU 编码器分别输出 E5 384D 和 tactile_action 32D，均为 L2 归一化向量；触觉实际选取 0.5 秒内 16 个 30 Hz 点，日志为 `text-encoder.log`、`tactile-encoder.log`。模拟验证包含局部释放检查通过但完整程序不晋升；并不等于 GPU 修复有效。
+
+### 单条 GPU smoke（2026-10-28 UTC）
+
+均通过原 `./run_responses`，GPU 0，模型沿用配置 `gpt-6-sol`，代理清除，单 trial、一次修复、不自动重试。
+
+- 17:39 的诊断发现启动器遗漏新配置开关，实际走旧 bundle 路径；已用 SIGINT 停止本次进程，保留日志，不计为新机制验证。已补齐 `launch_utils._load_config` 并检查实际配置传递。
+- 17:44 的重跑使用全新的空库，实际兼容标记为 `independent.v1`。目标：F4 轻、A4 轻、C#4 重、A4 轻、A4 重、E4 轻，各 0.12 秒。
+
+| seed | 原生成功/请求 | 原生尝试 | 生成/清场动作 | 代码块/修复 | 初始/修复 API 秒 | token | END/退出码 |
+|---|---|---|---|---|---|---|---|
+| 3300 | 1/6 | 1 | 233/220 | 2/1 | 42.704/42.064 | 33162 | 否/1 |
+
+首份程序将接近过程消耗在按压预算里，出现 `press_timeout`。错误事件序号 3298，查询来源最大序号 3266；同 episode、无错误后帧，触觉质量 ok、32D。空库返回 `no_compatible_verified_skill`，无历史补救请求正常返回，替换模块实际执行。公开输入为 22714 字节（紧凑 JSON），当前完整源码一份、无历史程序或向量；正常执行检索 0 次，结束整理 API 0 次。
+
+修正版增加独立的实际到位检查，原生确实记录首音成功。但其 PIANO_NOTE 把 `quality` 写成控制结果 `held`，原有失败识别器将该非 `ok` 值作为公开错误；一次修复预算耗尽，未完成公开收尾与 END。经验草稿把 `applicable_conditions` 返回成字符串，状态 rejected；合法代码仍执行，证明草稿失败不阻塞代码。完整程序未达到门槛，active 未被覆盖。**本条未产生可推荐技能，也未证明跨 episode 触觉检索收益。**
+
+运行后明确了 quality 和草稿字段格式提示，补全独立参数文件校验、语言 key 控制参数白名单及 press_timeout 对应公开保持检查的映射。这些后续改动只通过定向 CPU 检查，尚未再次跑 GPU；未放宽失败判断、释放保护或原生规则。代码输入参数版本指宿主注入的执行参数，程序内的动态控制值仍保存在公开动作/调用日志中。
+
+产物：
+
+- [运行日志](/mnt/data/ljz/opentacbench/capx-runs/independent_memory_v2_seed3300_smoke_rep1_20261028T174439Z/run.log)
+- [独立维护结果](/mnt/data/ljz/opentacbench/capx-runs/independent_memory_v2_seed3300_smoke_rep1_20261028T174439Z/piano_independent_memory_result.json)
+- [私有 smoke 审计（不进入检索）](/mnt/data/ljz/opentacbench/capx-private-audits/shadow_piano_visual_force_v1/independent_memory_v2_seed3300_smoke_rep1_20261028T174439Z_78772734e4844c9ab64978b8fffe43ed/independent_memory_smoke_review.json)
+- [HEAD 视频](/mnt/data/ljz/opentacbench/capx-runs/independent_memory_v2_seed3300_smoke_rep1_20261028T174439Z/trial_01_sandboxrc_0_reward_0.000_taskcompleted_0/videos/video_combined.mp4)；[第三方视频](/mnt/data/ljz/opentacbench/capx-runs/independent_memory_v2_seed3300_smoke_rep1_20261028T174439Z/trial_01_sandboxrc_0_reward_0.000_taskcompleted_0/videos/video_combined_third.mp4)
+- 数据根 `/mnt/data/ljz/opentacbench/shadow_piano_independent_smoke_v2_3300_20261028T174436Z`；`implementation.json/diff` 固定本次实际执行代码。下一轮若要求冷启动，应指定新的空目录，不导入本次记录。
+
 2026-10-26：按用户要求删除额外的批量运行和套件审计脚本。当前统一使用 t-cap 的 `./run_responses`，多个 seed 直接用 shell 循环串行调用；未经明确允许不新增脚本文件。下文保留历史实现和实验记录，已删除脚本的名称仅用于说明历史来源。
 
 ## 2026-10-26：不完整经验归档、动作函数复用和推理耗时
@@ -483,3 +603,295 @@ public_hold_confidence=true 且无 abort_reason，不能仅凭没有抛异常判
 同模型、配置和一次修复预算；有历史只接入此前3300公开经历的冻结快照。此前的失败
 状态不覆盖，重新核验以新索引记录追加，来源清单和校验值单独保存。3301仅继承有历史组
 通过局部检查的修正版，初始生成与修复API预算均为0。该轮相关CPU测试140项通过。
+
+
+## 2026-10-28：公开失败触发与宽松模块修复
+
+2026-10-28已暂停的诊断曾使用 public_contract 完整模块修复，max_regenerations=6；旧区域修复和旧实验的一次预算保留在历史配置中。删除正常实验中按两函数范围/保护变量AST写法拒绝补丁的限制，保留语法、run_piano入口、公开接口与数据隔离检查。允许修改入口调度与辅助函数，原生任务、力估计器及动作/释放硬边界不变。
+
+PIANO_NOTE 支持字典和旧 key=value 格式；abort_reason（包括 press_budget）、无有效接触、保持未确认会在下一动作前触发可恢复中断。正常返回但公开尝试链未完成也会触发。报告只保留约定公开字段，原生评分不会触发修复。未知原生失败且没有公开错误仍不能声称会被发现。
+
+每次修复独立保存目录与执行边界。后一个补丁的检查不会读到前一个补丁的异常或后续提交；已完成音依宿主账本保留。补丁未经执行验证不晋升，API失败或非法补丁不覆盖有效版本。每次300秒/8192输出token；原生终止、全部尝试已经提交和预算耗尽是不能继续修复的边界。
+
+154项CPU测试通过，覆盖连续修复、旧报告即时中断、正常返回但未完成、已提交音不重弹、源码修改与私有字段隔离。旧测试中对随机校验哈希搜索数字987的断言改为检查实际字段，避免把哈希巧合误报为真值泄漏。
+
+首条GPU诊断暴露的0/1/文本保持报告已兼容；unknown保留为未确认，不当作合格保持。静态dict(...)参数构造允许，引用观测/动作或被重绑定的构造函数仍禁止在模块加载时调用。此前被拒的完整第三份实际API补丁重新静态校验通过。
+
+用户确认后续每seed最多一次修复，当前仓库YAML和空记忆准备配置均恢复max_regenerations=1；首次生成加修复最多两份策略模块。已暂停的六次修复实验配置和结果原样保留。局部经验验收和触觉失败窗口仍待修改，本次仅调整预算，未启动实验。
+
+### 2026-10-28：经验草稿格式与宿主数值来源绑定
+
+修复代码的可执行检查与经验草稿的来源检查独立。字符串条件自动转为
+`applicable_conditions.description`；无法在修正版中找到的可选代码摘录忽略并记警告。
+原始 API 提案保持原样，规范化记录保存在 `normalization_warnings`。
+
+宿主可绑定同一函数内唯一的整数动作循环上限修改（`while counter < N` 或
+`for ... in range(N)`）：旧函数 AST、旧数值、错误前实际执行的循环行构成
+`before_source`，新函数 AST 与循环行构成待验证 `after_source`。修复后仅当
+该行实际执行，且对应的宿主公开检查通过，才记录已验证的本次条件。
+这证明配置值被执行，不意味着实际执行了上限所示的全部动作数；不自动扩展到
+表达式、歧义常数或未执行分支。LLM 不需要填写这些哈希或执行出处。
+
+无法确认的旧值置为 null，并将原声明保留在 `unverified_before_claim`，经验继续
+保存为待验证；它不能获得检索推荐资格。私有字段、固定要求覆盖、异常单位等仍拒绝。
+`approach_timeout` 关联既有 `xy_arrival` 公开检查；后续其他控制错误独立记录，
+不抹去已经通过的接近修正。完整代码的独立 5/6 复用资格不变。
+
+本次按用户要求不执行 CPU 测试，仅启动一条 GPU 0、seed 3300 的空库 smoke，
+通过现有 `./run_responses`，每 episode 仍至多一次修复；旧拒绝记录不重新晋升。
+
+### 2026-10-29：简化门槛后的 GPU 验证
+
+仅跑一条空库seed3300；补丁合法并执行，保存 `executed_failed` 且 `skill_searchable=true`。
+这验证了失败的实际修改不会因数字溯源或局部验证失败被排除。原生3/6、公开提交2、无END，
+未晋升完整程序；本条没有历史命中，不证明修复或跨轮复用收益。代码对第三音保持过于保守，
+其原生计分已经完成但公开判断仍停止；LLM修复解释也与原源码不符。详细数值、时序及视频
+见[实验账本](opentac-shadow-piano-experiment-ledger.md)和[运行结果](/mnt/data/ljz/opentacbench/capx-runs/simplified_memory_seed3300_smoke_rep1_20261029T023007Z/piano_independent_memory_result.json)。
+
+
+## 2026-10-29：数值窗口与记录器删减
+
+当前独立代码/技能库流程删除了逐动作重写 manifest、逐帧 NPZ、samples.jsonl、逐行执行位置、函数局部变量和重复的 public_outcome/调用索引。旧的图像窗口读取、整库轨迹重新编码入口也已删除；最终附件不再重复保存函数源码。正常执行中按阶段自动检索和表示建库的旧路径也已删除；技能查询只由可修复错误触发。
+
+触觉 key 改用 window4：16 帧，每帧为 mean_mm、area_gt_0p01mm、area_gt_0p05mm、area_gt_0p2mm。来自现有公开特征提取；有效无接触与缺失特征分别处理，力估计 OOD 不自动使这些特征失效。不加载时序神经网络权重、不缓存或落盘 RGB/depth；5D 即时力估计器保留。按物理时间从错误前 0.5 秒因果选择 16 个 30 Hz 样本，按冻结 normalization.json 的均值/标准差标准化，时间展开为 64D 并 L2 归一化，沿用 RMS 向量距离。预处理版本独立，旧 tactile_action key 不混用。
+
+轻量数值和公开调用记录暂存在本轮内存；修复直接读取，不写入/读回完整 manifest。查询选中的 16 帧数值及校准合同成为技能附件，实验结束一次保存；其他时刻不保存全量触觉历史。已有普通实验日志、视频和私有真实力审计保持原样。完整代码的五音门槛仍使用本轮内存中完整的轻量采样元数据判定，不因最终只保存错误窗口而改变。
+
+宿主写文件时暂停 Python 调用追踪，完成或异常后恢复。代码结束与技能验证结果仍分别保存；没有额外 LLM 整理调用、后台线程或新增运行脚本。强杀会丢失尚未落盘的数值窗口。未启动新的 GPU 实验，端到端提速尚待 smoke 确认。
+
+## 2026-10-29：固定错误的触觉证据对照
+
+`CAPX_SHADOW_EVIDENCE_ABLATION=off|capture|A|B|C` 默认关闭，沿用 evidence_memory YAML 和 `./run_responses`。
+通过 `CAPX_SHADOW_INITIAL_SOURCE` 与 SHA256 固定 V0；`CAPX_SHADOW_EVIDENCE_FIXTURE` 指定独立数据盘冻结文件。
+capture 不调用 LLM，复现接触后的 OOD 后，保存同 episode、首次异常前 0.5 秒的 16 个 30 Hz 数值观测。
+首次异常与策略稍后报错分别记录；不足历史、不复现或原生已终止则停止，不插值、不换案例。
+
+A 只提供完整源码、任务/API、公开错误和动作/实际状态；B 增加最近有效 5D、估计力、质量与年龄；
+C 再增加同一窗口的 4D、估计力与质量。B 的 5D 本身含面积变化率；C 对 B 测显式历史窗口的增益。
+三组修复正文的共同字段一致，最多 24 KiB，不删中间样本。私有标签不进入请求，历史检索、技能更新和代码晋升均关闭。
+
+三组统一 gpt-6.1-sol/low，单次请求上限 300 秒和 8192 输出 token，无代理、无传输重试。
+返回完整模块并保留 FORCE_SETTINGS/HOVER_Z/ACTION_SECONDS；合法补丁从 reset、空进度执行，
+不从旧错误状态续接。每组仅一次补丁，无二次修复。语法拒绝、API 错误、公开检查和原生结果分开保存。
+单例结果只能说明这一案例的可行性，不能证明普遍收益；减少动作必须结合完整音序和原生判分解释。
+
+### 最多三轮完整源码修复
+
+沿用同一 V0 和已有第一轮 A/B/C 结果，每组最多再生成两次完整程序，仍不检索技能、不读取其他组结果。
+`CAPX_SHADOW_ABLATION_ROUND` / `CAPX_SHADOW_ABLATION_MAX_ROUNDS` 标识轮数（最多3）；
+`CAPX_SHADOW_ABLATION_NEXT_FIXTURE` 可在本轮结束时冻结下一轮错误窗口，不增加模型调用。
+每轮从 reset、空进度执行；请求保留当前完整源码作为参考，允许重写辅助函数和控制流。
+固定目标、接口、动作频率和原生规则不变。API错误暂停；终止或无合格公开错误时不硬造下一轮。
+
+首次单轮实验未保存补丁失败的数值窗口，因此为续跑分别重放原补丁补取公共证据，不调用API，也不替换原成绩。
+`CAPX_SHADOW_ABLATION_CAPTURE_REASON=press_timeout` 固定此次重放的预期错误。
+调用记录只增存已知公开失败的实际函数返回值类别，超时窗口锚定该返回时刻而非释放后的日志时刻；不保存任意函数返回数据。
+后续轮次源码与错误已各自演化，这比较整个迭代流程；不能再声称各轮输入完全相同。
+
+### 第四、第五轮：依据公开反馈重新生成完整程序
+
+按后续用户要求，独立实验配置显式设置 `shadow_piano_ablation_regenerate: true`，允许累计最多五轮。
+此模式每轮均以本组上一版完整源码、上一版提案说明和公开执行反馈为参考，重新生成完整模块；
+正常 END 也允许下一轮生成。默认错误触发模式保持不变，不把正常 END 伪装成错误。
+没有跨组记忆、额外技能整理或 episode 内修复。每次新程序从 reset 执行；原生结果仅用于私有结果审计。
+
+公开反馈包含动作数、按动作推断的阶段计数、公开检查通过项、尝试提交及 END。
+A 不提供数值触觉；B 增加选定时刻的 5D/估计力；C 再提供相同时间段的 16×4D 与估计力序列。
+出现可定位错误时沿用原错误前窗口。没有可定位的非终止错误时，按预先固定的公开规则，
+选择首个尝试最后一个 commanded press/hold 样本之前的 0.5 秒，不按私有成绩挑选音符。
+窗口按 240 Hz 物理时间每八步取一点，缺失时停止，来源及规则随反馈保存。
+上次提案的解释明确标为未验证假设；不能把它视为真实力诊断。
+
+前两阶段没有为第三轮保留后续数值窗口，故本次每组先做一次零 API 原代码回放取证，
+不替换历史成绩。第四轮结束即保留下轮反馈，避免额外回放。每轮请求仍限 300 秒/8192 输出 token，
+正文 24 KiB、完整源码单份；API 错误暂停，不自动重试。全部沿用 `./run_responses`，不新增运行脚本。
+因此第四、第五轮属于“执行反馈驱动的完整代码再生成”，与前三轮“公开错误触发”条件不同，报告须区分。
+
+## 2026-10-30：空记忆 A/B 连续迭代模式
+
+配置为 `env_configs/opentac/play_piano_shadow_digit_continual_a.yaml` 与 `_b.yaml`，
+仍通过 t-cap 的 `./run_responses` 启动，不新增运行脚本。
+`CAPX_SHADOW_CONTINUAL_ROOT` 指定新数据目录，`CAPX_SHADOW_CONTINUAL_ROUND=0..9`，
+`CAPX_SHADOW_TASK_SEED=3300..3309`，实际 reset seed 必须等于 3300 加轮次。
+
+A 的第零轮从空源码、空经验请求一次全新完整程序，B 的第零轮读取同一冻结源码。
+以后分别读取本组上一轮的 `result.json.next`，不加载历史 V0、不读另一组目录，也不按原生成绩挑版本。
+策略每轮由宿主以新 request 和新进度调用。错误路径不调用修复；第零至第八轮在 episode 结束时各更新一次，
+包括正常 END，第九轮仅保存反馈。最多一次首次生成和十八次更新，模型固定 `gpt-6.1-sol/low`，
+单次 300 秒、8192 输出 token，清除代理且禁用自动 API 重试。
+
+目录中的 `shared/generation` 保存首次请求与提案，`shared/bootstrap.py` 保存通过检查的共同源码；
+`arms/{A,B}/code/<hash>/policy.py` 和 `experience/<hash>.json` 独立保存候选及经验，
+`rounds/00..09` 保存实际加载记录、公开反馈、更新请求、响应、差异及拒绝原因。
+所有候选显式标记 `candidate_for_experiment`；实验不更新或读取合格 active 指针。
+既有代码库的原生至少五音及公开执行门槛保持不变，不能因本实验候选可执行就称其满足直接复用资格。
+
+更新输入的完整源码仅一份。A 的公开材料逐字段构造，仅含任务、分类错误、动作/实际状态、
+公开保持与释放报告以及本组经验，不读取任意 stdout 或私有文件。
+B 增加每次尝试的末次测力前 0.5 秒、16 点、30 Hz 估计力窗口，以及该尝试全部测力读取的算术摘要。
+保留质量、年龄和校准版本；没有原始 4D/5D 特征或时序编码器。若策略在释放时读力，窗口如实包含该阶段。
+窗口按真实物理 step 精确匹配，不插值、不跨尝试，缺失值为 null。实际状态单位明确为 mm/mrad/mm/s，
+目标仍为 m/rad。原生真值和得分仅在结束后独立生成私有报告，更新器不读取。
+
+经验最多 16 条、8 KiB，记录条件、建议、observed/hypothesis 及可选数值与公开出处。
+宿主保存上一建议执行后的公开反馈，不以模型的“已改进”声明证明因果。
+24 KiB 请求正文上限不静默截断；超限暂停。源码拒绝时下轮沿用本组上一可执行版本，
+经验拒绝独立回退旧经验。首份程序被拒绝时没有可回退版本，整个批次暂停，不自动再生成。
+每个请求先独占保存调用标记；重新运行同一目录不会补发首次请求。
+
+本轮启动目录：`/mnt/data/ljz/opentacbench/piano_continual_ab10_20261030T173837Z`。
+首次请求 HTTP 200，43.28 秒，供应商报告 10,923 token；源码自行使用 `getattr`/`globals` 动态查找 API，
+被既有公开接口校验拒绝，未执行按键。A3300 进程退出 1，后续没有运行，不能算已执行的 0/6 样本。
+已补清“API 直接绑定为全局函数、piano_state 只是字典”的提示，未修改已返回程序、未放宽校验或重跑。
+四项针对性 CPU 检查通过；完整 GPU 跨轮更新、下一 seed 继承及十轮曲线尚未验证。
+
+用户另行授权一次初始生成后，实验在
+`/mnt/data/ljz/opentacbench/piano_continual_ab10_20261030T175939Z` 启动。
+3300 的 A/B 共用 `40a7d39f…`，均为原生 4/6、六次尝试、END、591 个生成动作；
+A 产出 `e9f31412…` 和三条经验，B 产出 `22b82a37…` 和四条经验。
+这些经验尚未在下一 seed 验证，不能称为已有提升。
+
+B 的正文原为 26,264 字节，按 24 KiB 上限在发送前暂停。
+仅将 B 的力窗口、校准信息和摘要列名改为列式格式，逐值往返检查通过；
+A 的共同字段与原请求一致，B 的力、质量、年龄、版本、时间点和摘要全部保留。
+正文降到 24,562 字节后，调用既有更新函数完成那次尚未发出的请求，没有重跑 B 仿真或增加更新次数。
+固定系统提示不计入这项正文上限，实际 HTTP 载荷更大。
+两组首轮及更新已核对，3301–3309 继续用 `./run_responses` 串行运行；API 错误和后续正文超限仍暂停。
+
+B/3302 已完成仿真，但轮末更新正文为 25,384 字节，在发送前暂停。
+`piano_continual_public_feedback.v2` 对两组的动作目标按坐标列保存：
+16 点内恒定的坐标只写一个数，变化坐标保留全部 16 个数；缺帧索引独立保留。
+实际状态、力窗口和摘要不变。六份已完成反馈都能逐值还原，未删除样本或减少精度。
+B/3302 正文因此降到 24,087 字节；系统提示与源码保持原样，本轮不接 SkillOpt。
+每次更新在发送前保存 `update/request_size.json`，分别记录正文、系统提示及各部分 UTF-8 大小。
+若再次超过正文上限，不创建 API 调用标记、不发请求、不截断数据；保留已完成仿真，
+暂停等待调整表示或预算后补做尚未发送的更新。
+
+B/3303 原生 6/6、END，轮末正文 25,070 字节，尚未发出请求。
+发送格式 v3 将六音公开报告的重复字段名统一放入 `columns`/`report_columns`，
+对应行完整保留，磁盘上的可读反馈不变。正文为 24,310 字节；七份历史反馈
+逐值还原验证通过。该格式同时用于 A/B，不删除错误、OOD 或失败报告，不按原生分数裁剪证据。
+
+用户随后指定超限回退门槛：5/6、6/6 为强代码；1/6–3/6 为弱代码。
+A/B 配置共同启用 `shadow_piano_continual_overflow_policy: retain5_regenerate1to3.v1`。
+仅在无损压缩后正文仍超过 24 KiB 时，宿主检查本次六音原生计数与 release 事件一致性：
+
+- 5/6 或 6/6 且已 END：保留完整源码，合并重复错误文本并保留原顺序；不同错误和触觉样本不删除。
+- 1/6–3/6：源码继续存盘，但本次请求不再带旧源码；携带不变的冻结常量、任务/API、
+  本组经验及公开反馈，要求重新生成完整程序。更新次数、时限和输出预算不增加。
+- 4/6、0/6、审计不一致或证据缺失：保留源码，仍超限则暂停；不猜测强弱。
+
+此规则不回溯应用到已完成更新。从 A/3303 开始启用，不重跑已完成的七次仿真。
+它修改了原先“完全不按原生分数决定更新方式”的实验约定；两组采用同一门槛。
+分数与宿主决策留在私有 `shadow_continual_source_policy.jsonl`，不进入经验、公开反馈或模型请求。
+`update/request_size.json` 及轮次结果记录实际是否携带源码；候选不合格时仍按既有规则回退上一可执行版本。
+完整代码库的独立 5/6 晋升规则不变。强代码及必要反馈本身仍放不下时继续暂停，不静默删帧或加大预算。
+
+B/3304 为原生 6/6、END，宿主正确选择保留强代码，但正文仍超限 266 字节。
+发送格式 v4 对动作窗口同样使用共享 `columns` 和完整 `rows`，省去重复键名。
+正文由 24,842 降至 24,453 字节，十份已有反馈均可完整还原，源码和数据数值不变。
+仅补做该轮尚未发送的更新，未重跑仿真；后续 A/B 使用相同表示。
+
+### 2026-10-31：移除初始手工控制策略的小规模试验
+
+两份 continual YAML 采用 `shadow_piano_continual_prior: task_api_only.v1`。
+任务说明和 API 契约保留；去掉四组专家 probe 补偿、固定 96 步释放预留、
+逐音预算配方及手工下压/反馈/等待流程。冻结常量不再重新注入这些策略。
+`FORCE_SETTINGS` 在本配置中只有目标力、容差和原有公开保持门槛三项。
+保持门槛是既有 CaP-X 公开检查要求，不能将其全部表述为原生任务阈值。
+实际 XY 拦截、释放保护、2000 动作上限、4 物理步动作间隔及冻结测力器不变。
+
+新目录 `/mnt/data/ljz/opentacbench/piano_continual_task_api_pilot_20261031T034400Z`
+从空代码和经验开始，只沿用公开键盘标定。设置
+`CAPX_SHADOW_CONTINUAL_ROUNDS=2`，顺序为 A3300、B3300、B3301、A3301：
+第一对共用一次新生成的程序，各自更新一次，再验证本组下一版。
+最后一轮不再生成未经执行的新版本；默认未设置 rounds 时仍为十轮。
+本试验最多四次仿真，不导入原十组经验。配置原文、提示词及实现快照保存在数据目录。
+必要 CPU 检查三项通过；真实执行结果随后记录，不能由提示词变短推断记忆有效。
+
+四次试验于 04:20:32 UTC 完成，首轮共享源码哈希 `81846f5f`；下一轮 A/B
+分别执行自己的更新 `660859dc` / `c933ad49`，没有源码回退或额外生成。
+3300 A/B 均为原生 0/6、1487 动作；3301 A 为 0/6、1395 动作，B 为 2/6、1512 动作。
+每条均尝试六音并提交 END；共一次初始生成、两次更新，三项 CPU 检查通过。
+完整日志、两个视角视频、反馈、私有审计见数据目录 `results.md`、`pilot_audit.json`。
+
+此次 B 的两音为 C#4 / F#4 重音；其修改把原代码自行设置的弯指上限由 0.35
+放宽至接口上限 0.50 rad，每次增量保持 0.005 rad。A 在 0.35 以上改用 0.002 rad。
+实际两音最大命令分别为 A 0.368、B 0.375 rad，并未运行到上限。
+B 的这两次尝试末段公开报告 OOD，但原生已计分；A 公开保持通过仍无原生完整音符。
+不能把这一个样例解释为可靠的触觉学习收益。
+
+私有审计发现新动作姿态下明显的估计偏差：3300 白键 quality=ok 样本的 MAE
+为 0.392 N（估计范围 0.223–0.495 N，实测 0.014–0.057 N）；3301 该误差
+A/B 分别约 0.404 / 0.431 N。现有特征范围检查不能证明这些新姿态下的估计准确。
+模型和任务保持不变，真值未发送给更新器；本轮停止于四次试验，不自动扩大。
+
+另记录旧经验校验器的误拒绝：A 草稿提及“estimated_force_history 未提供”，
+字符串黑名单将其当作数值触觉泄漏。A 新源码正常执行，经验仍沿用空版本；
+B 三条经验保存成功。拒绝记录与原提案均保留，没有人工修写提案。
+本试验最后一轮不再更新，故该经验拒绝未改变 A 已生成的执行源码，但未验证完整的多轮经验积累。
+
+### 2026-10-31：轮末最终结果反馈，A 严格隔离触觉数值
+
+用户调整了原先“判分只作私有评估”的约定：整轮结束后，两组可以知道各音是否通过，
+但必须自行从本组日志和允许使用的反馈推断原因，并调整下一轮完整程序。
+两份 continual YAML 启用 `shadow_piano_continual_final_results: true`；其他配置默认关闭。
+兼容签名记录 `piano_final_note_results.v1`，新实验使用新数据目录，旧结果不追溯改写。
+
+宿主在轮末读取原生 release/miss 事件，仅导出以下白名单：
+
+```json
+{"schema":"piano_final_note_results.v1","available":true,
+ "notes":[{"index":0,"outcome":"failed"},{"index":1,"outcome":"passed"}]}
+```
+
+index 对应 request 音序；缺少已结算结果的音为 `unresolved`，不能补成 failed。
+执行中读取返回不可用；该方法不是生成代码的公开 API。原始事件、物理时间、真实力、
+琴键角度和原生失败原因不进入更新请求。只有完成已结算结果的一致性检查才导出结果。
+
+两组均得到最终结果、当前源码、动作/实际位姿及非数值公开错误；B 额外得到估计力历史、
+质量及算术摘要。A 的两个数值触觉通道必须明确 withheld，发送前检查会拒绝这些通道
+或公共反馈中新增的触觉数值/图像字段。A 不获得触觉图像、4D/5D 特征、估计力数值或曲线。
+任务规定的目标力和控制参数允许保留，它们不代表实测触觉。运行时 A/B 仍调用相同测力 API：
+本实验隔离的是更新模型收到的证据，未同时改变在线控制能力。
+
+提示词要求区分最终任务结果、公开保持信心和失败原因假设；失败标签不能证明测力失准，
+也不能据此编造真值。探针和控制调整由模型提出，再用下一轮执行验证，不注入人工诊断答案。
+五项针对性检查通过；上一轮四条日志离线导出的逐音结果与私有审计一致，未启动 GPU 或 API。
+核验材料：`/mnt/data/ljz/opentacbench/validation/terminal_note_feedback_replay_20261031/`。
+
+### 2026-11-01：严格触觉更新证据对照
+
+`shadow_piano_continual_feedback_contract: strict_tactile_ablation.v1` 将过去接触产生的
+数值、质量、接触状态和保持判断统一视为触觉证据；它们总结成文字后仍属于触觉派生经验。
+即时控制、固定目标与共同专家探针先验保持不变，本对照检验跨轮更新使用历史触觉的作用。
+
+A 更新不接收逐音 `report`（包括 quality、had_valid_contact、public_hold_confidence、
+abort_reason），也不接收力历史和摘要。任意程序停止/异常文本在两组的公共反馈中只保留
+通用类别，避免错误消息绕过隔离。动作、实测姿态、动作数、姿态释放检查与最终逐音结果
+仍提供；语言经验仅作格式和大小检查，不否决模型自行推断的假设。
+
+两组的历史窗口统一由最后一个弯指且低位的动作目标选择，没有此动作则取末次动作；
+不再依赖最后测力时间。B 另外接收逐音触觉报告、估计力、质量和算术摘要。
+动作与最终结果可能间接体现接触，这是“无显式触觉证据更新”，不声称完全隔绝触觉的因果影响。
+
+本次 seed 3300、3301，共四次串行仿真：一份新生成程序共享，两份空经验库；3300 后各更新
+一次，3301 执行各自候选，最后不再更新。旧代码和旧经验不导入。兼容签名包含证据契约。
+三项针对性 CPU 检查通过，另以真实旧日志验证 A 的隔离和两组相同的动作窗口。
+实验目录：`/mnt/data/ljz/opentacbench/piano_strict_tactile_memory_pair2_20261101T095842Z/`。
+启动结果：Responses 预检返回 completed 但 output_items=0、没有可见正文，启动器退出码1，
+批次自动暂停；未生成初始程序、未执行仿真、未调用更新器，不计为 A 的任务失败。没有自动重试。
+
+随后用户授权自动重试。`run_responses` 默认设置 `CAPX_LLM_REQUEST_RETRIES=2`、
+`CAPX_LLM_RETRY_BACKOFF_SECONDS=30`，预检及代码记忆的生成/更新请求共享退避逻辑。
+空 completed 响应、连接/请求超时、408/429/5xx 可重试；401/403/参数错误、拒绝响应、
+补丁校验和策略执行失败不重试。每次最多三次请求、间隔30/60秒，各次使用独立请求截止时间。
+只在耗尽请求重试后设置批次 API abort；不重新执行仿真，逐次尝试写入 API 事件日志，
+成功更新记录 api_calls 与 retry_wait_seconds。存在服务商用量的空响应也保留用量事件。
+严格对照已恢复，原预检失败记录保存在实验目录的 maintenance 下。
+
+完成后有效性审计：四次仿真均结束并提交 END；3300 A/B 均0/6、514动作，3301 A为3/6、
+1421动作，B为2/6、1972动作。**这轮不满足严格消融条件**：`_load_config` 漏传新证据契约，
+实际 A 更新仍携带 quality/contact/hold/abort 报告。该遗漏已修复并增加真实启动配置路径的
+回归检查。另，首轮六次均在接近阶段停止，B 没有按压测力历史可学习，因此也没有检验到
+有效接触历史的增益。全部原始请求和结果保留，`validity_audit.json` 记录问题；没有追加仿真。

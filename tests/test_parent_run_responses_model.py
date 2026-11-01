@@ -66,6 +66,27 @@ def test_text_preflight_rejects_errors_without_retry(monkeypatch, capsys, status
     assert 'preflight failed' in output.err and 'preflight ok' not in output.out
 
 
+def test_text_preflight_retries_empty_then_503_then_valid(monkeypatch, capsys):
+    from capx.llm import client
+    monkeypatch.setenv('CAPX_LLM_REQUEST_RETRIES','2')
+    monkeypatch.setenv('CAPX_LLM_RETRY_BACKOFF_SECONDS','30')
+    waits=[];monkeypatch.setattr(client.time,'sleep',waits.append)
+    replies=iter([(200,{'status':'completed','output':[]}),
+                  (503,{'error':'unavailable'}),
+                  (200,{'status':'completed','output_text':'OK'})])
+    calls=[]
+    def post(*args,**kwargs):
+        calls.append(kwargs['payload'])
+        status,body=next(replies)
+        return client._SimpleResponse(status,{},json.dumps(body))
+    monkeypatch.setattr(client,'_post_json',post)
+    _run_text_preflight(monkeypatch)
+    assert len(calls)==3 and calls[0]==calls[1]==calls[2]
+    assert waits==[30,60]
+    captured=capsys.readouterr()
+    assert 'preflight ok' in captured.out and 'preflight failed' not in captured.err
+
+
 @pytest.mark.parametrize('overrides,expected', [
     ({'MODEL': 'gpt-6.1-sol', 'CAPX_MODEL': 'gpt-6-sol'}, 'gpt-6.1-sol'),
     ({'CAPX_MODEL': 'gpt-6.1-sol'}, 'gpt-6.1-sol'),

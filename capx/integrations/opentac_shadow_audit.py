@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 
@@ -10,6 +11,41 @@ def _read_jsonl(path: Path) -> list[dict]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def save_ood_calibration_samples(output_dir: str | Path, public_run_dir: str | Path) -> Path | None:
+    """Export only same-read 5D/true-force pairs for offline calibration."""
+    from .opentac_shadow_force import AREA_RATE_FEATURE_NAMES
+    output_dir, public_run_dir = Path(output_dir), Path(public_run_dir)
+    source = output_dir / 'shadow_force_estimates_private_audit.jsonl'
+    samples, skipped = [], 0
+    for line, row in enumerate(_read_jsonl(source), 1):
+        if row['estimate']['quality'] != 'ood':
+            continue
+        detail = row['depth_diagnostics']
+        features = detail.get('features')
+        if (not isinstance(features, list) or len(features) != 5
+                or detail.get('feature_names') != list(AREA_RATE_FEATURE_NAMES)):
+            skipped += 1
+            continue
+        samples.append({'source_row':line, 'physics_step':row['physics_step'],
+            'action_step':row['action_step'], 'note':row['note'], 'color':detail['color'],
+            'features_5d':features, 'private_key_top_force_N':row['private_key_top_force_N'],
+            'calibration_version':row['estimate'].get('calibration_version'),
+            'sensor_sha256':detail.get('sensor_sha256')})
+    if not samples and not skipped:
+        return None
+    episode_path = public_run_dir / 'shadow_public_episode.json'
+    episode = json.loads(episode_path.read_text()) if episode_path.exists() else {}
+    result = {'schema':'shadow_ood_force_calibration_samples.v1', 'private_offline_only':True,
+        'seed':episode.get('seed'), 'source':str(source), 'feature_names':list(AREA_RATE_FEATURE_NAMES),
+        'sample_count':len(samples), 'skipped_incompatible_ood_rows':skipped, 'samples':samples}
+    target = output_dir / 'shadow_ood_calibration_samples.json'
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+        json.dump(result, stream, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
+        stream.write('\n')
+    return target
 
 
 def save_native_piano_summary(output_dir: str | Path) -> Path | None:

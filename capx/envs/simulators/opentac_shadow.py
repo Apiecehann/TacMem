@@ -41,6 +41,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         task_factory: Callable[["ShadowPianoLowLevelEnv"], Any] | None = None,
         output_dir: str | None = None,
         visual_key_mode: bool = False,
+        require_xy_arrival: bool = True,
         mirror_head_view: bool = False,
         auto_clear_keyboard_for_visual: bool = False,
         snap_visual_key_pixels: bool = False,
@@ -60,6 +61,10 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         tactile_temporal_encoder: Any | None = None,
         retrieve_tactile_history: bool = True,
         evidence_failure_triggered: bool = True,
+        defer_public_note_failures: bool = False,
+        expected_piano_request_path: str | None = None,
+        error_windows_only: bool = False,
+        retain_full_numeric_evidence: bool = False,
     ) -> None:
         super().__init__()
         self.univtac_root = Path(univtac_root).expanduser().resolve()
@@ -69,6 +74,11 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         self.task_seed = int(task_seed) if task_seed is not None else None
         self.endpoint_calibration = bool(endpoint_calibration)
         self.keyboard_calibration_path = Path(keyboard_calibration_path).expanduser().resolve() if keyboard_calibration_path else None
+        if self.keyboard_calibration_path and self.keyboard_calibration_path.is_dir():
+            raise ValueError(
+                f"keyboard_calibration_path must be a JSON file, not a directory: {self.keyboard_calibration_path}. "
+                "Set CAPX_SHADOW_KEYBOARD_CACHE to a file or unset it to use the configured default."
+            )
         self.public_episode_recording = bool(public_episode_recording)
         self.require_public_release = bool(require_public_release)
         self.third_party_video = bool(third_party_video)
@@ -79,6 +89,13 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         self._tactile_temporal_encoder = tactile_temporal_encoder
         self._retrieve_tactile_history = bool(retrieve_tactile_history)
         self._evidence_failure_triggered = bool(evidence_failure_triggered)
+        self.defer_public_note_failures = (
+            str(defer_public_note_failures).lower() in ('true', '1'))
+        self.expected_piano_request_path = expected_piano_request_path
+        if self.defer_public_note_failures and not piano_continue_on_note_failure:
+            raise ValueError('Deferred note reports require native per-note continuation')
+        self._error_windows_only = bool(error_windows_only)
+        self._retain_full_numeric_evidence = bool(retain_full_numeric_evidence)
         self._tactile_evidence = None
         self._release_ready_since = None
         self._keyboard_calibration = None
@@ -97,6 +114,9 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         self.video_frame_stride = max(1, int(video_frame_stride))
         self.video_width = int(video_width)
         self.visual_key_mode = bool(visual_key_mode)
+        self.require_xy_arrival = bool(require_xy_arrival)
+        if not self.require_xy_arrival:
+            print('[capx-shadow] XY arrival guard disabled for this run', flush=True)
         self.mirror_head_view = bool(mirror_head_view)
         self.auto_clear_keyboard_for_visual = bool(auto_clear_keyboard_for_visual)
         self.snap_visual_key_pixels = bool(snap_visual_key_pixels)
@@ -144,6 +164,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         self._sim_step_count = 0
         self._public_attempts_finalized = 0
         self._public_policy_managed = False
+        self._public_control_pause = None
         self._recovery_pending_reads = set()
         self._last_native_notes_attempted = 0
         self._last_private_piano_record = 0
@@ -329,6 +350,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         self._cached_key_targets = {}
         self._keyboard_cache_hit = False
         self._clear_action_steps = 0
+        self._force_history_warmup_action_steps = 0
         estimator = getattr(self, "_force_estimator", None)
         if estimator is not None:
             estimator.reset_history()
@@ -338,12 +360,19 @@ class ShadowPianoLowLevelEnv(BaseEnv):
             self.piano_notes = list(sequence["notes"])
             self.piano_dynamics = list(sequence["dynamics"])
             self._public_sequence = {k: sequence[k] for k in ("midi", "notes", "dynamics", "hold_seconds")}
+        if getattr(self, 'expected_piano_request_path', None):
+            expected = json.loads(Path(self.expected_piano_request_path).read_text(encoding='utf-8'))
+            actual = {k: sequence.get(k) for k in ('notes', 'dynamics', 'hold_seconds')}
+            if actual != expected:
+                raise ValueError('Reset piano request differs from the frozen paired request')
+            print('[capx-shadow] frozen paired request matched before policy execution', flush=True)
         self._native_done = False
         self._policy_end_submitted = False
         self._policy_end_verdict = False
         self._sim_step_count = 0
         self._public_attempts_finalized = 0
         self._public_policy_managed = False
+        self._public_control_pause = None
         self._recovery_pending_reads = set()
         self._release_ready_since = None
         self._last_native_notes_attempted = 0
@@ -386,6 +415,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         if self.auto_clear_keyboard_for_visual and not self._keyboard_cache_hit:
             self._clear_keyboard_for_visual()
             self._clear_action_steps = self._sim_step_count
+        self._warmup_public_force_history()
         self._save_public_episode(actual_seed)
         if getattr(self, 'evidence_memory_root', None):
             if self._output_dir is None or not self._force_estimator or not self._force_estimator.uses_area_rate:
@@ -397,7 +427,9 @@ class ShadowPianoLowLevelEnv(BaseEnv):
                  'action_repeat': self.action_repeat, 'physics_hz': 240,
                  'frame': 'public_endpoint_geometry.v1'}, self._public_sequence,
                 encoder=self._tactile_temporal_encoder, retrieve_history=self._retrieve_tactile_history,
-                failure_triggered=self._evidence_failure_triggered)
+                failure_triggered=self._evidence_failure_triggered,
+                error_windows_only=self._error_windows_only,
+                retain_full_numeric_evidence=self._retain_full_numeric_evidence)
             self._record_tactile_evidence_sample()
         return self.get_observation(), {}
 
@@ -419,6 +451,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
             "sequence": self._public_sequence, "keyboard_cache_hit": self._keyboard_cache_hit,
             "calibration_id": self._keyboard_calibration.get("calibration_id") if self._keyboard_calibration else None,
             "clear_action_steps": self._clear_action_steps,
+            "force_history_warmup_action_steps": getattr(self, '_force_history_warmup_action_steps', 0),
             "action_repeat": self.action_repeat, "localization_mode": "public_endpoint_geometry"})
 
     def _write_public_event(self, kind: str, **fields) -> None:
@@ -437,8 +470,13 @@ class ShadowPianoLowLevelEnv(BaseEnv):
     def record_public_code_result(self, stdout: str, stderr: str) -> None:
         import re
         from capx.integrations.opentac_shadow_skills import _PRIVATE_MARKERS
+        from capx.integrations.opentac_shadow_code_memory import _public_note_report
         lines = [line[:8192] if line.startswith('PIANO_POLICY_STATE ') else line[:1200] for line in stdout.splitlines()
                  if line.startswith(("PIANO_NOTE", "PIANO_STOP", "PIANO_ARRIVAL", "PIANO_POLICY_STATE", "CAPX_VISUAL_CHECKPOINT"))]
+        lines = [(('PIANO_NOTE '+json.dumps(report)) if
+                  (report := _public_note_report(line, {'notes':self.piano_notes})) is not None
+                  else 'PIANO_STOP invalid_public_note_report')
+                 if line.startswith('PIANO_NOTE ') else line for line in lines]
         errors = [line[:800] for line in stderr.splitlines()
                   if re.match(r"^[A-Za-z]+(?:Error|Exception):", line)]
         safe = [line for line in lines + errors if not any(m in line.lower() for m in _PRIVATE_MARKERS)]
@@ -447,7 +485,23 @@ class ShadowPianoLowLevelEnv(BaseEnv):
     def observe_public_policy_stdout(self, text):
         evidence = getattr(self, '_tactile_evidence', None)
         if evidence is not None and evidence.failure_triggered:
+            before = len(evidence.events)
             evidence.write(text)
+            failures = [e for e in evidence.events[before:] if e['kind'] == 'public_stop']
+            if getattr(self, 'defer_public_note_failures', False):
+                # Full-sequence evaluation records a failed note without interrupting
+                # its release/finalization. Explicit PIANO_STOP, invalid reports and
+                # native/API errors remain fatal; release guards are unchanged.
+                failures = [e for e in failures if not (
+                    e.get('message', '').startswith('PIANO_NOTE ')
+                    and type(e.get('control_failure', {}).get('index')) is int)]
+            if failures and not self._native_done:
+                # Stop before the next action. The host ledger, not generated
+                # counters, decides which attempt the repaired entry resumes.
+                report = failures[-1].get('control_failure', {})
+                self._public_control_pause = report.get('reason', 'policy_stop')
+                from capx.envs.tasks.exceptions import RecoverableTaskFailure
+                raise RecoverableTaskFailure('shadow_public_control_failure', self._public_control_pause)
 
     def public_recovery_context(self):
         """Host progress and measured public state; no native verdict or force truth."""
@@ -487,6 +541,7 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         resume = bool(evidence.executions or re.search(r'^# capx-piano-repair:', code, re.M))
         self._recovery_pending_reads = {'hand','tactile'} if resume and not context['native_stopped'] else set()
         self._public_policy_managed = True
+        self._public_control_pause = None
         initialized = bool(previous.get('initialization_complete')) or any(
             e['end'] and e['end']['action_step'] > e['start']['action_step'] for e in evidence.executions)
         return {'completed': context['current_attempt'], 'attempts': list(context['finalized_indices']),
@@ -507,12 +562,56 @@ class ShadowPianoLowLevelEnv(BaseEnv):
             pending.discard(modality)
 
     def finalize_public_policy_return(self):
+        if getattr(self, '_public_control_pause', None):
+            return False
         if not getattr(self, '_public_policy_managed', False) or self._policy_end_submitted:
             return False
         if self._public_attempts_finalized != len(self.piano_notes):
             return False
         self.submit_policy_end()
         return True
+
+    def check_public_policy_return(self):
+        evidence = getattr(self, '_tactile_evidence', None)
+        if (getattr(self, '_public_policy_managed', False) and evidence is not None
+                and evidence.failure_triggered and not self._native_done
+                and self._public_attempts_finalized < len(self.piano_notes)):
+            # A normal Python return is not completion of the public request.
+            # Detect this before leaving the execution trace, without consulting scores.
+            reason = getattr(self, '_public_control_pause', None) or 'incomplete_public_attempt_chain'
+            if not getattr(self, '_public_control_pause', None):
+                evidence.event('public_stop', message='PIANO_STOP '+reason)
+            self._public_control_pause = reason
+            from capx.envs.tasks.exceptions import RecoverableTaskFailure
+            raise RecoverableTaskFailure('shadow_public_control_failure', reason)
+
+    def _warmup_public_force_history(self) -> None:
+        """Collect real depth history at open-finger hover before policy execution."""
+        estimator = getattr(self, '_force_estimator', None)
+        if estimator is None or not estimator.uses_area_rate:
+            return
+        from capx.integrations.opentac_shadow_force import AREA_RATE_HISTORY
+        window = AREA_RATE_HISTORY['window_physics_steps']
+        start_action, start_physics = self._sim_step_count, int(self._task.step_count)
+        hand = self.get_observation()['hand_state']
+        hover = [hand['wrist_x_offset_m'], hand['wrist_y_m'], max(.04, hand['wrist_z_m']), 0.]
+        # The estimator already samples reset and every native action. Inspect
+        # availability only: do not infer force, synthesize frames or suppress OOD.
+        while True:
+            now = int(self._task.step_count)
+            if all(estimator._depth_history.get(t, (None, None))[0] is not None
+                   for t in (now - window, now)):
+                break
+            if self._native_done or now - start_physics >= 2 * window:
+                raise RuntimeError('DIGIT force history unavailable after real hover sampling')
+            self.step(hover)
+        count = self._sim_step_count - start_action
+        self._force_history_warmup_action_steps = count
+        self._write_public_event('force_history_warmup', steps_executed=count,
+                                 start_physics_step=start_physics,
+                                 history_physics_step=int(self._task.step_count) - window)
+        print(f'[capx-shadow] force history ready: warmup_actions={count} '
+              f'physics_step={self._task.step_count} history_ticks={window}', flush=True)
 
     def _clear_keyboard_for_visual(self) -> None:
         """Move the open index away from the keyboard before the sole initial image."""
@@ -546,7 +645,8 @@ class ShadowPianoLowLevelEnv(BaseEnv):
 
     def _require_xy_arrival_before_press(self, target: np.ndarray) -> None:
         """Keep a moving index clear of adjacent keys in visual-key mode."""
-        if not self.visual_key_mode or not self._visual_key_map_ready:
+        if (not getattr(self, 'require_xy_arrival', True)
+                or not self.visual_key_mode or not self._visual_key_map_ready):
             return
         # Hovering with the index extended remains available while the arm
         # travels. Lowering or curling requires measured, settled wrist X/Y.
@@ -560,16 +660,36 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         if not np.isfinite(error_m) or not np.isfinite(y_speed_m_s):
             raise ValueError("Shadow wrist XY arrival state is not finite")
         if error_m > .002 or abs(y_speed_m_s) > .015:
+            self._write_public_event('public_check', check_id='xy_arrival', index=self._public_attempts_finalized,
+                                     passed=False, measurements={'error_m':error_m,'y_speed_m_s':y_speed_m_s})
             raise ValueError(
                 "Shadow wrist XY has not settled before lowering/flexion: "
                 f"target={target_xy.tolist()}, actual={actual_xy.tolist()}, "
                 f"error_m={error_m:.6f}, y_speed_m_s={y_speed_m_s:.6f}; "
                 "hold the extended index at hover and recheck get_hand_state()"
             )
+        self._write_public_event('public_check', check_id='xy_arrival', index=self._public_attempts_finalized,
+                                 passed=True, measurements={'error_m':error_m,'y_speed_m_s':y_speed_m_s})
+
+    def set_code_block_action_budget(self, max_actions, *, block_index=None):
+        """Apply the runner's optional budget before any native action executes."""
+        self._code_block_action_start = self._sim_step_count
+        self._code_block_action_limit = max(0, int(max_actions or 0))
+
+    def clear_code_block_action_budget(self):
+        self._code_block_action_limit = 0
 
     def step(self, action):
         if self._policy_end_submitted or self._native_done:
             raise RuntimeError("Native piano episode has ended; no further action is allowed")
+        limit = getattr(self, '_code_block_action_limit', 0)
+        if limit and self._sim_step_count - self._code_block_action_start >= limit:
+            from capx.envs.tasks.exceptions import RecoverableTaskFailure
+            raise RecoverableTaskFailure('block_action_budget',
+                f'Shadow code block exhausted its {limit} executed-action budget')
+        if getattr(self, '_public_control_pause', None):
+            from capx.envs.tasks.exceptions import RecoverableTaskFailure
+            raise RecoverableTaskFailure('shadow_public_control_failure', self._public_control_pause)
         if getattr(self, '_recovery_pending_reads', None):
             raise ValueError('Recovery requires fresh get_hand_state() and estimate_key_force(current_note) before any motion')
         value = self._validate_action(action)
@@ -818,7 +938,8 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         evidence.sample(action_step=self._sim_step_count, physics_step=int(self._task.step_count),
             attempt=i, note=note, dynamics=self.piano_dynamics[i], action=self._action.tolist(),
             hand=self.get_observation()['hand_state'], estimate=estimate, features=diagnostics.get('features'),
-            rgb=self.get_index_tactile_rgb(), depth=tactile.depth_m, reference=tactile.reference_depth_m,
+            features_4d=diagnostics.get('base_features'),
+            valid_depth_fraction=diagnostics.get('valid_depth_fraction'),
             scales=self._force_estimator.sidecar['models'][color]['iqr'])
 
     def public_execution_trace(self, code, namespace):
@@ -978,13 +1099,91 @@ class ShadowPianoLowLevelEnv(BaseEnv):
         return self._policy_end_submitted and self._policy_end_verdict
 
     def submit_policy_end(self) -> bool:
+        if getattr(self, '_public_control_pause', None) and not self._native_done:
+            from capx.envs.tasks.exceptions import RecoverableTaskFailure
+            raise RecoverableTaskFailure('shadow_public_control_failure', self._public_control_pause)
         if self._policy_end_submitted:
             raise RuntimeError("END has already been submitted")
         self._policy_end_submitted = True
         self._policy_end_verdict = bool(self._native_info.get("success", False))
         self._write_native_event("END")
+        self._write_public_event('policy_end')
         self._save_tactile_snapshot("shadow_digit_end.png")
         return self._policy_end_verdict
+
+    def _continual_final_note_results(self, note_count):
+        """Host-only end-of-episode outcomes, never a live control API.
+
+        Only release/miss membership leaves the scorer. Forces, event times,
+        angles and native failure explanations remain private.
+        """
+        result = {'schema': 'piano_final_note_results.v1', 'available': False}
+        if not (self._policy_end_submitted or self._native_done):
+            return {**result, 'reason': 'episode_not_ended'}
+        score = self._task.score
+        if score.repetitions != note_count or not 0 <= score.count <= note_count:
+            return {**result, 'reason': 'inconsistent_final_results'}
+        outcomes = {}
+        for event in score.events:
+            if event.get('kind') not in ('release', 'miss'):
+                continue
+            index = event.get('attempt_index')
+            if type(index) is not int or not 0 <= index < score.count or index in outcomes:
+                return {**result, 'reason': 'inconsistent_final_results'}
+            outcomes[index] = 'passed' if event['kind'] == 'release' else 'failed'
+        if (set(outcomes) != set(range(score.count)) or
+                sum(v == 'passed' for v in outcomes.values()) != score.successful_notes):
+            return {**result, 'reason': 'inconsistent_final_results'}
+        return {**result, 'available': True, 'notes': [
+            {'index': i, 'outcome': outcomes.get(i, 'unresolved')}
+            for i in range(note_count)]}
+
+    def _private_continual_source_policy(self):
+        """Budget fallback only; return a host decision, never grades to the LLM."""
+        score=self._task.score
+        count=int(score.successful_notes)
+        releases={e.get('attempt_index') for e in score.events if e.get('kind')=='release'}
+        consistent=None not in releases and len(releases)==count
+        six_notes=len(self._native_info.get('piano_sequence',{}).get('notes',[]))==6
+        policy='retain'
+        if consistent and six_notes:
+            if count in (5,6) and self._policy_end_submitted:policy='strong'
+            elif count in (1,2,3):policy='weak'
+        self._append_private_audit('shadow_continual_source_policy.jsonl',{
+            'native_successful_count':count,'consistent':consistent,'six_notes':six_notes,
+            'end_submitted':self._policy_end_submitted,'policy':policy,
+            'reason':'request_body_overflow','schema':'retain5_regenerate1to3.v1'})
+        return policy
+
+    def _private_program_reuse_gate(self, manifest, program):
+        """Host-only qualification; generated code never receives per-note grades."""
+        releases = [e for e in self._task.score.events if e.get('kind')=='release']
+        presses = {e.get('attempt_index'):e for e in self._task.score.events if e.get('kind')=='press'}
+        self._write_private_piano_timeline()
+        from capx.integrations.opentac_shadow_online_skills import _evidence_hash
+        versions = {e['execution_id']:(e.get('source_version'),e.get('parameter_version')) for e in manifest['executions']}
+        wanted = (program['source_version'],_evidence_hash(program['parameters']))
+        qualified = []
+        for event in releases:
+            attempt = event.get('attempt_index')
+            press = presses.get(attempt)
+            if attempt is None or press is None:
+                continue
+            rows = [s for s in manifest['samples'] if s.get('execution_id') in versions and
+                    s['attempt']==attempt and s['physics_step']<=event['step']]
+            owners = {versions.get(s.get('execution_id')) for s in rows}
+            release_owners = {versions[e['execution_id']] for e in manifest['executions'] if e.get('end') and
+                e['start']['physics_step'] < event['step'] <= e['end']['physics_step']}
+            if rows and owners == {wanted} and release_owners=={wanted} and press['step']<=event['step']:
+                qualified.append(attempt)
+        consistent = len({e.get('attempt_index') for e in releases}) == self._task.score.successful_notes
+        eligible = bool(consistent and len(set(qualified))>=5 and self._policy_end_submitted)
+        self._append_private_audit('shadow_program_qualification.jsonl', {
+            'program_version':program['version'],'source_version':program['source_version'],
+            'native_successful_attempts':sorted(set(qualified)),
+            'native_successful_count':self._task.score.successful_notes,
+            'consistent':consistent,'eligible':eligible})
+        return {'eligible':eligible}
 
     def _capture_frame(self) -> None:
         frame = np.asarray(self._task.render())
@@ -1099,6 +1298,13 @@ class ShadowPianoLowLevelEnv(BaseEnv):
                 try:
                     self._close_private_audit()
                     from capx.integrations.opentac_shadow_audit import save_force_alignment, save_native_piano_summary
+                    from capx.integrations.opentac_shadow_audit import save_ood_calibration_samples
+                    try:
+                        samples = save_ood_calibration_samples(self._private_audit_dir, self._output_dir)
+                        if samples is not None:
+                            print(f'[capx-shadow] OOD calibration samples={samples}', flush=True)
+                    except Exception as exc:
+                        print(f'[capx-shadow] OOD calibration export unavailable: {exc}', flush=True)
                     summary = save_native_piano_summary(self._private_audit_dir)
                     if summary is not None:
                         print(f"[capx-shadow] native piano audit={summary}", flush=True)

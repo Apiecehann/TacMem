@@ -29,11 +29,13 @@ class Tee(io.TextIOBase):
         self.observer = observer
 
     def write(self, s):
-        if self.observer is not None:
-            self.observer(s)
         for st in self.streams:
             st.write(s)
             st.flush()
+        # A public-failure observer may interrupt execution. Preserve the
+        # triggering line in the artifact before invoking it.
+        if self.observer is not None:
+            self.observer(s)
 
     def flush(self):
         for st in self.streams:
@@ -264,6 +266,9 @@ class CodeExecutionEnvBase(Env):
                 exec(compile(code, execution_filename, 'exec'), self._exec_globals, self._exec_globals)
                 if should_auto_call_solve:
                     self._auto_call_generated_solve(previous_solve, progress_before)
+                check_return = getattr(self.low_level_env, 'check_public_policy_return', None)
+                if callable(check_return):
+                    check_return()
         except (HardStopTrial, CodeBlockTimeout):
             self._interrupted_code_output = {
                 "stdout": stdout_buffer.getvalue(),

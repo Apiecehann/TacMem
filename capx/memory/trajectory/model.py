@@ -144,10 +144,11 @@ class EvidenceTrajectoryEncoder:
                 raise ValueError("Checkpoint and preprocessing contract differ")
             version = self.frozen.encoder_version
         self.contract = {"version": version, "representation": representation,
-            "preprocessing": "digit_trajectory_key.v1/reduce_depth.v1/causal_previous.v1",
+            "preprocessing": ("digit_trajectory_key.v1/public_features4.v1/causal_previous.v1"
+                              if representation == "window4" else "digit_trajectory_key.v1/reduce_depth.v1/causal_previous.v1"),
             "normalization_sha256": sha256(norm_path), "sensor_sha256": self.sensor,
             "window": dict(WINDOW), "dimension": 64 if representation == "window4" else 32,
-            "modalities": ["depth_m", "reference_depth_m", "valid_mask"] +
+            "modalities": (["features_4d"] if representation == "window4" else ["depth_m", "reference_depth_m", "valid_mask"]) +
                 (["actions", "actual_state"] if representation == "tactile_action" else [])}
 
     def encode(self, window):
@@ -160,19 +161,27 @@ class EvidenceTrajectoryEncoder:
             if not len(ids) or ids[-1, -1] != len(times)-1 or len(set(ids[-1])) != 16:
                 return {**unavailable, "quality": "insufficient_valid_history"}
             ids = ids[-1]
-            frames = window["frames"]
-            reference = np.asarray(frames[0]["reference_depth_m"])
-            if any(not np.array_equal(f["reference_depth_m"], reference, equal_nan=True) for f in frames):
-                return {**unavailable, "quality": "incompatible_reference"}
-            depth = np.stack([f["depth_m"] for f in frames])
-            if any(m is None for m in window["valid_masks"]):
-                return {**unavailable, "quality": "missing_valid_mask"}
-            mask = np.stack(window["valid_masks"])
+            numeric = self.representation == "window4" and "features_4d" in window
+            if numeric:
+                features = np.asarray([window["features_4d"][i] for i in ids], np.float32)
+                good = np.asarray([window["valid_features_4d"][i] for i in ids], bool)
+                if features.shape != (16, 4) or not np.isfinite(features).all() or not good.all():
+                    return {**unavailable, "quality": "insufficient_valid_history"}
+            else:
+                frames = window["frames"]
+                reference = np.asarray(frames[0]["reference_depth_m"])
+                if any(not np.array_equal(f["reference_depth_m"], reference, equal_nan=True) for f in frames):
+                    return {**unavailable, "quality": "incompatible_reference"}
+                depth = np.stack([f["depth_m"] for f in frames])
+                if any(m is None for m in window["valid_masks"]):
+                    return {**unavailable, "quality": "missing_valid_mask"}
+                mask = np.stack(window["valid_masks"])
             provenance = {"episode_id": window.get("episode_id"),
                 "target_times_s": (times[-1] - np.arange(15, -1, -1)/30).tolist(),
                 "samples": [window["sources"][i] for i in ids]}
             if self.frozen is None:
-                _, features, good = reduce_depth(depth[ids], reference, mask[ids])
+                if not numeric:
+                    _, features, good = reduce_depth(depth[ids], reference, mask[ids])
                 if not good.all():
                     return {**unavailable, "quality": "insufficient_valid_history"}
                 mean = np.asarray(self.normalization["feature_mean"])

@@ -5,19 +5,37 @@ from __future__ import annotations
 import argparse
 import faulthandler
 import os
+import subprocess
 import sys
 import time
 import traceback
 
 os.environ.setdefault("CAPX_UNIVTAC_MINIMAL_IMPORTS", "1")
 
-# Kit enumerates physical devices independently of CUDA_VISIBLE_DEVICES. The
-# parallel launcher opts into an explicit physical ordinal before CUDA imports.
-_PHYSICAL_GPU = os.environ.get('CAPX_SHADOW_PHYSICAL_GPU')
+# CUDA ordinals are remapped by the visibility mask; Vulkan/EGL keep their
+# physical ordinals. Never remove the mask to make those ordinal spaces match.
+_PHYSICAL_GPU = os.environ.get('CAPX_SHADOW_PHYSICAL_GPU') or os.environ.get('CAPX_GPU')
+_GRAPHICS_GPU = os.environ.get('CAPX_SHADOW_GRAPHICS_GPU', _PHYSICAL_GPU)
+_GPU_UUID = None
 if _PHYSICAL_GPU is not None:
-    if not _PHYSICAL_GPU.isdigit():
-        raise ValueError('CAPX_SHADOW_PHYSICAL_GPU must be a physical GPU index')
-    os.environ.pop('CUDA_VISIBLE_DEVICES', None)
+    if not _PHYSICAL_GPU.isdigit() or not _GRAPHICS_GPU.isdigit():
+        raise ValueError('Shadow physical and graphics GPU indices must be numeric')
+    # A device-isolated namespace may expose a different graphics ordinal.
+    # Resolve a supplied host UUID directly so NVML enumeration cannot retarget it.
+    gpu_selector = os.environ.get('CAPX_SHADOW_GPU_UUID', _PHYSICAL_GPU)
+    _GPU_UUID = subprocess.check_output(
+        ['nvidia-smi', '-i', gpu_selector, '--query-gpu=uuid', '--format=csv,noheader'],
+        text=True, timeout=10).strip()
+    if not _GPU_UUID.startswith('GPU-') or '\n' in _GPU_UUID:
+        raise RuntimeError('Cannot resolve exactly one physical Shadow GPU')
+    visible = os.environ.get('CUDA_VISIBLE_DEVICES')
+    if visible not in (None, _PHYSICAL_GPU, _GPU_UUID):
+        raise ValueError('Shadow physical GPU conflicts with CUDA_VISIBLE_DEVICES')
+    egl = os.environ.get('EGL_DEVICE_ID')
+    if egl not in (None, _GRAPHICS_GPU):
+        raise ValueError('Shadow graphics GPU conflicts with EGL_DEVICE_ID')
+    os.environ['CUDA_VISIBLE_DEVICES'] = _GPU_UUID
+    os.environ['EGL_DEVICE_ID'] = _GRAPHICS_GPU
 
 from capx.envs.launch_univtac import build_parser
 
@@ -43,8 +61,9 @@ def _register_shadow_components() -> None:
 
 
 def main() -> None:
+    process_started = time.monotonic()
     args = build_parser().parse_args()
-    device = f'cuda:{int(_PHYSICAL_GPU)}' if _PHYSICAL_GPU is not None else args.univtac_device
+    device = 'cuda:0' if _PHYSICAL_GPU is not None else args.univtac_device
     args.univtac_device = device
     opentac_root = os.environ.get("UNIVTAC_ROOT")
     if not opentac_root:
@@ -55,13 +74,28 @@ def main() -> None:
     try:
         sys.argv = [original_argv[0]]
         from isaaclab.app import AppLauncher
-        # Each experiment process owns one explicitly selected GPU. Kit's
-        # multi-GPU default must not enlist GPUs assigned to another arm/user.
-        app = AppLauncher(argparse.Namespace(enable_cameras=True, num_envs=1,
-            device=device, multi_gpu=False)).app
+
+        class SingleGpuAppLauncher(AppLauncher):
+            def _resolve_device_settings(self, launcher_args):
+                super()._resolve_device_settings(launcher_args)
+                if _PHYSICAL_GPU is not None:
+                    # Isaac Lab 0.41 sets both fields to the CUDA ordinal.
+                    # Override only the launcher config, not Isaac Lab sources.
+                    launcher_args['active_gpu'] = int(_GRAPHICS_GPU)
+                    launcher_args['physics_gpu'] = 0
+                launcher_args['multi_gpu'] = False
+
+        app = SingleGpuAppLauncher(argparse.Namespace(enable_cameras=True, num_envs=1,
+            device=device, multi_gpu=False,
+            kit_args='--/renderer/multiGpu/maxGpuCount=1')).app
         if _PHYSICAL_GPU is not None:
             import torch
-            torch.cuda.set_device(int(_PHYSICAL_GPU))
+            if torch.cuda.device_count() != 1:
+                raise RuntimeError('Shadow launcher requires exactly one visible CUDA GPU')
+            torch.cuda.set_device(0)
+            print(f'[capx-shadow] single GPU physical={_PHYSICAL_GPU} uuid={_GPU_UUID} '
+                  'cuda=cuda:0 visible_count=1 multi_gpu=False '
+                  f'kit_active_gpu={_GRAPHICS_GPU} egl_device={_GRAPHICS_GPU}', flush=True)
     except Exception as exc:
         raise RuntimeError("IsaacLab AppLauncher must start before the Shadow task imports") from exc
     finally:
@@ -72,6 +106,7 @@ def main() -> None:
     from capx.utils.launch_utils import _load_config
 
     env_factory, config, api_servers = _load_config(args)
+    config['_continual_process_started'] = process_started
     low_level = env_factory["cfg"]["low_level"]
     if low_level.get("_target_") != "capx.envs.simulators.opentac_shadow.ShadowPianoLowLevelEnv":
         raise ValueError("Shadow launcher requires ShadowPianoLowLevelEnv config")
@@ -97,6 +132,12 @@ def main() -> None:
                 low_level_env.close()
             except Exception as exc:
                 print(f"[capx-shadow] native task cleanup failed: {exc}", file=sys.stderr, flush=True)
+        if config.get('shadow_piano_continual_arm') in ('A','B'):
+            try:
+                from capx.integrations.opentac_shadow_code_memory import record_continual_private_result
+                record_continual_private_result(config)
+            except Exception as exc:
+                print(f'[piano-continual] private report failed: {exc}', file=sys.stderr, flush=True)
         if app is not None:
             if run_ok and os.getenv("CAPX_FORCE_EXIT_AFTER_RUN", "1").lower() in ("1", "true", "yes"):
                 os._exit(0)

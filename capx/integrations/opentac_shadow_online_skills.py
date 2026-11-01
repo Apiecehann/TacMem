@@ -9,6 +9,9 @@ from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
+import time
+import subprocess
+import os
 import re
 import ast
 import dis
@@ -19,7 +22,7 @@ import numpy as np
 
 import yaml
 
-from capx.integrations.opentac_shadow_keyboard import atomic_json
+from capx.integrations.opentac_shadow_keyboard import atomic_json, untraced_host_recording
 from capx.llm.deadline import request_deadline
 from capx.integrations.opentac_shadow_skills import (
     SCHEMA, MAX_FILE_BYTES, MAX_SKILLS, _PRIVATE_MARKERS, inject_shadow_piano_public_skills,
@@ -31,6 +34,452 @@ REFLECTION_TIMEOUT_SECONDS = 120
 def _evidence_hash(value):
     raw = value if isinstance(value, bytes) else json.dumps(value, sort_keys=True, allow_nan=False).encode('utf-8')
     return hashlib.sha256(raw).hexdigest()
+
+
+class FrozenRepairTextEncoder:
+    """Local, pinned E5. Loading never downloads or changes simulator packages."""
+    def __init__(self, directory, *, _local=False):
+        self.directory = Path(directory)
+        freeze = json.loads((self.directory / 'freeze.json').read_text())
+        for name, expected in freeze['files'].items():
+            if Path(name).name != name or _evidence_hash((self.directory / name).read_bytes()) != expected:
+                raise ValueError('Text encoder checksum mismatch')
+        self.contract = {'model': freeze['model'], 'revision': freeze['revision'],
+                         'files': freeze['files'], 'runtime':freeze.get('runtime'),
+                         'preprocessing': 'e5_query_mask_mean_l2_512.v1'}
+        self.worker_python = self.directory.parent / 'cpu-env/bin/python'
+        self.local = _local or not self.worker_python.is_file()
+        if not self.local:
+            return
+        from transformers import AutoModel, AutoTokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.directory), local_files_only=True)
+        self.model = AutoModel.from_pretrained(str(self.directory), local_files_only=True).to('cpu').eval()
+
+    def encode(self, text):
+        return self.encode_many([text])[0]
+
+    def encode_many(self, texts):
+        if not self.local:
+            command = ('import json,sys; from capx.integrations.opentac_shadow_online_skills import FrozenRepairTextEncoder; '
+                'x=json.load(sys.stdin); e=FrozenRepairTextEncoder(x["directory"],_local=True); '
+                'print("CAPX_TEXT_VECTORS "+json.dumps(e.encode_many(x["texts"])))')
+            env = dict(os.environ)
+            for key in ('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','http_proxy','https_proxy','all_proxy'):
+                env.pop(key,None)
+            env.update(CUDA_VISIBLE_DEVICES='',TOKENIZERS_PARALLELISM='false',OMP_NUM_THREADS='2',
+                       PYTHONPATH=str(Path(__file__).resolve().parents[2]))
+            proc = subprocess.run([str(self.worker_python),'-c',command],
+                input=json.dumps({'directory':str(self.directory),'texts':texts}),capture_output=True,
+                text=True,env=env,timeout=120)
+            lines = [line[18:] for line in proc.stdout.splitlines() if line.startswith('CAPX_TEXT_VECTORS ')]
+            if proc.returncode or not lines:
+                raise RuntimeError('CPU text encoder worker failed: '+proc.stderr[-500:])
+            return json.loads(lines[-1])
+        import torch
+        batch = self.tokenizer(['query: ' + text for text in texts], max_length=512, padding=True,
+                               truncation=True, return_tensors='pt')
+        with torch.inference_mode():
+            values = self.model(**batch).last_hidden_state
+            mask = batch['attention_mask'].unsqueeze(-1)
+            vector = (values * mask).sum(1) / mask.sum(1)
+            return torch.nn.functional.normalize(vector, p=2, dim=1).cpu().tolist()
+
+
+REPAIR_LANGUAGE_TEMPLATE = 'public_error_template.v2'
+
+
+def _repair_language_context(request, failure, parameters):
+    """Same pre-repair situation schema for queries and historical search documents."""
+    def number(value):
+        if type(value) not in (int,float) or not np.isfinite(value):
+            return None
+        return int(value) if float(value).is_integer() else value
+
+    def identifier(value):
+        if not isinstance(value,str): return 'unknown'
+        value = value.strip()
+        return value if re.fullmatch(r'[A-Za-z_][A-Za-z_0-9.]{0,119}',value) else 'unknown'
+
+    def sequence(value, convert):
+        return [convert(v) for v in value] if isinstance(value,(list,tuple)) else None
+
+    def note(value):
+        from capx.integrations.opentac_shadow_vision import parse_note
+        try:
+            midi = parse_note(value.strip() if isinstance(value,str) else value)[0]
+            return int(midi) if 21 <= midi <= 108 else None
+        except (TypeError,ValueError):
+            return None
+
+    def dynamic(value):
+        value = value.strip().lower() if isinstance(value,str) else None
+        return value if value in ('light','heavy') else None
+
+    control_names = {'x','y','z','flex','flexion','wrist_x_offset_m','wrist_y_m','wrist_z_m',
+        'index_flexion_rad','hover_z_m','probe_trim_m','release_steps','press_steps','hold_steps',
+        'approach_action_budget','press_action_budget','release_action_budget',
+        'press_duration_s','curl_duration_s','release_duration_s','lift_duration_s',
+        'release_seconds','hold_seconds','steps','duration','elapsed'}
+    containers = {'execution_parameters','call_arguments','white_light','white_heavy','black_light','black_heavy'}
+    def controls(value):
+        if not isinstance(value,dict): return {}
+        result = {}
+        for key,item in sorted(value.items(),key=lambda pair:str(pair[0])):
+            if not isinstance(key,str): continue
+            key = key.strip().replace('/','_')
+            if key in containers:
+                result[key] = controls(item)
+            elif key in control_names:
+                result[key] = number(item)
+            elif key == 'last_action_target':
+                result[key] = sequence(item,number) if isinstance(item,(list,tuple)) and len(item)==4 else None
+        return result
+    phase = identifier(failure.get('phase')).lower()
+    phase = phase if phase in ('approach','press','hold','release','recovery') else 'unknown'
+    return {'task': 'shadow_piano', 'request': {
+                'notes':sequence(request.get('notes'),note),
+                'dynamics':sequence(request.get('dynamics'),dynamic),
+                'hold_seconds':sequence(request.get('hold_seconds'),number)},
+            'error':identifier(failure.get('kind')),'check':identifier(failure.get('check_id')),
+            'api':identifier(failure.get('api')),'call':identifier(failure.get('function_name')),
+            'role':identifier(failure.get('call_role')), 'phase':phase,
+            'control_parameters':controls(parameters)}
+
+
+def make_repair_language_key(request, failure, parameters):
+    """Freeze once at the error. Store this exact key with the resulting skill."""
+    context = _repair_language_context(request,failure,parameters)
+    text = json.dumps(context,sort_keys=True,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+    return {'template':REPAIR_LANGUAGE_TEMPLATE,'basis':'pre_repair_error','context':context,
+            'context_sha256':_evidence_hash(context),'text':text,'text_sha256':_evidence_hash(text.encode())}
+
+
+def repair_language_key(request, failure, parameters):
+    return make_repair_language_key(request,failure,parameters)['text']
+
+
+def _validated_repair_language_text(key):
+    """Never substitute repair advice, after-values or unversioned prose for an error key."""
+    if not isinstance(key,dict) or key.get('template') != REPAIR_LANGUAGE_TEMPLATE:
+        raise ValueError('language_template_mismatch')
+    if key.get('basis') != 'pre_repair_error':
+        raise ValueError('language_basis_mismatch')
+    context = key.get('context',{})
+    if not isinstance(context,dict) or not isinstance(context.get('request'),dict):
+        raise ValueError('invalid_language_context')
+    expected = make_repair_language_key(context['request'],{
+        'kind':context.get('error'),'check_id':context.get('check'),'api':context.get('api'),
+        'function_name':context.get('call'),'call_role':context.get('role'),'phase':context.get('phase')},
+        context.get('control_parameters'))
+    if any(key.get(k) != expected[k] for k in expected):
+        raise ValueError('language_context_or_checksum_mismatch')
+    return expected['text']
+
+
+def causal_error_rows(samples, failure):
+    """Event order disambiguates samples taken later at the very same physics step."""
+    return [s for s in samples if s['physics_step'] <= failure['physics_step'] and
+            s.get('event_seq', float('inf')) < failure['error_event_seq']]
+
+
+def error_window_key(evidence, failure, representation='window4'):
+    rows = causal_error_rows(evidence.frames, failure)
+    base = {'vector': None, 'quality': 'missing_history', 'contract': None, 'sources': [],
+            'error_event_seq': failure['error_event_seq'], 'sample_age_seconds': None}
+    if not rows:
+        return base
+    last = rows[-1]
+    age = (failure['physics_step'] - last['physics_step']) / evidence.contract['physics_hz']
+    base.update(sample_age_seconds=age, source_call_ids=last['invocation_ids'],
+                episode_id=evidence.episode_id)
+    encoder = next((e for e in evidence.encoders if e.contract.get('representation') == representation), None)
+    if encoder is None:
+        return {**base, 'quality': 'encoder_unavailable'}
+    spec = encoder.contract.get('window', {})
+    if age > spec.get('max_age_seconds', 1 / 30) + 1e-9:
+        return {**base, 'quality': 'stale_history'}
+    # The encoder performs the frozen causal 30 Hz selection. Never interpolate.
+    rows = [s for s in rows if s['timestamp_s'] >= last['timestamp_s'] - .5 - spec.get('max_age_seconds', 1/30)]
+    try:
+        window = evidence.window(rows)
+        value = encode_tactile_window(window, encoder)
+        base['sources'] = (value.get('provenance') or {}).get('samples', [])
+        selected = {s['sample_id'] for s in base['sources']}
+        evidence._error_samples.update({s['physics_step']: s for s in rows if s['sample_id'] in selected})
+        return {**base, **value, 'contract': {'sensor': evidence.contract['sensor'],
+                'physics_hz': evidence.contract['physics_hz'], 'encoder': dict(encoder.contract)}}
+    except (ValueError, KeyError, OSError, TypeError) as exc:
+        return {**base, 'quality': 'invalid_history', 'error_type': type(exc).__name__}
+
+
+def _public_skill_payload(value):
+    def inspect(node):
+        if isinstance(node,dict):
+            if set(node) & {'key_forces','native_info','native_success','native_failure','reward','score','success'}:
+                raise ValueError('Private verdict fields are not allowed in repair skills')
+            for child in node.values(): inspect(child)
+        elif isinstance(node,list):
+            for child in node: inspect(child)
+    inspect(value)
+    text = json.dumps(value, ensure_ascii=False, allow_nan=False)
+    if any(word in text.lower() for word in _PRIVATE_MARKERS):
+        raise ValueError('Private fields are not allowed in repair skills')
+    if len(text.encode()) > 128 * 1024:
+        raise ValueError('Skill is too large; use evidence attachments')
+    return value
+
+
+class RepairSkillStore:
+    """Independent versioned documents. Code paths are provenance, not dependencies."""
+    def __init__(self, root):
+        self.root = Path(root) / 'repair_skills'
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def put(self, skill):
+        skill = _public_skill_payload(dict(skill))
+        required = {'skill_id', 'version', 'status', 'applicable_conditions', 'failure_context',
+                    'numeric_correction', 'repair_advice', 'public_validation', 'provenance'}
+        if not required <= skill.keys() or not re.fullmatch(r'skill_[0-9a-f]{64}', skill['skill_id']):
+            raise ValueError('Invalid repair skill schema')
+        if skill['status'] not in ('proposed', 'rejected', 'unexecuted', 'executed_failed', 'executed_unverified', 'local_verified'):
+            raise ValueError('Invalid repair skill status')
+        directory = self.root / skill['skill_id']
+        directory.mkdir(exist_ok=True)
+        skill['updated_at_ns'] = time.time_ns()
+        # Eligibility follows an accepted code change, not its validation outcome.
+        # This timestamp belongs to this exact revision (including its results).
+        skill['available_at_ns'] = skill['updated_at_ns']
+        identifier = _evidence_hash(skill)
+        atomic_json(directory / (identifier + '.json'), skill)
+        # Search metadata is a view of this exact revision. No advice, after-values,
+        # source snippets or validation details need loading before ranking.
+        search = {k:skill[k] for k in ('skill_id','status','applicable_conditions','keys') if k in skill}
+        search.update(correction_id=skill.get('correction_id',skill['skill_id']),
+            verified_at_ns=skill.get('verified_at_ns'),revoked=skill.get('revoked',False),
+            has_code_change=skill.get('has_code_change',False),available_at_ns=skill['available_at_ns'],
+            provenance={'episode_id':skill['provenance']['episode_id']},content_revision=identifier)
+        search_revision = _evidence_hash(search)
+        atomic_json(directory / ('search_'+search_revision+'.json'),search)
+        atomic_json(directory / 'head.json', {'revision': identifier, 'search_revision':search_revision})
+        return skill
+
+    def load(self, skill_id, revision=None):
+        if not isinstance(skill_id,str) or not re.fullmatch(r'skill_[0-9a-f]{64}',skill_id):
+            raise ValueError('Invalid skill ID')
+        directory = self.root/skill_id
+        revision = revision or json.loads((directory/'head.json').read_text())['revision']
+        if not isinstance(revision,str) or not re.fullmatch('[0-9a-f]{64}',revision):
+            raise ValueError('Invalid skill revision')
+        row = json.loads((directory/(revision+'.json')).read_text())
+        if _evidence_hash(row) != revision or row.get('skill_id') != skill_id:
+            raise ValueError('Skill checksum mismatch')
+        return _public_skill_payload(row)
+
+    def search_records(self):
+        """Snapshot only the search view; do not load complete skill bodies."""
+        result = []
+        for head in sorted(self.root.glob('skill_*/head.json')):
+            try:
+                pointer = json.loads(head.read_text())
+                revision = pointer['search_revision']
+                if not re.fullmatch('[0-9a-f]{64}',revision): continue
+                row = json.loads((head.parent/('search_'+revision+'.json')).read_text())
+                if (_evidence_hash(row)==revision and row['content_revision']==pointer['revision']
+                        and row['skill_id']==head.parent.name):
+                    result.append(_public_skill_payload(row))
+            except (OSError,ValueError,KeyError,TypeError):
+                # Preserve older records; do not invent keys or promote them during lookup.
+                continue
+        return result
+
+    def records(self):
+        records = []
+        for head in sorted(self.root.glob('skill_*/head.json')):
+            try:
+                revision = json.loads(head.read_text())['revision']
+                if not re.fullmatch('[0-9a-f]{64}', revision):
+                    continue
+                row = json.loads((head.parent / (revision + '.json')).read_text())
+                if _evidence_hash(row) == revision:
+                    records.append(_public_skill_payload(row))
+            except (OSError, ValueError, KeyError):
+                continue
+        return records
+
+    def append_usage(self, row):
+        row = _public_skill_payload(row)
+        with (self.root / 'usage.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(row, allow_nan=False) + '\n')
+
+    def verified_view(self):
+        return [{k: row[k] for k in ('skill_id', 'version', 'repair_advice', 'numeric_correction',
+                'applicable_conditions', 'public_validation', 'provenance')}
+                for row in self.records() if row['status'] == 'local_verified' and not row.get('revoked')]
+
+    def revoke(self, skill_id, counterexample):
+        row = next(r for r in self.records() if r['skill_id'] == skill_id)
+        row.setdefault('counterexamples', []).append(_public_skill_payload(counterexample))
+        row['revoked'] = True
+        return self.put(row)
+
+
+def retrieve_repair_skills(records, *, episode_id, cutoff_ns, compatibility, language, tactile,
+                          mode='joint', encoder=None, context=None, load_skill=None):
+    """Rank accepted code-change experiences; outcomes are context, not a gate."""
+    if mode not in ('language', 'tactile', 'joint'):
+        raise ValueError('Unknown repair retrieval mode')
+    context = context or {}
+    def conflicts(row):
+        conditions = row['applicable_conditions']
+        known = {**conditions.get('public_conditions',{}), 'phase':conditions.get('phase','unknown')}
+        return any(k in context and context[k] != 'unknown' and v != 'unknown' and context[k] != v
+                   for k,v in known.items() if isinstance(v,(str,int,float,bool)))
+    eligible = [r for r in records if r.get('has_code_change') is True and not r.get('revoked')
+        and isinstance(r.get('available_at_ns'),int) and r['available_at_ns'] < cutoff_ns
+        and r['provenance']['episode_id'] != episode_id
+        and r['applicable_conditions']['compatibility'] == compatibility and not conflicts(r)]
+    result = {'matches': [], 'mode': mode, 'fallback': None, 'miss_reason': None,
+              'language_quality': 'not_requested', 'tactile_quality': tactile['quality'],
+              'rrf_c': 60, 'candidate_ids': [r['skill_id'] for r in eligible],
+              'language_template':REPAIR_LANGUAGE_TEMPLATE,'language_skipped':[]}
+    if not eligible:
+        result['miss_reason'] = 'no_compatible_code_change_experience'
+        return result
+    rankings = {}
+    if mode in ('language', 'joint'):
+        try:
+            query_text = _validated_repair_language_text(language)
+            passages = []
+            for row in eligible:
+                for key in row['keys'].get('language_history',[row['keys'].get('language')]):
+                    try:
+                        passages.append((row,_validated_repair_language_text(key)))
+                    except (ValueError,TypeError,KeyError) as exc:
+                        result['language_skipped'].append({'skill_id':row['skill_id'],'reason':str(exc)})
+            if not passages:
+                result['language_quality'] = 'no_compatible_error_key'
+            elif encoder is None:
+                result['language_quality'] = 'encoder_unavailable'
+            else:
+                result['language_quality'] = 'ready'
+        except (ValueError,TypeError,KeyError) as exc:
+            result['language_quality'] = 'invalid_query_key'
+            result['language_error'] = str(exc)
+    if result['language_quality'] == 'ready':
+        try:
+            texts = [query_text] + [text for row,text in passages]
+            vectors = encoder.encode_many(texts) if hasattr(encoder,'encode_many') else [encoder.encode(t) for t in texts]
+            q = np.asarray(vectors[0], float)
+            scores = []
+            for (row,key), encoded in zip(passages,vectors[1:]):
+                # Re-encoding is explicit and uses the same frozen encoder for both sides.
+                v = np.asarray(encoded, float)
+                if q.shape != v.shape or not np.isfinite(v).all() or not np.isfinite(q).all():
+                    continue
+                norm = np.linalg.norm(q)*np.linalg.norm(v)
+                if norm > 0:
+                    scores.append((float(np.dot(q,v)/norm), row))
+            rankings['language'] = sorted(scores, key=lambda x: (-x[0], x[1]['skill_id']))
+            result['language_quality'] = 'ok'
+            result['text_encoder_contract'] = dict(encoder.contract)
+        except Exception as exc:
+            result['language_quality'] = 'encoder_unavailable'
+            result['language_error'] = type(exc).__name__
+    if mode in ('tactile', 'joint') and tactile['quality'] == 'ok':
+        scores = []
+        q = np.asarray(tactile['vector'], float)
+        for row in eligible:
+            for key in row['keys'].get('tactile', []):
+                if key['quality'] != 'ok' or key['contract'] != tactile['contract']:
+                    continue
+                v = np.asarray(key['vector'], float)
+                if v.shape == q.shape and np.isfinite(v).all() and np.isfinite(q).all():
+                    scores.append((-float(np.sqrt(np.mean((v-q)**2))), row))
+        rankings['tactile'] = sorted(scores, key=lambda x: (-x[0], x[1]['skill_id']))
+    if mode == 'joint' and 'tactile' not in rankings:
+        result['fallback'] = 'language_only:tactile_' + tactile['quality']
+    if mode == 'joint' and 'language' not in rankings:
+        result['fallback'] = 'tactile_only:' + ('text_encoder_unavailable' if
+            result['language_quality']=='encoder_unavailable' else result['language_quality'])
+    fused, channels = {}, {}
+    for channel, scores in rankings.items():
+        seen = set()
+        for score, row in scores:
+            identity = row['correction_id']
+            if identity in seen:
+                continue
+            seen.add(identity)
+            rank = len(seen)
+            if rank > 5:
+                break
+            fused.setdefault(identity, {'skill': row, 'score': 0., 'ranks': {}})
+            fused[identity]['score'] += 1 / (60 + rank) if mode == 'joint' else score
+            fused[identity]['ranks'][channel] = {'rank': rank, 'score': score}
+        channels[channel] = len(seen)
+    selected = []
+    for match in sorted(fused.values(), key=lambda x: (-x['score'], x['skill']['skill_id'])):
+        if load_skill is not None:
+            try:
+                search = match['skill']
+                match = {**match,'skill':load_skill(search['skill_id'],search['content_revision'])}
+            except (OSError,ValueError,KeyError,TypeError) as exc:
+                result.setdefault('content_unavailable',[]).append({'skill_id':search['skill_id'],'reason':type(exc).__name__})
+                continue
+        selected.append(match)
+        if len(selected)==2: break
+    result['matches'] = selected
+    result['miss_reason'] = None if selected else 'no_compatible_code_change_experience'
+    return result
+
+
+def validate_skill_draft(draft, *, failure, request, source_before, source_after, samples, calls=(), manifest=None):
+    """Normalize advice without making numeric provenance an admission requirement."""
+    if not isinstance(draft, dict):
+        raise ValueError('Missing skill draft')
+    _public_skill_payload(draft)
+    draft = json.loads(json.dumps(draft))  # Keep the raw LLM proposal intact for audit.
+    warnings = []
+    advice = draft.get('repair_advice')
+    if not isinstance(advice, str) or not 1 <= len(advice) <= 2400:
+        raise ValueError('Missing bounded repair advice')
+    conditions = draft.get('applicable_conditions', {})
+    if isinstance(conditions, str):
+        conditions = {'description': conditions}
+        warnings.append('applicable_conditions_text_normalized')
+    if not isinstance(conditions, dict):
+        raise ValueError('Invalid applicable conditions')
+    corrections = draft.get('numeric_correction', [])
+    if not isinstance(corrections, list) or len(corrections) > 8:
+        raise ValueError('Invalid numeric corrections')
+    frozen_words = ('force_target', 'threshold', 'minimum_hold', 'release_requirement', 'estimator', 'hard_bound')
+    fixed_parameters = {'hold_seconds', 'requested_hold_seconds', 'piano_hold_seconds',
+                        'piano_require_dynamics', 'action_repeat', 'range_force', 'max_deformation'}
+    for c in corrections:
+        if not isinstance(c, dict) or not {'parameter', 'before', 'unit', 'limitations'} <= c.keys() or not ('after' in c or 'rule' in c):
+            raise ValueError('Numeric correction needs parameter, before, after/rule, unit and limitations')
+        if any(not isinstance(c[k],str) or not c[k] for k in ('parameter','unit','limitations')):
+            raise ValueError('Numeric parameter, unit and limitations must be nonempty text')
+        units = {'wrist_x_offset_m':'m','wrist_y_m':'m','wrist_z_m':'m','index_flexion_rad':'rad'}
+        if c['parameter'] in units and c['unit'] != units[c['parameter']]:
+            raise ValueError('Numeric correction has an incompatible unit')
+        if c['parameter'].lower() in fixed_parameters or any(w in c['parameter'].lower() for w in frozen_words):
+            raise ValueError('Skill cannot override fixed requirements')
+        # Keep reported settings as advice, not measurements or host attestations.
+        # No AST/default/variable binding is needed to save or retrieve a change.
+        for key in ('after_source', 'before_source', 'unverified_before_claim',
+                    'before_quality', 'before_calibration_version'):
+            c.pop(key, None)
+        c['before_status'] = 'reported' if c['before'] is not None else 'unknown'
+        c['after_status'] = 'proposed'
+        c['tested_conditions'] = []
+    snippets = draft.get('code_snippets', [])
+    valid_snippets = [s for s in snippets if isinstance(s, str) and s.strip() and
+                      len(s) <= 4000 and s.strip() in source_after][:2] if isinstance(snippets, list) else []
+    if valid_snippets != snippets:
+        warnings.append('unsupported_optional_snippets_omitted')
+    return {'repair_advice': advice, 'applicable_conditions': conditions,
+            'numeric_correction': corrections, 'code_snippets': valid_snippets, 'normalization_warnings': warnings,
+            'cited_skill_ids': [s for s in draft.get('cited_skill_ids', []) if isinstance(s, str)]}
 
 
 class _UnavailableTrajectoryEncoder:
@@ -49,7 +498,7 @@ def trajectory_encoders(config):
         return []
     if not isinstance(config, Mapping):
         return list(config) if isinstance(config, (list, tuple)) else [config]
-    methods = config.get('representations', ['tactile'])
+    methods = config.get('representations', ['window4'])
     if not isinstance(methods, (list, tuple)) or not methods or len(set(methods)) != len(methods):
         raise ValueError('Specify distinct trajectory representations')
     encoders = []
@@ -61,19 +510,6 @@ def trajectory_encoders(config):
             # Optional retrieval cannot disable the existing 5D controller.
             encoders.append(_UnavailableTrajectoryEncoder(config, method, exc))
     return encoders
-
-
-def _clip_window(directory, samples, clip, contract, encoder, episode_id):
-    """Use same-episode history up to this clip, including previous phases."""
-    selected = [s for s in samples if s['physics_step'] <= clip['end_physics_step']]
-    spec = encoder.contract.get('window')
-    if spec and selected:
-        # Keep the previous observation for a causal 30Hz target; never synthesize it.
-        start = selected[-1]['timestamp_s'] - spec['seconds'] - spec['max_age_seconds']
-        selected = [s for s in selected if s['timestamp_s'] >= start - 1e-10]
-    else:
-        selected = [s for s in selected if s['clip_id'] == clip['clip_id']]
-    return load_public_tactile_window(directory, selected, contract=contract, episode_id=episode_id)
 
 
 def _temporal_contract(contract, encoder):
@@ -89,6 +525,7 @@ class TactileEvidenceIndex:
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / 'associations.jsonl'
 
+    @untraced_host_recording
     def append(self, kind, payload, links=()):
         record = {'kind': kind, 'payload': payload, 'links': list(links)}
         record['id'] = kind + ':' + _evidence_hash(record)
@@ -114,48 +551,6 @@ class TactileEvidenceIndex:
 
     def related(self, identifier):
         return [r for r in self.records() if r['id'] == identifier or identifier in r['links']]
-
-    def encode_clip(self, clip_id, encoder, *, records=None):
-        """Re-encode archived PUBLIC frames without changing the clip or 5D nodes."""
-        records = self.records() if records is None else records
-        clips = [r['payload'] for r in records if r['kind'] == 'clip' and r['payload']['clip_id'] == clip_id]
-        if not clips:
-            raise ValueError('Unknown tactile clip')
-        clip = clips[-1]
-        path = Path(clip['manifest']).resolve()
-        if not path.is_relative_to(self.root / 'episodes') or path.name != 'manifest.json':
-            raise ValueError('Clip must reference a public episode')
-        manifest = json.loads(path.read_text(encoding='utf-8'))
-        if manifest['episode_id'] != clip['episode_id']:
-            raise ValueError('Clip episode mismatch')
-        window = _clip_window(path.parent, manifest['samples'], clip, manifest['contract'], encoder, manifest['episode_id'])
-        result = encode_tactile_window(window, encoder)
-        contracts = [r['payload']['contract'] for r in records if r['kind'] == 'representation'
-                     and r['payload']['clip_id'] == clip_id and r['payload']['type'] == 'instantaneous_5d']
-        contract = _temporal_contract(contracts[-1], encoder)
-        return self.put_representation(clip_id, 'temporal', result['vector'], contract,
-            result['quality'], clip['end_physics_step'], provenance=result.get('provenance'))
-
-    def encode_history(self, encoders):
-        """Backfill CaP-X public clips only, idempotently; no expert gallery import."""
-        records = self.records()
-        results = []
-        for row in records:
-            if row['kind'] != 'clip':
-                continue
-            clip = row['payload']
-            for encoder in encoders:
-                existing = [r for r in records if r['kind'] == 'representation'
-                    and r['payload']['clip_id'] == clip['clip_id'] and r['payload']['type'] == 'temporal'
-                    and r['payload']['contract'].get('encoder') == encoder.contract]
-                if existing:
-                    continue
-                try:
-                    identifier = self.encode_clip(clip['clip_id'], encoder, records=records)
-                    results.append({'clip_id': clip['clip_id'], 'representation_id': identifier})
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    results.append({'clip_id': clip['clip_id'], 'error_type': type(exc).__name__})
-        return results
 
     def resolve_skill_evidence(self, clip_id, *, records=None):
         """Follow actual clip -> invocation -> function; never infer a skill label."""
@@ -232,7 +627,9 @@ def encode_tactile_window(window, encoder=None):
             raise ValueError('Window timestamps must be strictly increasing')
         if steps[-1] > window['current_physics_step']:
             raise ValueError('Future samples are not a causal query')
-        if any(len(window[k]) != len(steps) for k in ('timestamps_s', 'frames', 'valid_masks', 'instantaneous_5d')):
+        channels = ('timestamps_s', 'instantaneous_5d') + (('features_4d', 'valid_features_4d')
+            if 'features_4d' in window else ('frames', 'valid_masks'))
+        if any(len(window[k]) != len(steps) for k in channels):
             raise ValueError('Window channels are not aligned')
         times = window['timestamps_s']
         if not np.isfinite(times).all() or any(b <= a for a, b in zip(times, times[1:])):
@@ -257,58 +654,23 @@ def encode_tactile_window(window, encoder=None):
                 'error_type': type(exc).__name__}
 
 
-def load_public_tactile_window(directory, samples, *, contract=None, episode_id=None):
-    directory = Path(directory).resolve()
-    if not samples:
-        raise ValueError('An empty clip has no encoded representation')
-    if contract is not None:
-        hz = float(contract['physics_hz'])
-        if not np.isfinite(hz) or hz <= 0 or any(
-                not np.isclose(s['timestamp_s'], s['physics_step']/hz, rtol=0, atol=1e-9) for s in samples):
-            raise ValueError('Public timestamps do not match the physical clock')
-    frames, masks = [], []
-    for sample in samples:
-        path = (directory / sample['frame']['path']).resolve()
-        if path.parent != directory or _evidence_hash(path.read_bytes()) != sample['frame']['sha256']:
-            raise ValueError('Tactile frame reference failed verification')
-        with np.load(path, allow_pickle=False) as data:
-            # Explicit modality whitelist, never trust arbitrary archive fields.
-            frames.append({k: data[k] for k in ('rgb', 'depth_m', 'reference_depth_m') if k in data})
-            masks.append(data['valid_mask'] if 'valid_mask' in data else None)
-    def motion(value):
-        if value is None or any(v is None for v in value):
-            return None
-        array = np.asarray(value, float)
-        return array.tolist() if array.shape == (4,) and np.isfinite(array).all() else None
-    return {'frames': frames, 'valid_masks': masks,
-        'episode_id': episode_id, 'sensor_sha256': (contract or {}).get('sensor'),
-        'actions': [motion(s.get('action')) for s in samples],
-        'actual_state': [motion([s.get('hand', {}).get(k) for k in
-            ('wrist_x_offset_m', 'wrist_y_m', 'wrist_z_m', 'index_flexion_rad')]) for s in samples],
-        'sources': [{k: s[k] for k in ('sample_id', 'clip_id', 'physics_step', 'timestamp_s', 'frame')} for s in samples],
-        'physics_steps': [s['physics_step'] for s in samples],
-        'timestamps_s': [s['timestamp_s'] for s in samples],
-        'instantaneous_5d': [list(s['instantaneous_5d']) if s['instantaneous_5d'] is not None else None for s in samples],
-        'current_physics_step': samples[-1]['physics_step']}
-
-
 class PublicTactileEvidence:
     """Host recorder, separate from force estimation and private evaluation.
 
-    One NPZ per actual sample permits crash recovery and future image encoders;
-    JSON only carries references. An invocation is recorded even if it throws.
+    Numeric tactile windows stay in RAM; only queried error windows become
+    skill attachments. The final compact manifest is written
+    at episode end, never in the per-action path.
     Phase names describe commanded motion, not native scoring stages.
     """
 
     def __init__(self, root, run_dir, contract, request, *, encoder=None, retrieve_history=True,
-                 failure_triggered=True):
+                 failure_triggered=True, error_windows_only=False, retain_full_numeric_evidence=False):
         self.index = TactileEvidenceIndex(root)
         self.failure_triggered = bool(failure_triggered)
+        self.error_windows_only = bool(error_windows_only)
+        self.retain_full_numeric_evidence = bool(retain_full_numeric_evidence)
         self.encoders = trajectory_encoders(encoder)
-        # Existing public CaP-X executions gain keys in the same versioned spaces.
-        # No native labels or expert-index skill IDs are consumed here.
-        self.backfill = self.index.encode_history(self.encoders) if retrieve_history and self.encoders and not self.failure_triggered else []
-        self.history = self.index.records() if retrieve_history else []
+        self.history = self.index.records() if retrieve_history and not self.error_windows_only else []
         self.episode_id = Path(run_dir).name + '_' + uuid.uuid4().hex
         self.directory = self.index.root / 'episodes' / self.episode_id
         self.directory.mkdir(parents=True, exist_ok=False)
@@ -322,6 +684,8 @@ class PublicTactileEvidence:
         self.executions = []
         self._text_buffer = ''
         self.current_clip = None
+        self._error_samples = {}
+        self._last_flushed_signature = None
         self.last_step = None
         self.last_action = None
         self.attempt = None
@@ -333,7 +697,6 @@ class PublicTactileEvidence:
         atomic_json(self.run_dir / 'piano_tactile_evidence.json', {
             'schema': 'public_tactile_evidence.v1', 'root': str(self.index.root),
             'episode_id': self.episode_id, 'manifest': str(self.manifest_path)})
-        self.flush()
 
     def stamp(self):
         self.sequence += 1
@@ -341,11 +704,23 @@ class PublicTactileEvidence:
 
     def write(self, text):
         """Observe public stop markers at their call site, before the stack unwinds."""
+        from capx.integrations.opentac_shadow_code_memory import _public_note_control_failure, _public_note_report
         self._text_buffer += text
         while '\n' in self._text_buffer:
             line, self._text_buffer = self._text_buffer.split('\n', 1)
             if line.startswith(('PIANO_STOP ', 'CAPX_FAILURE ')) and not any(m in line.lower() for m in _PRIVATE_MARKERS):
                 self.event('public_stop', message=line[:1200])
+            elif line.startswith('PIANO_NOTE '):
+                report = _public_note_report(line,self.request)
+                if report is not None:
+                    self.event('public_note_report', report=report)
+                failure = _public_note_control_failure(line, self.request, self.clock['action_step'])
+                if failure:
+                    canonical='PIANO_NOTE '+json.dumps(report)
+                    self.event('public_stop', message=canonical, control_failure=failure)
+                elif report is None:
+                    self.event('public_stop', message='PIANO_STOP invalid_public_note_report',
+                               control_failure={'reason':'invalid_public_note_report'})
         self._text_buffer = self._text_buffer[-1200:]
         return len(text)
 
@@ -366,8 +741,9 @@ class PublicTactileEvidence:
             return 'hold'
         return 'press'
 
+    @untraced_host_recording
     def sample(self, *, action_step, physics_step, attempt, note, dynamics, action,
-               hand, estimate, features, rgb, depth, reference, scales):
+               hand, estimate, features, scales, features_4d=None, valid_depth_fraction=None):
         self.instantaneous_scales = list(scales)
         if self.last_step == physics_step:
             return  # Repeated queries do not create new physical observations.
@@ -381,23 +757,15 @@ class PublicTactileEvidence:
             self.current_clip = {'clip_id': 'clip:' + _evidence_hash([self.episode_id, attempt, phase, physics_step]),
                 'attempt': attempt, 'note': note, 'dynamics': dynamics, 'phase': phase,
                 'phase_basis': 'commanded_motion_not_native_stage', 'samples': []}
-        depth = None if depth is None else np.asarray(depth)
-        reference = None if reference is None else np.asarray(reference)
-        valid = None
-        if depth is not None and reference is not None and depth.ndim == 2 and depth.shape == reference.shape:
-            valid = np.isfinite(depth) & np.isfinite(reference) & (depth > 0) & (reference > 0)
-        arrays = {k: np.asarray(v) for k, v in {'rgb': rgb, 'depth_m': depth,
-            'reference_depth_m': reference, 'valid_mask': valid}.items() if v is not None}
-        if any(v.dtype.hasobject for v in arrays.values()):
-            raise ValueError('Object arrays are not public tactile frames')
-        path = self.directory / f'frame_{physics_step:09d}.npz'
-        with path.open('xb') as stream:
-            np.savez_compressed(stream, **arrays)
         vector = None
         if features is not None:
             value = np.asarray(features, float)
             if value.shape == (5,) and np.isfinite(value).all():
                 vector = value.tolist()
+        feature4 = features_4d if features_4d is not None else (vector[:4] if vector else None)
+        feature4 = np.asarray(feature4, float) if feature4 is not None else None
+        good4 = bool(feature4 is not None and feature4.shape == (4,) and np.isfinite(feature4).all()
+                     and valid_depth_fraction is not None and valid_depth_fraction >= .60)
         public_hand = {k: hand.get(k) for k in ('index_flexion_rad', 'wrist_x_offset_m', 'wrist_y_m', 'wrist_z_m')}
         force = estimate.get('estimated_key_force_N')
         if force is not None and not np.isfinite(force):
@@ -408,30 +776,61 @@ class PublicTactileEvidence:
             'action': list(action), 'hand': public_hand, 'instantaneous_5d': vector,
             'estimate': {'estimated_key_force_N': force, 'quality': estimate.get('quality', 'unavailable'),
                          'calibration_version': estimate.get('calibration_version')},
-            'frame': {'path': path.name, 'sha256': _evidence_hash(path.read_bytes()),
-                      'channels': list(arrays)}, 'invocation_ids': list(self.active_calls)}
+            'features_4d': feature4.tolist() if good4 else None, 'valid_features_4d': good4,
+            'invocation_ids': list(self.active_calls)}
         self.frames.append(row)
         self.current_clip['samples'].append(row)
-        with (self.directory / 'samples.jsonl').open('a', encoding='utf-8') as stream:
-            stream.write(json.dumps(row, allow_nan=False) + '\n')
-        # Query once per segment using fresh instantaneous evidence. A retrieved
-        # clip remains advisory, not an automatically approved parameter change.
-        if not self.failure_triggered and vector is not None and estimate.get('quality') == 'ok' and not self.current_clip.get('queried'):
-            self.current_clip['queried'] = True
-            rep_contract = self._representation_contract(note, dynamics, phase)
-            matches = self.index.retrieve('instantaneous_5d', vector, rep_contract,
-                candidates=self.history, scales=scales)
-            event = {'query_sample': row['sample_id'], 'type': 'instantaneous_5d', 'matches': matches}
-            self.retrievals.append(event)
-            self.index.append('retrieval', event, [row['clip_id'], *(m['representation_id'] for m in matches)])
+        if self.error_windows_only:
+            self._record_public_force_checks(row, note, dynamics)
 
     def _representation_contract(self, note, dynamics, phase):
         from capx.integrations.opentac_shadow_vision import parse_note
         return {**self.contract, 'feature_schema': 'instantaneous_5d.v1',
                 'color': 'black' if parse_note(note)[1] else 'white', 'dynamics': dynamics, 'phase': phase}
 
+    def _record_public_force_checks(self, row, note, dynamics):
+        """Audit existing public sampled-control criteria; never native force/score."""
+        from capx.integrations.opentac_shadow_code_memory import PUBLIC_PIANO_FORCE_LIMITS
+        from capx.integrations.opentac_shadow_vision import parse_note
+        quality = row['estimate']['quality']
+        force = row['estimate']['estimated_key_force_N']
+        available = quality=='ok' and force is not None and np.isfinite(force)
+        previous = getattr(self,'_public_hold_sample',None)
+        if available and (previous is None or previous['estimate']['quality']!='ok'):
+            self.event('public_check',check_id='tactile_available',index=row['attempt'],passed=True,
+                       measurements={'sample_id':row['sample_id'],'calibration_version':row['estimate']['calibration_version']})
+        color = 'black' if parse_note(note)[1] else 'white'
+        target,tolerance,gate = PUBLIC_PIANO_FORCE_LIMITS[color+'_'+dynamics]
+        flex = row['hand'].get('index_flexion_rad')
+        good = bool(available and gate <= force <= target+tolerance and flex is not None and flex > .02)
+        contiguous = (previous is not None and previous['attempt']==row['attempt'] and
+                      row['physics_step']-previous['physics_step']==self.contract['action_repeat'])
+        if not good:
+            self._public_hold_since = None
+            self._public_hold_emitted = False
+        elif not contiguous or getattr(self,'_public_hold_since',None) is None:
+            self._public_hold_since = row['physics_step']
+            self._public_hold_emitted = False
+        elif not self._public_hold_emitted:
+            elapsed = (row['physics_step']-self._public_hold_since)/self.contract['physics_hz']
+            if elapsed+1e-10 >= self.request['hold_seconds'][row['attempt']]:
+                self.event('public_check',check_id='public_hold',index=row['attempt'],passed=True,
+                    measurements={'first_physics_step':self._public_hold_since,'last_physics_step':row['physics_step'],
+                                  'sampled_seconds':elapsed,'calibration_version':row['estimate']['calibration_version']})
+                self._public_hold_emitted = True
+        self._public_hold_sample = row
+
     def window(self, samples):
-        return load_public_tactile_window(self.directory, samples, contract=self.contract, episode_id=self.episode_id)
+        # Numeric observations only. No image buffer, NPZ, or disk read.
+        return {'episode_id': self.episode_id, 'sensor_sha256': self.contract['sensor'],
+            'physics_steps': [s['physics_step'] for s in samples],
+            'timestamps_s': [s['timestamp_s'] for s in samples],
+            'features_4d': [s['features_4d'] for s in samples],
+            'valid_features_4d': [s['valid_features_4d'] for s in samples],
+            'instantaneous_5d': [s['instantaneous_5d'] for s in samples],
+            'sources': [{k: s[k] for k in ('sample_id', 'physics_step', 'event_seq',
+                'timestamp_s', 'features_4d', 'valid_features_4d')} for s in samples],
+            'current_physics_step': samples[-1]['physics_step']}
 
     def _finish_clip(self):
         clip = self.current_clip
@@ -443,36 +842,9 @@ class PublicTactileEvidence:
             start_physics_step=samples[0]['physics_step'], end_physics_step=samples[-1]['physics_step'],
             invocation_ids=sorted({i for r in samples for i in r['invocation_ids']}))
         self.clips.append(clip)
-        self.index.append('clip', {**clip, 'episode_id': self.episode_id, 'manifest': str(self.manifest_path)},
-            [clip['clip_id'], *clip['invocation_ids']])
-        contract = self._representation_contract(clip['note'], clip['dynamics'], clip['phase'])
-        # Keep every 5D sample; this additional representative is explicitly the
-        # last valid sample, not a learned temporal embedding or a replacement.
-        valid = [r for r in samples if r['instantaneous_5d'] is not None and r['estimate']['quality'] == 'ok']
-        rep = valid[-1] if valid else samples[-1]
-        self.index.put_representation(clip['clip_id'], 'instantaneous_5d', rep['instantaneous_5d'],
-            contract, rep['estimate']['quality'], rep['physics_step'])
-        if not self.encoders:
-            self.index.put_representation(clip['clip_id'], 'temporal', None,
-                {**contract, 'encoder': None, 'window': 'commanded_phase_segment.v1'},
-                'not_configured', samples[-1]['physics_step'])
-        for encoder in ([] if self.failure_triggered else self.encoders):
-            try:
-                window = _clip_window(self.directory, self.frames, clip, self.contract, encoder, self.episode_id)
-                result = encode_tactile_window(window, encoder)
-            except (OSError, ValueError, KeyError, TypeError) as exc:
-                result = {'vector': None, 'quality': 'invalid_public_history', 'error_type': type(exc).__name__}
-            temporal_contract = _temporal_contract(contract, encoder)
-            rep_id = self.index.put_representation(clip['clip_id'], 'temporal', result['vector'], temporal_contract,
-                result['quality'], samples[-1]['physics_step'], provenance=result.get('provenance'))
-            if result['quality'] == 'ok':
-                matches = self.index.retrieve('temporal', result['vector'], temporal_contract, candidates=self.history)
-                self.retrievals.append({'query_representation': rep_id, 'type': 'temporal',
-                    'encoder': dict(encoder.contract), 'matches': matches})
-                self.index.append('retrieval', self.retrievals[-1], [rep_id, *(m['representation_id'] for m in matches)])
         self.current_clip = None
-        self.flush()
 
+    @untraced_host_recording
     def event(self, kind, **fields):
         # Never serialize arbitrary generated values or native simulator info.
         if kind in ('attempt_finalized', 'release_rejected'):
@@ -493,21 +865,29 @@ class PublicTactileEvidence:
                 return
             fields = {'modality': fields['modality']}
         elif kind == 'public_stop':
+            report = fields.get('control_failure')
             fields = {'message': fields['message'][:1200], 'invocation_ids': list(self.active_calls)}
+            if report:
+                fields['control_failure'] = {k: report[k] for k in ('index', 'note', 'reason',
+                    'action_step', 'quality', 'had_valid_contact', 'public_hold_confidence') if k in report}
+        elif kind == 'public_note_report':
+            fields = {'report': {k: fields['report'][k] for k in
+                ('index', 'quality', 'abort_reason', 'had_valid_contact', 'public_hold_confidence')
+                if k in fields['report']}}
+        elif kind == 'public_check':
+            fields = {k: fields[k] for k in ('check_id', 'index', 'passed', 'measurements') if k in fields}
+        elif kind == 'policy_end':
+            fields = {}
+        elif kind == 'action':
+            fields = {k: fields[k] for k in ('target', 'hand_state') if k in fields}
         else:
             return
         event = {'kind': kind, **self.stamp(), **fields}
+        event['recorded_at_ns'] = time.time_ns()
+        event['invocation_ids'] = list(self.active_calls)
         self.events.append(event)
-        links = [*self.active_calls, *([fields['skill_id']] if fields.get('skill_id') else [])]
-        if kind == 'tactile_skill_recorded':
-            links += [f['function_id'] for f in self.functions.values()
-                      if f['ast_hash'] == fields.get('function_hash')]
-            self.index.append('tactile_parameter', {'episode_id': self.episode_id, **event}, links)
-        else:
-            self.index.append('public_outcome', {'episode_id': self.episode_id, **event}, links)
         if kind == 'attempt_finalized':
             self._finish_clip()
-        self.flush()
 
     @contextmanager
     def trace_execution(self, code, namespace):
@@ -518,6 +898,8 @@ class PublicTactileEvidence:
         repair = re.search(r'^# capx-piano-repair:([0-9a-f]{64})$', code, re.M)
         execution = {'execution_id': self.execution_id, 'source_version': policy.group(1) if policy else None,
             'repair_id': repair.group(1) if repair else None, 'start': self.stamp(), 'end': None}
+        parameters = re.search(r'^# capx-piano-parameters:(.+)$', code, re.M)
+        execution['parameter_version'] = _evidence_hash(json.loads(parameters.group(1))) if parameters else None
         self.executions.append(execution)
         if repair:
             self.events.append({'kind': 'repair_execution_begin', 'repair_id': repair.group(1),
@@ -531,9 +913,8 @@ class PublicTactileEvidence:
                 by_line[(node.lineno, node.name)] = function_id
                 if function_id not in self.functions:
                     self.functions[function_id] = {'function_id': function_id, 'name': node.name,
-                        'source': source, 'source_hash': _evidence_hash(source.encode()),
+                        'source': source, 'source_hash': _evidence_hash(source.encode()), 'line':node.lineno,
                         'ast_hash': hashlib.sha256(ast.dump(node).encode()).hexdigest()}
-                    self.index.append('function', self.functions[function_id], [function_id])
         previous = sys.gettrace()
         frames = {}
         instructions = {}
@@ -548,19 +929,29 @@ class PublicTactileEvidence:
                        'execution_id': self.execution_id, 'depth': len(self.active_calls),
                        'parent_invocation_id': self.active_calls[-1] if self.active_calls else None,
                        'end': None, 'exceptions': [], 'outcome': 'running'}
+                row['numeric_arguments'] = {k:float(v) for k,v in frame.f_locals.items()
+                    if type(v) in (int,float) and np.isfinite(v) and
+                    not any(w in k.lower() for w in ('force','depth','estimate','reward','success','score'))}
                 frames[id(frame)] = row
                 self.invocations.append(row)
                 self.active_calls.append(identifier)
             row = frames.get(id(frame))
             if row is not None and event == 'exception':
-                row['exceptions'].append({'type': arg[0].__name__, 'generated_line': frame.f_lineno, **self.stamp()})
+                row['exceptions'].append({'type': arg[0].__name__, 'generated_line': frame.f_lineno,
+                                          'recorded_at_ns': time.time_ns(), **self.stamp()})
             if row is not None and event == 'return':
                 if frame.f_code not in instructions:
                     instructions[frame.f_code] = {i.offset: i.opname for i in dis.get_instructions(frame.f_code)}
                 opcode = instructions[frame.f_code].get(frame.f_lasti, '')
                 row.update(end=self.stamp(), outcome='returned' if opcode.startswith('RETURN') else 'raised')
+                # Only explicit public failure returns, never arbitrary return values or labels.
+                returned_reason = arg if isinstance(arg, str) else (
+                    arg[0] if isinstance(arg, tuple) and arg and isinstance(arg[0], str) else None)
+                if row['outcome'] == 'returned' and returned_reason in (
+                        'press_timeout', 'hold_timeout', 'overforce', 'OOD_REPROBE',
+                        'release_timeout', 'arrival_timeout', 'arrival_lost'):
+                    row['public_failure_return'] = returned_reason.lower()
                 # Exception events are retained even when handled by the helper.
-                self.index.append('invocation', row, [row['invocation_id'], row['function_id']])
                 self.active_calls.remove(row['invocation_id'])
                 del frames[id(frame)]
             return trace
@@ -571,16 +962,36 @@ class PublicTactileEvidence:
             sys.settrace(previous)
             execution['end'] = self.stamp()
             self._finish_clip()
-            self.flush()
 
-    def flush(self):
-        atomic_json(self.manifest_path, {'schema': 'public_tactile_evidence.v1',
+    def snapshot(self):
+        """Live host view for repair/validation; no serialization or disk round trip."""
+        return {'schema': 'public_tactile_evidence.v1',
             'episode_id': self.episode_id, 'contract': self.contract, 'request': self.request,
             'failure_triggered': self.failure_triggered, 'executions': self.executions,
             'trajectory_encoders': [{'contract': e.contract,
                 'load_error_type': getattr(e, 'error_type', None)} for e in self.encoders],
             'clips': self.clips, 'samples': self.frames, 'invocations': self.invocations,
-            'functions': list(self.functions.values()), 'events': self.events, 'retrievals': self.retrievals})
+            'functions': list(self.functions.values()), 'events': self.events, 'retrievals': self.retrievals}
+
+    @untraced_host_recording
+    def flush(self):
+        signature = (self.sequence, len(self.events), len(self._error_samples))
+        if self._last_flushed_signature == signature:
+            return
+        data = self.snapshot()
+        if not self.retain_full_numeric_evidence:
+            data['samples'] = [s for s in self.frames if s['physics_step'] in self._error_samples]
+        ids = {s['sample_id'] for s in data['samples']}
+        data['clips'] = [{**c, 'sample_ids': [i for i in c['sample_ids'] if i in ids]}
+                         for c in self.clips if any(i in ids for i in c['sample_ids'])]
+        data['events'] = [e for e in self.events if e['kind'] != 'action']
+        if self.error_windows_only:
+            data['functions'] = [{k: v for k, v in f.items() if k != 'source'}
+                                 for f in data['functions']]  # Complete source lives in the program store.
+        data['retention'] = ('full_numeric_public_episode.v1' if self.retain_full_numeric_evidence
+                             else 'numeric_window4_in_ram_until_episode_end.v1')
+        atomic_json(self.manifest_path, data)
+        self._last_flushed_signature = signature
 
     def close(self):
         self._finish_clip()
@@ -640,6 +1051,157 @@ def initialize_library(source: Path | None, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("xb") as stream:
         stream.write(raw)
+
+
+def continual_episode_feedback(run_dir, arm, *, feedback_contract=None):
+    """Whole-episode public feedback; A never receives numeric tactile telemetry.
+
+    No private files, arbitrary stdout or generated source are read here. The
+    source is supplied once by the caller. Windows end at the last force read
+    of each attempt; if a policy reads during release, those reads remain
+    release evidence. Samples are matched by physical time, never interpolated.
+    """
+    from capx.integrations.opentac_shadow_code_memory import _public_note_report, PUBLIC_PIANO_FORCE_LIMITS
+    from capx.integrations.opentac_shadow_vision import parse_note
+    if arm not in ('A', 'B'):
+        raise ValueError('Unknown continual arm')
+    strict = feedback_contract == 'strict_tactile_ablation.v1'
+    if feedback_contract not in (None, 'strict_tactile_ablation.v1'):
+        raise ValueError('Unknown continual feedback contract')
+    run = Path(run_dir)
+    episode = json.loads((run/'shadow_public_episode.json').read_text())
+    request = episode['sequence']
+    events = [json.loads(l) for l in (run/'shadow_public_observations.jsonl').read_text().splitlines()]
+    actions = [e for e in events if e['kind'] == 'action']
+    reports = {}
+    errors = []
+    for e in events:
+        if e['kind'] != 'code_execution':
+            continue
+        for line in e.get('public_messages', []):
+            row = _public_note_report(line, request)
+            if row:
+                if strict and arm == 'A':
+                    continue  # No measured quality/contact/hold/abort outcomes.
+                # Arbitrary generated text may contain force values: only a
+                # categorical reason is allowed on the common evidence path.
+                reason = row.get('abort_reason')
+                row['abort_reason'] = reason if reason is None or re.fullmatch(r'[A-Za-z_]+', reason) else 'unclassified_public_stop'
+                reports[row['index']] = row
+            elif line.startswith('PIANO_STOP ') or re.match(r'^\w*(?:Error|Exception):', line):
+                errors.append(('program_reported_stop' if line.startswith('PIANO_STOP ') else 'program_exception')
+                    if strict else re.sub(r'(?<![A-Za-z_])-?\d+(?:\.\d+)?', '<number>', line[:600]))
+    finalized = [e for e in events if e['kind'] == 'attempt_finalized']
+    ends = {e['index']: e for e in finalized}
+    previous = episode.get('clear_action_steps', 0) + episode.get('force_history_warmup_action_steps', 0)
+    notes, motion, force_windows, summaries = [], [], [], []
+    rounded = lambda v: round(float(v), 6) if isinstance(v, (int, float)) and np.isfinite(v) else None
+    milli = lambda v: round(1000*rounded(v), 3) if rounded(v) is not None else None
+    def segments(values):
+        result = []
+        for i, value in enumerate(values):
+            if result and result[-1][2] == value:
+                result[-1][1] += 1
+            else:
+                result.append([i, 1, value])
+        return result
+    for index, note in enumerate(request['notes']):
+        stop = ends.get(index, {}).get('action_step', max((a['action_step'] for a in actions), default=previous))
+        aa = [a for a in actions if previous < a['action_step'] <= stop]
+        ff = [e for e in events if e['kind'] == 'force_estimate' and previous < e['action_step'] <= stop]
+        previous = stop
+        phase_counts = Counter()
+        pressed = False
+        for a in aa:
+            target = a['target']
+            pressed = pressed or target[3] > .05
+            phase_counts['release' if pressed and target[2] >= .035 and target[3] <= .05 else
+                         'press_hold' if pressed else 'approach'] += 1
+        notes.append({'index': index, 'report': reports.get(index),
+                      'finalized': index in ends,
+                      'release_verified': ends.get(index, {}).get('release_verified'),
+                      'actions': len(aa), 'command_phase_actions': dict(phase_counts)})
+        if strict and arm == 'A':
+            notes[-1].pop('report')
+        if not aa:
+            continue
+        if strict:
+            # Shared motion-only selection: neither force-read timing nor its
+            # quality selects which proprioceptive history reaches A.
+            pressing = [a for a in aa if a['target'][3] > .05 and a['target'][2] < .035]
+            anchor = (pressing or aa)[-1]['physics_step']
+        else:
+            anchor = ff[-1]['physics_step'] if ff else aa[-1]['physics_step']
+        steps = [anchor - (15-i)*8 for i in range(16)]
+        by_step = {a['physics_step']: a for a in aa if a['physics_step'] <= anchor}
+        by_force = {f['physics_step']: f for f in ff if f['physics_step'] <= anchor}
+        selected = [by_step.get(s) for s in steps]
+        targets = [[rounded(s['target'][c]) if s else None for s in selected] for c in range(4)]
+        motion.append({'index': index, 'physics_step_start': steps[0],
+            'target_by_column': [v[0] if all(x == v[0] for x in v) else v for v in targets],
+            'missing_target_samples': [i for i, s in enumerate(selected) if s is None],
+            'actual': [[milli(s['hand_state'].get(k)) for k in
+                ('wrist_x_offset_m','wrist_y_m','wrist_z_m','index_flexion_rad')] +
+                [milli((s['hand_state'].get('wrist_and_index_velocity') or [None])[0])]
+                if s else None for s in selected]})
+        if arm == 'A':
+            continue
+        estimates = [by_force.get(s, {}).get('estimate', {}) for s in steps]
+        values = [rounded(e.get('estimated_key_force_N')) for e in estimates]
+        quality = [e.get('quality', 'missing_observation') for e in estimates]
+        ages = [e.get('age_steps') for e in estimates]
+        force_windows.append({'index': index, 'physics_step_start': steps[0], 'physics_step_stride': 8,
+            'estimated_force_N': values, 'quality_segments': segments(quality), 'age_actions_segments': segments(ages),
+            'calibration_segments': segments([e.get('calibration_version') for e in estimates]),
+            'complete': all(bool(e) for e in estimates)})
+        midi = parse_note(note)[0]
+        color = 'black' if midi % 12 in (1,3,6,8,10) else 'white'
+        target, tolerance, gate = PUBLIC_PIANO_FORCE_LIMITS[color+'_'+request['dynamics'][index]]
+        # The compact window does not replace the whole attempt's arithmetic
+        # summary: early OOD/overforce must not disappear behind later release.
+        all_estimates = [f['estimate'] for f in ff]
+        valid = [rounded(e.get('estimated_key_force_N')) for e in all_estimates
+                 if rounded(e.get('estimated_key_force_N')) is not None
+                 and e.get('quality') == 'ok' and e.get('age_steps') == 0]
+        summaries.append({'index': index, 'valid_samples': len(valid),
+            'scope':'all_force_reads_in_attempt',
+            'minimum_N': min(valid) if valid else None, 'maximum_N': max(valid) if valid else None,
+            'mean_N': rounded(np.mean(valid)) if valid else None,
+            'std_N': rounded(np.std(valid)) if valid else None,
+            'band_N': [gate, rounded(target+tolerance)],
+            'below_inside_above': [sum(v < gate for v in valid), sum(gate <= v <= target+tolerance for v in valid),
+                                   sum(v > target+tolerance for v in valid)],
+            'quality_counts':dict(Counter(e.get('quality','missing_observation') for e in all_estimates))})
+    # Columnar force-only payload removes repeated field names without removing
+    # readings, quality changes or calibration identity. Common A/B inputs stay
+    # byte-for-byte identical for the same public execution.
+    calibrations = sorted({v for w in force_windows for _,_,v in w['calibration_segments'] if v is not None})
+    packed_windows = [[w['index'],w['physics_step_start'],w['estimated_force_N'],
+        w['quality_segments'],w['age_actions_segments'],
+        [[i,n,calibrations.index(v) if v is not None else None] for i,n,v in w['calibration_segments']],
+        w['complete']] for w in force_windows]
+    summary_columns = ['index','valid_samples','minimum_N','maximum_N','mean_N','std_N',
+                       'band_N','below_inside_above','quality_counts']
+    return {'schema': feedback_contract or 'piano_continual_public_feedback.v2', 'seed': episode['seed'], 'request': request,
+        'notes': notes, 'public_errors': errors,
+        'end_submitted': any(e['kind'] in ('policy_end','native_terminal_end') for e in events),
+        'generated_actions': len(actions)-episode.get('clear_action_steps',0)-episode.get('force_history_warmup_action_steps',0),
+        'actions_and_state': {'target_columns':['wrist_x_offset_m','wrist_y_m','lift_z_m','index_flexion_rad'],
+            'actual_columns':['wrist_x_offset_m','wrist_y_m','wrist_z_m','index_flexion_rad','wrist_y_speed_m_s'],
+            'actual_units':['mm','mm','mm','mrad','mm/s'], 'target_units':['m','m','m','rad'],
+            'target_encoding':'target_by_column follows target_columns; scalar repeats for all samples, array retains every sample; missing_target_samples marks absent records',
+            'physics_step_stride':8, 'samples':16,
+            'windows': motion, 'physics_hz':240, 'sampling_hz':30,
+            'window_anchor':('last commanded press action (flexion>0.05 and Z<0.035), or last action if none; independent of tactile reads'
+                if strict else 'last force read in this attempt, or last action if no reads; may include release'),
+            'missing': 'null means missing, never zero-filled; no cross-attempt or cross-reset samples'},
+        'estimated_force_history': {'columns':['index','physics_step_start','estimated_force_N',
+            'quality_segments','age_actions_segments','calibration_id_segments','complete'],
+            'physics_step_stride':8,'samples':16,'calibration_ids':calibrations,'rows':packed_windows}
+            if arm == 'B' else {'available':False,'reason':'withheld_by_ablation'},
+        'computed_summary': {'scope':'all_force_reads_in_attempt','columns':summary_columns,
+            'rows':[[s[k] for k in summary_columns] for s in summaries]}
+            if arm == 'B' else {'available':False,'reason':'withheld_by_ablation'}}
 
 
 def public_evidence(run_dir: Path) -> dict:

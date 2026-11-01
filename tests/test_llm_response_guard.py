@@ -61,6 +61,34 @@ def test_responses_stream_rejects_missing_done_item_indices():
         ), 10)
 
 
+@pytest.mark.parametrize('status',[400,401,403])
+def test_request_retry_does_not_retry_permanent_rejection(monkeypatch,status):
+    monkeypatch.setenv('CAPX_LLM_REQUEST_RETRIES','2')
+    calls=[]
+    def operation():
+        calls.append(1)
+        raise client.LLMQueryError(status_code=status,server_url='test',response_preview='rejected',retry_after=None)
+    with pytest.raises(client.LLMQueryError):client.retry_llm_request(operation)
+    assert calls==[1]
+
+
+def test_request_retry_exhaustion_and_refusal(monkeypatch):
+    monkeypatch.setenv('CAPX_LLM_REQUEST_RETRIES','2')
+    monkeypatch.setattr(client.time,'sleep',lambda _:None)
+    calls=[]
+    def operation():
+        calls.append(1)
+        raise TimeoutError('transport timed out')
+    with pytest.raises(TimeoutError):client.retry_llm_request(operation)
+    assert len(calls)==3
+    calls.clear()
+    def refused():
+        calls.append(1)
+        return client._responses_output({'status':'completed','output':[{'type':'message','content':[{'type':'refusal','refusal':'refused'}]}]})
+    with pytest.raises(RuntimeError,match='refusal'):client.retry_llm_request(refused)
+    assert len(calls)==1
+
+
 def test_query_requests_identity_encoding_and_logs_response_stages(monkeypatch, capsys) -> None:
     observed: dict[str, object] = {}
     body = {

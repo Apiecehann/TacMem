@@ -478,6 +478,51 @@ class LLMQueryError(RuntimeError):
         super().__init__(message + ")")
 
 
+class LLMEmptyResponseError(RuntimeError):
+    """A completed response with no executable text; safe to request again."""
+
+
+def retry_llm_request(operation, *, on_retry=None):
+    """Retry transport/empty-response failures, never policy validation/execution.
+
+    Callers place their per-request deadline inside operation. This outer loop
+    therefore does not reuse an expired deadline or increase a single call's limit.
+    """
+    retries = min(5, max(0, int(os.getenv('CAPX_LLM_REQUEST_RETRIES', '0'))))
+    base_delay = max(0., float(os.getenv('CAPX_LLM_RETRY_BACKOFF_SECONDS', '30')))
+    for attempt in range(retries + 1):
+        try:
+            return operation()
+        except Exception as exc:
+            retryable = isinstance(exc, (LLMEmptyResponseError, LLMRequestTimeout,
+                                        TimeoutError, ConnectionError, urllib.error.URLError))
+            if requests is not None and isinstance(exc, (requests.exceptions.Timeout,
+                                                         requests.exceptions.ConnectionError)):
+                retryable = True
+            if isinstance(exc, LLMQueryError):
+                retryable = exc.status_code in (408, 429) or 500 <= exc.status_code <= 599
+                if exc.status_code == 200:
+                    retryable = 'ended without response.completed' in exc.response_preview
+            if not retryable or attempt >= retries:
+                raise
+            delay = min(60., base_delay * 2**attempt)
+            retry_after = getattr(exc, 'retry_after', None)
+            if retry_after:
+                try:
+                    delay = max(delay, float(retry_after))
+                except (TypeError, ValueError):
+                    pass
+            print(f'[capx-llm] request retry={attempt+1}/{retries} '
+                  f'error={type(exc).__name__} wait_seconds={delay:g}', flush=True)
+            if on_retry is not None:
+                on_retry(attempt + 1, exc, delay)
+            remaining = delay
+            while remaining > 0:
+                pause = min(60., remaining)
+                time.sleep(pause)
+                remaining -= pause
+
+
 class _SimpleResponse:
     """Tiny response wrapper used when requests is unavailable."""
 
@@ -948,6 +993,8 @@ def _responses_output(body: Any) -> tuple[str, str | None]:
                     for part in content:
                         if not isinstance(part, dict):
                             continue
+                        if part.get('type') == 'refusal':
+                            raise RuntimeError('Responses API returned a refusal; not retrying')
                         if part.get("type") in {"output_text", "text"}:
                             value = part.get("text", "")
                             if isinstance(value, str) and value:
@@ -963,7 +1010,8 @@ def _responses_output(body: Any) -> tuple[str, str | None]:
 
     content = "\n".join(text_parts)
     if not content.strip():
-        raise RuntimeError(
+        error = LLMEmptyResponseError if body.get('status') == 'completed' else RuntimeError
+        raise error(
             "Responses API returned no visible output text "
             f"(status={body.get('status')!r}, output_items={len(output) if isinstance(output, list) else 0})."
         )
@@ -1236,7 +1284,13 @@ def query_model(args: "LaunchArgs | ModelQueryArgs", prompt: list[dict]) -> dict
         flush=True,
     )
     if protocol == "responses":
-        content, reasoning = _responses_output(body)
+        try:
+            content, reasoning = _responses_output(body)
+        except LLMEmptyResponseError as exc:
+            _record_llm_usage(args=args, protocol=protocol, payload_stats=payload_stats,
+                body=body, latency_seconds=time.monotonic()-monotonic_start, payload=payload,
+                error={'type':type(exc).__name__, 'source':'empty_completed_response'})
+            raise
         out = {"content": content, "reasoning": reasoning}
     else:
         out = {}

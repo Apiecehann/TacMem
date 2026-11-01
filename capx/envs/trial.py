@@ -707,6 +707,7 @@ def _should_query_multiturn_after_block(
 
     failure_tokens = (
         "CAPX_FAILURE",
+        "[capx-task] recoverable_failure",
         "Traceback",
         "RecoverableTaskFailure",
         "TimeoutError",
@@ -2374,7 +2375,7 @@ def _run_single_trial(
         from capx.integrations.opentac_shadow_code_memory import action_memory_enabled, finish_episode
         if action_memory_enabled(config) or config.get('shadow_piano_evidence_memory'):
             try:
-                memory_result = finish_episode(config)
+                memory_result = finish_episode(config, host=env, args=args)
                 if config.get('shadow_piano_evidence_memory'):
                     print('[piano-evidence] status=' + str(memory_result.get('status')) +
                           ' candidate=' + str(memory_result.get('candidate_bundle')) +

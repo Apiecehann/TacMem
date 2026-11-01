@@ -12,7 +12,7 @@ import yaml
 from PIL import Image
 
 from capx.integrations.opentac_shadow import ShadowPianoVisualForceApi
-from capx.integrations.opentac_shadow_audit import save_native_piano_summary
+from capx.integrations.opentac_shadow_audit import save_native_piano_summary, save_ood_calibration_samples
 from capx.envs.simulators.opentac_shadow import ShadowPianoLowLevelEnv
 from capx.integrations.opentac_shadow_force import FEATURE_NAMES, SCHEMA, PublicDigitKeyForce, public_depth_features
 from capx.integrations.opentac_shadow_vision import (
@@ -30,6 +30,30 @@ def _project(x, y, z):
     ray = np.array([x, y, z]) - HEAD_EYE
     return {"u": .5 + (ray @ right) / (ray @ forward) * HEAD_FOCAL_PX / HEAD_WIDTH,
             "v": .5 - (ray @ up) / (ray @ forward) * HEAD_FOCAL_PX / HEAD_HEIGHT}
+
+
+def test_ood_calibration_export_keeps_only_same_read_5d_and_force(tmp_path):
+    from capx.integrations.opentac_shadow_force import AREA_RATE_FEATURE_NAMES
+    private=tmp_path/'private';private.mkdir()
+    public=tmp_path/'public';public.mkdir()
+    trigger={'physics_step':8,'action_step':2,'note':'C4',
+        'estimate':{'quality':'ood','calibration_version':'frozen'},
+        'depth_diagnostics':{'features':[1,2,3,4,5],'feature_names':list(AREA_RATE_FEATURE_NAMES),
+                             'color':'white','sensor_sha256':'sensor'},
+        'private_key_top_force_N':.8,'native_success':True,
+        'action_target':[0,0,0,.5]}
+    normal={**trigger,'estimate':{'quality':'ok'}}
+    source=private/'shadow_force_estimates_private_audit.jsonl'
+    source.write_text(json.dumps(trigger)+'\n'+json.dumps(normal)+'\n')
+    (public/'shadow_public_episode.json').write_text(json.dumps({'seed':3300}))
+    p=save_ood_calibration_samples(private,public)
+    data=json.loads(p.read_text());assert data['sample_count']==1 and data['seed']==3300
+    assert stat.S_IMODE(p.stat().st_mode)==0o600
+    sample=data['samples'][0]
+    assert sample['features_5d']==[1,2,3,4,5] and sample['private_key_top_force_N']==.8
+    assert sample['source_row']==1 and sample['color']=='white'
+    assert 'native_success' not in sample and 'action_target' not in sample
+    assert 'windows' not in data
 
 
 def test_overhead_head_fits_both_keyboard_ends():
