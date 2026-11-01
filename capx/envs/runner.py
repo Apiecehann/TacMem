@@ -14,12 +14,13 @@ import sys
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from tqdm import tqdm
 
 from capx.envs.configs.instantiate import instantiate
-from capx.envs.tasks.base import CodeExecutionEnvBase
+if TYPE_CHECKING:
+    from capx.envs.tasks.base import CodeExecutionEnvBase
 from capx.envs.trial import (
     _annotate_code_blocks,
     _build_log_lines,
@@ -111,6 +112,9 @@ def _setup_output_dir(args, config: dict[str, Any]) -> None:
     if config.get("use_oracle_code"):
         args.model = "oracle"
     if config["output_dir"]:
+        if config.get('ablation'):
+            Path(config['output_dir']).mkdir(parents=True, exist_ok=True)
+            return
         parts = config["output_dir"].split("/")
         parts.insert(-1, str(args.model).replace("/", "_"))
         new_out_dir = "/".join(parts)
@@ -143,7 +147,10 @@ def _run_headless_trials(
 
     # Determine which trials to run (supports resume)
     trial_ids = list(range(1, config["total_trials"] + 1))
-    if config.get("resume_idx") is not None:
+    if config.get('ablation'):
+        # One seed per server process, including bulb's seed-baked UIPC scene.
+        trial_ids = [config['ablation_seed']]
+    if not config.get('ablation') and config.get("resume_idx") is not None:
         trial_ids = list(range(config["resume_idx"], config["total_trials"] + 1))
 
     # Execute trials
@@ -232,9 +239,10 @@ def _run_trial_with_retries(
     """Attempt a trial up to MAX_TRIAL_RETRIES times, retrying on timeout."""
     # Bridge the respawn window after a cuRobo hang (see _wait_for_server_healthy).
     _wait_for_server_healthy(env)
-    for attempt in range(MAX_TRIAL_RETRIES):
+    attempts = 1 if config.get('ablation') else MAX_TRIAL_RETRIES
+    for attempt in range(attempts):
         try:
-            is_last_attempt = attempt == MAX_TRIAL_RETRIES - 1
+            is_last_attempt = attempt == attempts - 1
             timeout = getattr(args, "trial_timeout", TRIAL_TIMEOUT_SECONDS) or TRIAL_TIMEOUT_SECONDS
             return _run_single_trial_with_timeout(
                 env=env,

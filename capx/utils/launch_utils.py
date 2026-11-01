@@ -167,6 +167,26 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
         "exec_alarm_seconds": configs_dict.get("exec_alarm_seconds", None),
     }
 
+    if configs_dict.get('ablation'):
+        from capx.ablation.protocol import load_spec, require_ready, request_for
+        spec = load_spec(config_path)
+        require_ready(spec)
+        seed = int(os.environ['CAPX_ABLATION_SEED'])
+        if not os.environ.get('CAPX_ABLATION_RUN_ID'):
+            raise ValueError('CAPX_ABLATION_RUN_ID required; existing artifacts are never overwritten')
+        request_for(spec, seed)
+        if not os.environ.get('GPU'):
+            raise ValueError('Explicit GPU is required; no automatic selection')
+        args.model, args.max_tokens = spec['model'], 8192
+        args.trial_timeout = spec['process_timeout_s']
+        args.temperature, args.reasoning_effort = spec['temperature'], spec['reasoning_effort']
+        merged_config.update(ablation=True, ablation_seed=seed, total_trials=1, num_workers=1,
+            use_oracle_code=False, use_parallel_ensemble=False, use_multimodel=False,
+            use_visual_feedback=False, use_img_differencing=False, use_video_differencing=False,
+            use_wrist_camera=False, web_ui=False, record_video=False,
+            output_dir=str(spec['output_root']))
+        if api_servers:
+            raise ValueError('Start the explicitly selected single-GPU server separately')
     return env_factory, merged_config, api_servers
 
 
@@ -411,14 +431,14 @@ def _save_trial_artifacts(
     trial_dir.mkdir(parents=True, exist_ok=True)
 
     code_path_obj = trial_dir / "code.py"
-    code_path_obj.write_text(final_code)
+    code_path_obj.write_text(final_code, encoding='utf-8')
     code_path = str(code_path_obj)
 
     if raw_code:
-        (trial_dir / "raw_response.sh").write_text(raw_code)
+        (trial_dir / "raw_response.sh").write_text(raw_code, encoding='utf-8')
 
-    (trial_dir / "all_responses.json").write_text(json.dumps(all_responses, indent=2))
-    (trial_dir / "summary.txt").write_text("\n".join(log_lines))
+    (trial_dir / "all_responses.json").write_text(json.dumps(all_responses, indent=2), encoding='utf-8')
+    (trial_dir / "summary.txt").write_text("\n".join(log_lines), encoding='utf-8')
 
     # Save initial ensemble data if provided
     if ensemble_data:

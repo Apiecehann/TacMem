@@ -1,0 +1,38 @@
+ablation: true
+task: tension_strap
+mode: from_branch_mode_file
+model: gpt-6.1-sol
+max_tokens: 8192
+temperature: 0.2
+reasoning_effort: medium
+seed_manifest: env_configs/ablations/seeds40.json
+assets_manifest: env_configs/ablations/assets.json
+task_prompt: Grasp and pull the elastic strap. Complete the two requested force/time
+  stages in order, with the requested continuous holds and tolerance. Do not rupture
+  the strap or lose the grasp. Finish by setting capx_stop=True; the host then submits
+  native END. The requested forces are goals, not measurements.
+action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
+  world EE pose, metres; unit quaternion, z >= 0.01. Position-commanded motion, no
+  automatic grasp correction.
+
+  action(''gripper'', position=p): normalized opening, 0 closed to 1 open. Fixed position
+  command.
+
+  action(''wait'', steps=n): hold existing targets for n native steps (1..120).
+
+  Robot state reports actual EE position, orientation and gripper joint opening.
+
+  '
+action_call_budget: 800
+process_timeout_s: 7200
+env:
+  _target_: capx.ablation.environment.BaselineCodeEnv
+  cfg:
+    config_path: env_configs/ablations/tension_strap.yaml
+    server_url: http://127.0.0.1:8120
+    multi_turn_prompt: null
+trials: 1
+num_workers: 1
+record_video: false
+task_requirements_source: /mnt/a/ljz/cap/t-cap/cap-x/env_configs/univtac/tension_strap_stage_memory_control.yaml
+task_requirements_source_sha256: aab9a90686339754f8c766577def5d14fa5ed5266f04fc088177a137d7fe22c5

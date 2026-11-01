@@ -1,0 +1,223 @@
+{
+  "schema": "paired_ablation_assets.v1",
+  "tasks": {
+    "weight_match": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/tactile_memory_match.py",
+      "native_module": "envs.tactile_memory_match",
+      "native_sha256": null,
+      "task_config": "task_config/tactile_memory_match.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Match weight: first interact with the reference object, compare both candidate objects, and place the matching candidate on the match slot. Complete the entire native manipulation task, not just a classification answer.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "roughness_match": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/tactile_memory_match.py",
+      "native_module": "envs.tactile_memory_match",
+      "native_sha256": null,
+      "task_config": "task_config/tactile_memory_match.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Match surface roughness: first interact with the reference object, compare both candidates, and place the matching candidate on the match slot. Complete the entire native manipulation task.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "hardness_match": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/tactile_memory_match.py",
+      "native_module": "envs.tactile_memory_match",
+      "native_sha256": null,
+      "task_config": "task_config/tactile_memory_match.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Match hardness: first interact with the reference object, compare both candidates, and place the matching candidate on the match slot. Complete the entire native manipulation task.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "combined_match": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/tactile_memory_match.py",
+      "native_module": "envs.tactile_memory_match",
+      "native_sha256": null,
+      "task_config": "task_config/tactile_memory_match.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Match the reference across its weight, surface roughness and hardness: examine the reference and both candidates, then place its matching twin on the match slot. Do not replace manipulation with a classification answer.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "tension_strap": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/tension_strap.py",
+      "native_module": "envs.tension_strap",
+      "native_sha256": "5e186d6189b5b0964adfabef298a6f6cd3d8933c3e9eb1075ba0e36c9e7ab577",
+      "task_config": "task_config/tension_strap.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Grasp and pull the elastic strap. Complete the two requested force/time stages in order, with the requested continuous holds and tolerance. Do not rupture the strap or lose the grasp. Finish by setting capx_stop=True; the host then submits native END. The requested forces are goals, not measurements.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Native source present; no GPU validation or demo audit performed",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "bulb_tightening": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "envs/bulb_tightening.py",
+      "native_module": "envs.bulb_tightening",
+      "native_sha256": "5cb93815e84a69198dd8c5580c1f3a7cd822fa3710700329a980d8919275607f",
+      "task_config": "task_config/bulb_tightening.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Grasp the bulb and screw it into the holder until it is seated as demonstrated. Do not break the glass, jam the thread or drop the bulb. Complete the full native task. Finish with capx_stop=True.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Native source present; no GPU validation or demo audit performed",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    },
+    "shadow_piano": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "env/tasks/arm_shadow_piano.py",
+      "native_module": "env.tasks.arm_shadow_piano",
+      "native_sha256": "c50537c233db56064ee98053301a39d883601a287990ae7e934c4c05746562e1",
+      "task_config": "task_config/shadow_piano.yml",
+      "sensor": "single DIGIT index",
+      "native_completion": "Use the mounted Shadow Hand index finger to play the requested eight notes in order with their requested light/heavy dynamics, holds and releases. The scene and separate-seed demonstration guide your positioning. Goals are white-key light 0.35 N / heavy 0.50 N (tolerance 0.07 N), black-key light 0.70 N / heavy 1.00 N (tolerance 0.14 N); these are task targets, not measurements. Native full sequence/dynamics judging is unchanged.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 240,
+      "action_rate": "native 30 Hz 4D target",
+      "readiness_note": "Native source present; no GPU validation or demo audit performed",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      },
+      "digit_config": "/mnt/data/ljz/opentacbench/shadow_digit_force_v1/balanced_50seed_v1/config/config_digit_piano_0_2.yml",
+      "digit_config_sha256": "2c4e762965a06d1b38fbd6a54d638087ba2fa057dace69bdb77c741cb82f4208"
+    },
+    "blind_pick_balls": {
+      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
+      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "native_entry": "env/tasks/blind_pick_balls.py",
+      "native_module": "env.tasks.blind_pick_balls",
+      "native_sha256": "8688a3f5796b448eeabad9be2f7b1ae277a1bd1159021fc794ae99f801db1c0d",
+      "task_config": "task_config/blind_pick_balls.yml",
+      "sensor": "left/right GelSight Mini",
+      "native_completion": "Find a ball of the requested class in the blind box. Lift it completely clear of the box, carry it to the bowl, release it, and wait for it to settle. Complete all native grasp and delivery requirements. Set capx_stop=True only after the entire attempt.",
+      "native_contract_verified": false,
+      "calibration_overlap_audited": false,
+      "development_seeds": [
+        42000,
+        42001
+      ],
+      "physics_hz": 120,
+      "action_rate": "position-commanded macro; physics step/time recorded per call",
+      "readiness_note": "Native source present; no GPU validation or demo audit performed",
+      "demo": {
+        "path": null,
+        "sha256": null,
+        "seed": null,
+        "world_only": false,
+        "no_overlays": false,
+        "native_success_audited": false
+      }
+    }
+  }
+}

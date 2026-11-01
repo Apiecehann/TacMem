@@ -23,6 +23,19 @@ import http.client
 import os
 import signal
 import time
+from pathlib import Path
+
+
+def _start_token(pid: int) -> str | None:
+    """Linux start-time identity; do not signal a recycled PID."""
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+def _deadline_reached(started: float, maximum: float | None, now: float) -> bool:
+    return maximum is not None and now - started >= maximum
 
 
 def _pid_alive(pid: int) -> bool:
@@ -73,6 +86,8 @@ def main() -> None:
         default=5.0,
         help="seconds between /health probes (default 5)",
     )
+    parser.add_argument('--max-lifetime', type=float, default=None,
+                        help='Absolute wall budget after watchdog startup; no respawn')
     args = parser.parse_args()
 
     print(
@@ -82,8 +97,19 @@ def main() -> None:
     )
 
     last_ok = time.time()
+    started = time.monotonic()
+    identity = _start_token(args.pid)
     while _pid_alive(args.pid):
         time.sleep(args.interval)
+        if identity is None or _start_token(args.pid) != identity:
+            break
+        if _deadline_reached(started, args.max_lifetime, time.monotonic()):
+            print(f'[univtac_watchdog] wall budget exhausted; SIGKILL owned server pid={args.pid}', flush=True)
+            try:
+                os.kill(args.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            break
         if _health_ok(args.host, args.port, timeout=min(5.0, args.interval)):
             last_ok = time.time()
             continue

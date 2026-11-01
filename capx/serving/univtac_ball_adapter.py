@@ -245,7 +245,7 @@ class _ActorManagerShim:
 class BallTaskAdapter:
     """BaseTask-shaped view of ``env.tasks.blind_pick_balls.Task``."""
 
-    def __init__(self, task) -> None:
+    def __init__(self, task, *, record_trace: bool = True) -> None:
         self.task = task
         self.plan_success = True
         # Why the last motion call failed, when the reason is not a planning
@@ -278,7 +278,8 @@ class BallTaskAdapter:
         self._aim_observer_camera()
 
         self._trace_stream = None
-        self._open_trace()
+        if record_trace:
+            self._open_trace()
 
         logger.info(
             "Ball task served: %d balls %s, target=%s, episode=%.0fs",

@@ -1,0 +1,37 @@
+ablation: true
+task: combined_match
+mode: from_branch_mode_file
+model: gpt-6.1-sol
+max_tokens: 8192
+temperature: 0.2
+reasoning_effort: medium
+seed_manifest: env_configs/ablations/seeds40.json
+assets_manifest: env_configs/ablations/assets.json
+task_prompt: 'Match the reference across its weight, surface roughness and hardness:
+  examine the reference and both candidates, then place its matching twin on the match
+  slot. Do not replace manipulation with a classification answer.'
+action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
+  world EE pose, metres; unit quaternion, z >= 0.01. Position-commanded motion, no
+  automatic grasp correction.
+
+  action(''gripper'', position=p): normalized opening, 0 closed to 1 open. Fixed position
+  command.
+
+  action(''wait'', steps=n): hold existing targets for n native steps (1..120).
+
+  Robot state reports actual EE position, orientation and gripper joint opening.
+
+  '
+action_call_budget: 800
+process_timeout_s: 7200
+env:
+  _target_: capx.ablation.environment.BaselineCodeEnv
+  cfg:
+    config_path: env_configs/ablations/combined_match.yaml
+    server_url: http://127.0.0.1:8120
+    multi_turn_prompt: null
+trials: 1
+num_workers: 1
+record_video: false
+task_requirements_source: /mnt/data/ljz/opentacbench/cap-tac-baselines/env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
+task_requirements_source_sha256: 28e70afcb799ad7e2cb05eafc300f0033dcb8052601e8bcf1617ee7971a2d165

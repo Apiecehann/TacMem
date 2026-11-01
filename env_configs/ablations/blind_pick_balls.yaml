@@ -1,0 +1,38 @@
+ablation: true
+task: blind_pick_balls
+mode: from_branch_mode_file
+model: gpt-6.1-sol
+max_tokens: 8192
+temperature: 0.2
+reasoning_effort: medium
+seed_manifest: env_configs/ablations/seeds40.json
+assets_manifest: env_configs/ablations/assets.json
+task_prompt: Find a ball of the requested class in the blind box. Lift it completely
+  clear of the box, carry it to the bowl, release it, and wait for it to settle. Complete
+  all native grasp and delivery requirements. Set capx_stop=True only after the entire
+  attempt.
+action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
+  world EE pose, metres; unit quaternion, z >= 0.01. Position-commanded motion, no
+  automatic grasp correction.
+
+  action(''gripper'', position=p): normalized opening, 0 closed to 1 open. Fixed position
+  command.
+
+  action(''wait'', steps=n): hold existing targets for n native steps (1..120).
+
+  Robot state reports actual EE position, orientation and gripper joint opening.
+
+  '
+action_call_budget: 800
+process_timeout_s: 7200
+env:
+  _target_: capx.ablation.environment.BaselineCodeEnv
+  cfg:
+    config_path: env_configs/ablations/blind_pick_balls.yaml
+    server_url: http://127.0.0.1:8120
+    multi_turn_prompt: null
+trials: 1
+num_workers: 1
+record_video: false
+task_requirements_source: /mnt/data/ljz/opentacbench/cap-tac-baselines/env_configs/univtac/blind_pick_balls/univtac_blind_pick_balls.yaml
+task_requirements_source_sha256: 8f80eb46b251637277cd6ce60948204b56314fb74578a8028cf09ea66f2e6581

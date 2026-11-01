@@ -1,0 +1,2947 @@
+{
+  "schema": "paired_ablation_seeds.v1",
+  "test_seeds": [
+    41000,
+    41001,
+    41002,
+    41003,
+    41004,
+    41005,
+    41006,
+    41007,
+    41008,
+    41009,
+    41010,
+    41011,
+    41012,
+    41013,
+    41014,
+    41015,
+    41016,
+    41017,
+    41018,
+    41019,
+    41020,
+    41021,
+    41022,
+    41023,
+    41024,
+    41025,
+    41026,
+    41027,
+    41028,
+    41029,
+    41030,
+    41031,
+    41032,
+    41033,
+    41034,
+    41035,
+    41036,
+    41037,
+    41038,
+    41039
+  ],
+  "development_seeds": [
+    42000,
+    42001
+  ],
+  "demonstration_seed_policy": "outside test and development seeds; verify actual provenance",
+  "requests": {
+    "weight_match": {
+      "41000": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41001": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41002": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41003": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41004": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41005": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41006": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41007": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41008": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41009": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41010": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41011": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41012": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41013": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41014": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41015": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41016": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41017": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41018": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41019": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41020": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41021": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41022": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41023": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41024": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41025": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41026": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41027": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41028": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41029": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41030": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41031": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41032": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41033": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41034": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41035": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41036": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41037": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41038": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41039": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "roughness_match": {
+      "41000": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41001": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41002": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41003": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41004": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41005": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41006": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41007": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41008": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41009": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41010": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41011": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41012": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41013": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41014": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41015": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41016": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41017": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41018": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41019": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41020": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41021": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41022": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41023": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41024": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41025": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41026": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41027": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41028": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41029": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41030": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41031": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41032": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41033": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41034": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41035": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41036": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41037": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41038": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41039": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "hardness_match": {
+      "41000": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41001": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41002": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41003": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41004": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41005": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41006": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41007": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41008": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41009": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41010": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41011": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41012": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41013": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41014": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41015": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41016": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41017": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41018": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41019": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41020": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41021": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41022": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41023": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41024": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41025": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41026": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41027": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41028": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41029": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41030": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41031": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41032": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41033": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41034": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41035": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41036": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41037": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41038": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41039": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "combined_match": {
+      "41000": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41001": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41002": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41003": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41004": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41005": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41006": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41007": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41008": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41009": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41010": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41011": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41012": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41013": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41014": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41015": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41016": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41017": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41018": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41019": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41020": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41021": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41022": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41023": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41024": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41025": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41026": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41027": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41028": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41029": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41030": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41031": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41032": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41033": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41034": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41035": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41036": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41037": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41038": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "41039": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "tension_strap": {
+      "41000": {
+        "force_time_sequence": [
+          17.02,
+          1.75,
+          14.16,
+          1.96
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41001": {
+        "force_time_sequence": [
+          10.25,
+          1.32,
+          12.89,
+          1.38
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41002": {
+        "force_time_sequence": [
+          15.47,
+          1.78,
+          14.29,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41003": {
+        "force_time_sequence": [
+          12.24,
+          1.56,
+          14.4,
+          1.69
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41004": {
+        "force_time_sequence": [
+          11.94,
+          1.49,
+          11.84,
+          1.5
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41005": {
+        "force_time_sequence": [
+          17.99,
+          1.79,
+          10.91,
+          1.33
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41006": {
+        "force_time_sequence": [
+          12.88,
+          1.32,
+          14.01,
+          1.7
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41007": {
+        "force_time_sequence": [
+          14.0,
+          1.98,
+          16.16,
+          1.68
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41008": {
+        "force_time_sequence": [
+          10.16,
+          1.8,
+          13.65,
+          1.73
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41009": {
+        "force_time_sequence": [
+          13.72,
+          1.41,
+          10.3,
+          1.97
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41010": {
+        "force_time_sequence": [
+          12.71,
+          1.95,
+          11.37,
+          1.51
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41011": {
+        "force_time_sequence": [
+          10.94,
+          1.39,
+          16.59,
+          1.64
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41012": {
+        "force_time_sequence": [
+          14.6,
+          1.59,
+          17.21,
+          1.45
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41013": {
+        "force_time_sequence": [
+          17.05,
+          1.73,
+          16.12,
+          1.55
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41014": {
+        "force_time_sequence": [
+          12.45,
+          1.61,
+          10.65,
+          1.51
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41015": {
+        "force_time_sequence": [
+          13.02,
+          1.61,
+          12.6,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41016": {
+        "force_time_sequence": [
+          11.98,
+          1.64,
+          14.75,
+          1.99
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41017": {
+        "force_time_sequence": [
+          13.61,
+          1.3,
+          14.45,
+          1.44
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41018": {
+        "force_time_sequence": [
+          10.58,
+          1.83,
+          15.65,
+          1.81
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41019": {
+        "force_time_sequence": [
+          17.8,
+          1.72,
+          15.62,
+          1.9
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41020": {
+        "force_time_sequence": [
+          12.02,
+          1.84,
+          17.92,
+          1.68
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41021": {
+        "force_time_sequence": [
+          13.99,
+          1.5,
+          17.24,
+          1.43
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41022": {
+        "force_time_sequence": [
+          10.68,
+          1.4,
+          13.35,
+          1.39
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41023": {
+        "force_time_sequence": [
+          10.83,
+          1.83,
+          17.45,
+          1.53
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41024": {
+        "force_time_sequence": [
+          16.68,
+          1.81,
+          13.92,
+          1.5
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41025": {
+        "force_time_sequence": [
+          12.74,
+          1.7,
+          10.78,
+          1.95
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41026": {
+        "force_time_sequence": [
+          16.65,
+          1.6,
+          15.43,
+          1.4
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41027": {
+        "force_time_sequence": [
+          13.9,
+          1.64,
+          12.04,
+          1.98
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41028": {
+        "force_time_sequence": [
+          14.83,
+          1.97,
+          11.3,
+          1.83
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41029": {
+        "force_time_sequence": [
+          15.46,
+          1.74,
+          16.18,
+          1.4
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41030": {
+        "force_time_sequence": [
+          14.84,
+          1.87,
+          11.55,
+          1.72
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41031": {
+        "force_time_sequence": [
+          11.35,
+          1.93,
+          16.51,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41032": {
+        "force_time_sequence": [
+          16.33,
+          1.4,
+          14.09,
+          1.51
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41033": {
+        "force_time_sequence": [
+          16.3,
+          1.76,
+          16.37,
+          1.52
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41034": {
+        "force_time_sequence": [
+          16.85,
+          1.32,
+          12.13,
+          1.49
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41035": {
+        "force_time_sequence": [
+          17.77,
+          1.6,
+          10.13,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41036": {
+        "force_time_sequence": [
+          16.01,
+          1.98,
+          13.91,
+          1.38
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41037": {
+        "force_time_sequence": [
+          17.73,
+          1.84,
+          11.22,
+          1.85
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41038": {
+        "force_time_sequence": [
+          16.81,
+          1.56,
+          11.24,
+          1.57
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "41039": {
+        "force_time_sequence": [
+          11.79,
+          1.86,
+          11.81,
+          1.82
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      }
+    },
+    "bulb_tightening": {
+      "41000": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41001": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41002": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41003": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41004": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41005": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41006": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41007": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41008": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41009": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41010": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41011": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41012": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41013": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41014": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41015": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41016": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41017": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41018": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41019": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41020": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41021": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41022": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41023": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41024": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41025": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41026": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41027": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41028": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41029": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41030": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41031": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41032": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41033": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41034": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41035": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41036": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41037": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41038": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "41039": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      }
+    },
+    "shadow_piano": {
+      "41000": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41001": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41002": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41003": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41004": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41005": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41006": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41007": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41008": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41009": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41010": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41011": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41012": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41013": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41014": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41015": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41016": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41017": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41018": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41019": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41020": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41021": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41022": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41023": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41024": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41025": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41026": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41027": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41028": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41029": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41030": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41031": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41032": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41033": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41034": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41035": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41036": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41037": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41038": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "41039": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      }
+    },
+    "blind_pick_balls": {
+      "41000": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41001": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41002": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41003": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41004": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41005": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41006": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41007": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41008": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41009": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41010": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41011": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41012": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41013": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41014": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41015": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41016": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41017": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41018": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41019": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41020": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41021": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41022": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41023": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41024": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41025": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41026": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41027": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41028": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41029": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41030": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41031": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41032": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41033": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41034": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41035": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41036": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41037": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41038": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "41039": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      }
+    }
+  },
+  "split_status": "reserved; not released until full environment/demo/calibration audit",
+  "strap_generation": {
+    "algorithm": "Python random.Random(19170000+seed), independent uniform targets [10,18] N and holds [1.3,2] s, rounded to 2 decimals",
+    "all_40_requests_unique": true
+  },
+  "smoke_requests": {
+    "weight_match": {
+      "42000": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "42001": {
+        "match_property": "weight",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "roughness_match": {
+      "42000": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "42001": {
+        "match_property": "roughness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "hardness_match": {
+      "42000": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "42001": {
+        "match_property": "hardness",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "combined_match": {
+      "42000": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "42001": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "tension_strap": {
+      "42000": {
+        "force_time_sequence": [
+          10.0,
+          1.42,
+          13.18,
+          2.0
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "42001": {
+        "force_time_sequence": [
+          14.16,
+          1.34,
+          17.15,
+          1.8
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      }
+    },
+    "bulb_tightening": {
+      "42000": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "42001": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      }
+    },
+    "shadow_piano": {
+      "42000": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      },
+      "42001": {
+        "notes": [
+          "E4",
+          "F4",
+          "C#4",
+          "D#4",
+          "D#4",
+          "E4",
+          "C#4",
+          "F4"
+        ],
+        "dynamics": [
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "light",
+          "heavy",
+          "heavy",
+          "light"
+        ],
+        "hold_seconds": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "release_seconds": 0.12,
+        "require_dynamics": true
+      }
+    },
+    "blind_pick_balls": {
+      "42000": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "42001": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      }
+    }
+  }
+}

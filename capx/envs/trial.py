@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
-from capx.envs.tasks.base import CodeExecutionEnvBase
 from capx.llm.client import (
     ModelQueryArgs,
     is_vlm_model,
@@ -52,6 +51,7 @@ from capx.utils.launch_utils import (
 from capx.utils.video_utils import _encode_video_base64, _write_video
 
 if TYPE_CHECKING:
+    from capx.envs.tasks.base import CodeExecutionEnvBase
     from capx.envs.launch import LaunchArgs
 
 
@@ -668,6 +668,9 @@ def _run_single_trial(
         4. Execute code blocks one-by-one, with optional multi-turn regeneration.
         5. Save artifacts (code, logs, per-turn videos, combined video) and return a TrialSummary.
     """
+    if config.get('ablation'):
+        from capx.ablation.trial import run_trial
+        return run_trial(env, trial, args, config, partial_artifacts)
     trial_start_time = time.time()
 
     use_video_diff = config.get("use_video_differencing", False)

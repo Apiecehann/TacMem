@@ -3487,6 +3487,8 @@ def main() -> None:
     from isaaclab.app import AppLauncher
 
     parser = argparse.ArgumentParser(description="UniVTAC Tactile API Server")
+    parser.add_argument('--ablation-config', default=None,
+                        help='Strict paired-baseline YAML; readiness checked before Kit startup')
     parser.add_argument("--task", type=str, default="insert_hole",
                         choices=AVAILABLE_TASKS,
                         help="Task name to serve")
@@ -3515,6 +3517,39 @@ def main() -> None:
 
     # Parse combined args
     cli = parser.parse_args()
+    baseline = None
+    if cli.ablation_config:
+        from capx.ablation.protocol import load_spec, require_ready, read_json, resolve
+        from capx.ablation.server import BaselineServer, mount
+        spec = load_spec(cli.ablation_config)
+        require_ready(spec)
+        if not os.environ.get('CAPX_ABLATION_RUN_ID'):
+            raise ValueError('CAPX_ABLATION_RUN_ID is required')
+        selected = os.environ.get('GPU', '')
+        if not selected.isdigit():
+            raise ValueError('Set GPU to exactly one physical GPU index')
+        import subprocess
+        gpu_uuid = subprocess.check_output(['nvidia-smi', '-i', selected, '--query-gpu=uuid',
+            '--format=csv,noheader'], text=True, timeout=10).strip()
+        if not gpu_uuid.startswith('GPU-') or '\n' in gpu_uuid:
+            raise ValueError('GPU did not resolve to a single device')
+        if os.environ.get('CUDA_VISIBLE_DEVICES') not in (None, selected, gpu_uuid):
+            raise ValueError('GPU conflicts with CUDA_VISIBLE_DEVICES')
+        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_uuid
+        os.environ['EGL_DEVICE_ID'] = selected
+        cli.device = 'cuda:0'
+        cli.multi_gpu = False
+        cli.kit_args = '--/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1'
+        class SingleGpuAppLauncher(AppLauncher):
+            def _resolve_device_settings(self, launcher_args):
+                super()._resolve_device_settings(launcher_args)
+                launcher_args.update(active_gpu=int(selected), physics_gpu=0, multi_gpu=False)
+        AppLauncher = SingleGpuAppLauncher
+        if cli.seed != int(os.environ['CAPX_ABLATION_SEED']):
+            raise ValueError('Server --seed must match CAPX_ABLATION_SEED')
+        baseline = BaselineServer(sys.modules[__name__], spec, cli.seed,
+                                 Path(spec['output_root']) / 'server')
+        mount(sys.modules[__name__], baseline)
 
     # Claim the port before the expensive Isaac Sim startup. Passing this
     # socket to Uvicorn below keeps the check race-free: no other server can
@@ -3532,7 +3567,7 @@ def main() -> None:
 
     # Pin the task's backing repo before anything imports envs.*: AppLauncher
     # below pulls in isaaclab, and init_task imports the task module.
-    _activate_backing_root(_backing_for(cli.task).root)
+    _activate_backing_root(Path(baseline.asset['environment_root']) if baseline else _backing_for(cli.task).root)
 
     # Set defaults that UniVTAC tasks expect — must match scripts/eval_policy.py
     cli.enable_cameras = True
@@ -3572,8 +3607,15 @@ def main() -> None:
     try:
         # Use AppLauncher's --device for GPU selection (already parsed as cli.device)
         device = getattr(cli, "device", "cuda:0")
-        init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
-                  cfg_overrides=cli.cfg_override)
+        if baseline:
+            if cli.cfg_override:
+                raise ValueError('Baseline task overrides must be frozen in the protocol')
+            if torch.cuda.device_count() != 1:
+                raise RuntimeError('Baseline requires exactly one visible CUDA GPU')
+            baseline.initialize(device)
+        else:
+            init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
+                      cfg_overrides=cli.cfg_override)
     except Exception:
         logger.error("Failed to initialize task: %s", traceback.format_exc())
         listener_socket.close()
@@ -3623,7 +3665,7 @@ def main() -> None:
     # not even /health — can run, which makes an in-process watchdog useless.
     # The watchdog polls /health and SIGKILLs this process if it stops
     # answering, so scripts/launch_univtac_server.sh can respawn it.
-    if not getattr(cli, "no_watchdog", False):
+    if baseline or not getattr(cli, "no_watchdog", False):
         import subprocess as _subprocess
 
         watchdog_path = Path(__file__).with_name("univtac_watchdog.py")
@@ -3635,7 +3677,7 @@ def main() -> None:
                 "--host", str(cli.host),
                 "--port", str(cli.port),
                 "--grace", str(getattr(cli, "watchdog_grace", 120.0)),
-            ]
+            ] + (['--max-lifetime', str(baseline.spec['process_timeout_s'])] if baseline else [])
         )
         logger.info("Freeze watchdog spawned (pid=%d, grace=%.0fs)",
                     watchdog_proc.pid, getattr(cli, "watchdog_grace", 120.0))
