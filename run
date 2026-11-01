@@ -49,7 +49,7 @@ GPU="${GPU:-7}"                # physical GPU id; use 4/5/6/7 if free
 TEMPERATURE="${TEMPERATURE:-1.0}"
 # An explicit shell override wins over the model default in .capx_secrets.env.
 # ``MODEL`` is preferred; ``CAPX_MODEL`` remains supported for compatibility.
-MODEL="${MODEL:-glm-5.3}"
+MODEL="${MODEL:-${CAPX_MODEL:-glm-5.3}}"
 if [[ -z "${REASONING_EFFORT+x}" ]]; then
   if [[ "${MODEL,,}" == *"kimi-k3"* ]]; then
     # Kimi K3 always includes reasoning.  Keep smoke requests small by
@@ -94,7 +94,7 @@ CAPX_SAM3_CHECKPOINT="${CAPX_SAM3_CHECKPOINT:-${ROOT}/cap-x-cache/modelscope/fac
 # CONFIG_PATH to run a baseline or an archived experiment explicitly.
 CONFIG_PATH="${CONFIG_PATH:-${CAPX_CONFIG_PATH:-env_configs/univtac/tactile_memory_match_response_selection_easy_gt.yaml}}"
 case "$(basename -- "${CONFIG_PATH}")" in
-  play_piano_shadow_digit_smoke.yaml|play_piano_shadow_digit_visual_force_smoke.yaml|play_piano_shadow_digit_visual_force_60hz_smoke.yaml|play_piano_shadow_digit_visual_force_5d_60hz_smoke.yaml|play_piano_shadow_digit_random6_online_skills.yaml|play_piano_shadow_digit_code_memory.yaml|play_piano_shadow_digit_abc_a_fresh.yaml|play_piano_shadow_digit_abc_b_frozen.yaml|play_piano_shadow_digit_abc_c_adaptive.yaml|play_piano_shadow_digit_tactile_skill_pilot.yaml|play_piano_shadow_digit_evidence_memory.yaml)
+  play_piano_shadow_digit_smoke.yaml|play_piano_shadow_digit_visual_force_smoke.yaml|play_piano_shadow_digit_visual_force_60hz_smoke.yaml|play_piano_shadow_digit_visual_force_5d_60hz_smoke.yaml|play_piano_shadow_digit_random6_online_skills.yaml|play_piano_shadow_digit_code_memory.yaml|play_piano_shadow_digit_abc_a_fresh.yaml|play_piano_shadow_digit_abc_b_frozen.yaml|play_piano_shadow_digit_abc_c_adaptive.yaml|play_piano_shadow_digit_tactile_skill_pilot.yaml|play_piano_shadow_digit_evidence_memory.yaml|play_piano_shadow_digit_continual_a.yaml|play_piano_shadow_digit_continual_b.yaml)
     [[ -n "${GPU_WAS_SET}" ]] || { echo "[run] Shadow piano requires an explicit GPU=<physical-id>" >&2; exit 2; }
     RUN_ROOT="${RUN_ROOT:-/mnt/data/ljz/opentacbench/capx-runs}"
     UNIVTAC_ROOT="${UNIVTAC_ROOT:-$(cd "${ROOT}/../OpenTacBench" && pwd)}"
@@ -187,6 +187,9 @@ import sys
 
 import requests
 
+sys.path.insert(0, sys.argv[1])
+from capx.llm.client import retry_llm_request, LLMQueryError
+
 url = os.environ["CAPX_SERVER_URL"]
 model = os.environ["CAPX_MODEL"]
 timeout = float(os.environ.get("LLM_PREFLIGHT_TIMEOUT_SECONDS", "20"))
@@ -227,22 +230,16 @@ if api_key:
 disable_proxy = os.environ.get("CAPX_DISABLE_PROXY", "").strip().lower() in {
     "1", "true", "yes", "y", "on"
 }
-try:
+def preflight_once():
     if protocol == "responses":
-        # One request, no retries; honor the shared no-proxy/stream settings.
         response = _post_json(url, headers=headers, payload=payload, timeout=timeout)
     else:
         with requests.Session() as session:
             session.trust_env = not disable_proxy
-            response = session.post(
-                url,
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=timeout,
-            )
+            response = session.post(url, headers=headers, data=json.dumps(payload), timeout=timeout)
     if response.status_code >= 400:
-        print(f"[run] llm preflight failed status={response.status_code} preview={response.text[:500]!r}", file=sys.stderr)
-        sys.exit(1)
+        raise LLMQueryError(status_code=response.status_code, server_url=url,
+            response_preview=response.text[:500], retry_after=response.headers.get("retry-after"))
     text = response.text[:500]
     response.raise_for_status()
     if protocol == "responses":
@@ -250,6 +247,10 @@ try:
         if body.get("status") not in (None, "completed"):
             raise RuntimeError(f"Responses preflight did not complete: {body.get('status')}")
         text, _ = _responses_output(body)
+    return response, text
+
+try:
+    response, text = retry_llm_request(preflight_once)
     print(f"[run] llm preflight ok status={response.status_code} preview={text[:160]!r}")
 except requests.HTTPError as exc:
     response = exc.response

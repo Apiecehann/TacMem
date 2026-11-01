@@ -44,6 +44,8 @@ export CAPX_RESPONSES_SEND_REASONING_EFFORT="${CAPX_RESPONSES_SEND_REASONING_EFF
 # unrelated shell proxy, and allow enough time for a small reasoning response
 # during preflight (gpt-6-sol can take more than the generic 20-second default).
 export CAPX_DISABLE_PROXY="${CAPX_DISABLE_PROXY:-1}"
+export CAPX_LLM_REQUEST_RETRIES="${CAPX_LLM_REQUEST_RETRIES:-2}"
+export CAPX_LLM_RETRY_BACKOFF_SECONDS="${CAPX_LLM_RETRY_BACKOFF_SECONDS:-30}"
 export LLM_PREFLIGHT_TIMEOUT_SECONDS="${LLM_PREFLIGHT_TIMEOUT_SECONDS:-60}"
 export RECORD_VIDEO="${RECORD_VIDEO:-True}"
 
