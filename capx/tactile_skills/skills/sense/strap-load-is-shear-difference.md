@@ -31,9 +31,11 @@ opening frees the strap as well; 0.18 crushes to the sensor floor and
 0.10-0.14 do not fit the tab at all.
 
 At that grip the load is 0.93 N per px of the difference measured from the
-close, above the first 4.3 px.  The take-up runs 4.1 to 4.5 px from strap to
-strap and the slope does not: 0.932 on one and 0.939 on another, so aim with
-the middle and both land inside the band.  The first two millimetres of pull
+close, above the first 4.1 px.  The take-up runs 4.1 to 4.5 px from strap to
+strap and the slope does not: 0.932 on one and 0.939 on another.  The gauge
+reads a little low on both — stops came out 0.18 N under the target on one
+strap and 0.45 over on the other — so the low end of the take-up is the one
+that keeps both inside the band.  The first two millimetres of pull
 carry nothing, so a pull that buys no reading has not failed, and a line
 through the origin is the wrong model (0.63 N/px, 2.9 N of residual).
 Measure from the close and keep climbing: the field does not retrace its
