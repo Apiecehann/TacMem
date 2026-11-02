@@ -169,6 +169,81 @@ def test_frozen_40_requests_and_readiness_are_honest():
     assert len(set(values)) == 40
 
 
+@pytest.mark.parametrize('task,labels', [
+    ('weight_classify', {'light': 'blue_plate', 'heavy': 'yellow_plate'}),
+    ('roughness_classify', {'smooth': 'blue_plate', 'rough': 'yellow_plate'}),
+    ('hardness_classify', {'soft': 'blue_plate', 'hard': 'yellow_plate'}),
+])
+@pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
+def test_classification_uses_native_reset_random_label_and_private_scoring(monkeypatch, tmp_path, task, labels, mode):
+    import sys
+    from types import ModuleType
+    spec = load_spec(f'env_configs/ablations/{task}.yaml')
+    spec['mode'] = mode
+    request = request_for(spec, 41000)
+    assert request['label_to_plate'] == labels
+    assert set(request) == {'classification_property', 'label_to_plate', 'operation'}
+    assert 'match_property' not in request
+    assert 'physically place' in spec['task_prompt']
+    prompt = build_prompt(spec, request, np.zeros((8, 8, 3), np.uint8), {})
+    text = str(prompt)
+    for hidden in ('weight_label', 'hardness_label', 'roughness_label', 'ORACLE_CODE',
+                   'get_tactile_data', 'sample_grasp_pose', 'get_object_pose'):
+        assert hidden not in text
+    assert ('read_tactile_rgb' in text) == (mode == 'tactile-rgb-opencv')
+    if mode == 'no-tactile':
+        assert 'tactile' not in text.lower()
+
+    field = task.replace('_classify', '_label')
+    module = ModuleType(f'envs.{task}')
+    # Reproduce the native weight default; initialization must not leave it
+    # fixed. No Kit/native imports are needed for this wiring test.
+    module.TaskCfg = lambda: SimpleNamespace(**{field: 'heavy'},
+        sim=SimpleNamespace(dt=1/120), decimation=1, scene=SimpleNamespace(),
+        skip_pre_move=False, use_adaptive_grasp=False)
+    events = []
+    class Task:
+        step_count = 0
+        def __init__(self, cfg, mode):
+            assert mode == 'collect'
+            self.cfg = cfg
+        def reset(self, seed):
+            events.append(('reset', seed))
+            assert getattr(self.cfg, field) == 'random'
+            assert self.cfg.skip_pre_move is False
+            self.step_count = 10
+        def check_success(self):
+            events.append(('native_score', self.step_count))
+            return True
+        def play_once(self):
+            raise AssertionError('must not execute expert')
+    module.Task = Task
+    monkeypatch.setitem(sys.modules, f'envs.{task}', module)
+    force_utils = ModuleType('envs._force_task_utils')
+    force_utils.FINAL_TASKS = ()
+    force_utils.prepare_force_task_config = lambda *a, **kw: pytest.fail('classification is not a force task')
+    monkeypatch.setitem(sys.modules, 'envs._force_task_utils', force_utils)
+    def apply_config(cfg, config):
+        assert config['sensor_type'] == 'gsmini'
+        assert config['observations']['camera'] == ['rgb']
+    peer = SimpleNamespace(_activate_backing_root=lambda root: None,
+        _prefer_vitforge_tacex=lambda root: None, _apply_task_config=apply_config, _jsonable=lambda v: v)
+    server = BaselineServer(peer, spec, 41000, tmp_path/'episode')
+    assert server.asset['native_module'] == f'envs.{task}'
+    root = Path(server.asset['environment_root'])
+    assert sha256(root/server.asset['native_entry']) == server.asset['native_sha256']
+    assert sha256(root/server.asset['task_config']) == server.asset['task_config_sha256']
+    monkeypatch.setattr(server, '_capture_scene', lambda: None)
+    server.initialize('cpu')
+    assert events == [('reset', 41000)]
+    assert peer._TASK_NAME == task
+    assert server.started_step == 10
+    # Host-only END still uses the native scorer, not the supplied class name.
+    assert server.finish(True)['native_result']['completed'] is True
+    assert events == [('reset', 41000), ('native_score', 10)]
+    assert (server.output/'private/native_result.json').is_file()
+
+
 def test_server_preserves_native_bounds_terminal_and_result(tmp_path):
     cfg = SimpleNamespace(physics_dt=1/240)
     class Task:

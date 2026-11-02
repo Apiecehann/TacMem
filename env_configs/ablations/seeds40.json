@@ -47,490 +47,970 @@
     42001
   ],
   "requests": {
-    "weight_match": {
+    "weight_classify": {
       "41000": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41001": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41002": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41003": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41004": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41005": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41006": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41007": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41008": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41009": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41010": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41011": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41012": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41013": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41014": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41015": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41016": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41017": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41018": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41019": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41020": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41021": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41022": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41023": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41024": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41025": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41026": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41027": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41028": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41029": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41030": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41031": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41032": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41033": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41034": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41035": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41036": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41037": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41038": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41039": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "roughness_match": {
+    "roughness_classify": {
       "41000": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41001": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41002": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41003": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41004": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41005": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41006": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41007": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41008": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41009": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41010": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41011": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41012": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41013": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41014": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41015": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41016": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41017": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41018": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41019": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41020": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41021": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41022": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41023": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41024": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41025": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41026": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41027": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41028": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41029": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41030": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41031": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41032": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41033": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41034": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41035": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41036": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41037": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41038": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41039": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "hardness_match": {
+    "hardness_classify": {
       "41000": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41001": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41002": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41003": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41004": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41005": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41006": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41007": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41008": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41009": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41010": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41011": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41012": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41013": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41014": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41015": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41016": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41017": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41018": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41019": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41020": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41021": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41022": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41023": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41024": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41025": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41026": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41027": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41028": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41029": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41030": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41031": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41032": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41033": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41034": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41035": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41036": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41037": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41038": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "41039": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
     "combined_match": {
@@ -2790,34 +3270,58 @@
     "all_40_requests_unique": true
   },
   "smoke_requests": {
-    "weight_match": {
+    "weight_classify": {
       "42000": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "42001": {
-        "match_property": "weight",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "weight",
+        "label_to_plate": {
+          "light": "blue_plate",
+          "heavy": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "roughness_match": {
+    "roughness_classify": {
       "42000": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "42001": {
-        "match_property": "roughness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "roughness",
+        "label_to_plate": {
+          "smooth": "blue_plate",
+          "rough": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "hardness_match": {
+    "hardness_classify": {
       "42000": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       },
       "42001": {
-        "match_property": "hardness",
-        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+        "classification_property": "hardness",
+        "label_to_plate": {
+          "soft": "blue_plate",
+          "hard": "yellow_plate"
+        },
+        "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
     "combined_match": {
