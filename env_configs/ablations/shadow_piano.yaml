@@ -9,7 +9,7 @@ seed_manifest: env_configs/ablations/seeds40.json
 assets_manifest: env_configs/ablations/assets.json
 task_prompt: Use the mounted Shadow Hand index finger to play the requested eight
   notes in order with their requested light/heavy dynamics, holds and releases. The
-  scene and separate-seed demonstration guide your positioning. Goals are white-key
+  current scene guides your positioning. Goals are white-key
   light 0.35 N / heavy 0.50 N (tolerance 0.07 N), black-key light 0.70 N / heavy 1.00
   N (tolerance 0.14 N); these are task targets, not measurements. Native full sequence/dynamics
   judging is unchanged.
@@ -18,7 +18,7 @@ action_contract: 'action(''shadow_target'', target=[x_offset,y,z_lift,index_flex
   y [-0.32,0.26], z [-0.006,0.05], finger [0,0.50]; n is 1..60 native control steps.
   240 Hz physics, native action_repeat=8 (30 Hz). Use actual action_coordinates and
   joint positions/velocities to check arrival. No per-key coordinates or expert actions
-  are supplied. Locate all needed keys from scene and demonstration. Do not replay
+  are supplied. Locate all needed keys from the current scene. Do not replay
   completed notes. Internal loops may observe and recover; submit END only after all
   requested attempts and release.
 

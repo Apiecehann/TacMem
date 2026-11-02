@@ -18,15 +18,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
     },
     "roughness_match": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -45,15 +37,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
     },
     "hardness_match": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -72,15 +56,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
     },
     "combined_match": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -99,15 +75,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
     },
     "tension_strap": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -126,15 +94,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Native source present; no GPU validation or demo audit performed",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Native source present; native contract not yet validated"
     },
     "bulb_tightening": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -144,7 +104,7 @@
       "native_sha256": "5cb93815e84a69198dd8c5580c1f3a7cd822fa3710700329a980d8919275607f",
       "task_config": "task_config/bulb_tightening.yml",
       "sensor": "left/right GelSight Mini",
-      "native_completion": "Grasp the bulb and screw it into the holder until it is seated as demonstrated. Do not break the glass, jam the thread or drop the bulb. Complete the full native task. Finish with capx_stop=True.",
+      "native_completion": "Grasp the bulb and screw it into the holder until it is seated. Do not break the glass, jam the thread or drop the bulb. Complete the full native task. Finish with capx_stop=True.",
       "native_contract_verified": false,
       "calibration_overlap_audited": false,
       "development_seeds": [
@@ -153,15 +113,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Native source present; no GPU validation or demo audit performed",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Native source present; native contract not yet validated"
     },
     "shadow_piano": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
@@ -171,7 +123,7 @@
       "native_sha256": "c50537c233db56064ee98053301a39d883601a287990ae7e934c4c05746562e1",
       "task_config": "task_config/shadow_piano.yml",
       "sensor": "single DIGIT index",
-      "native_completion": "Use the mounted Shadow Hand index finger to play the requested eight notes in order with their requested light/heavy dynamics, holds and releases. The scene and separate-seed demonstration guide your positioning. Goals are white-key light 0.35 N / heavy 0.50 N (tolerance 0.07 N), black-key light 0.70 N / heavy 1.00 N (tolerance 0.14 N); these are task targets, not measurements. Native full sequence/dynamics judging is unchanged.",
+      "native_completion": "Use the mounted Shadow Hand index finger to play the requested eight notes in order with their requested light/heavy dynamics, holds and releases. The current scene guides your positioning. Goals are white-key light 0.35 N / heavy 0.50 N (tolerance 0.07 N), black-key light 0.70 N / heavy 1.00 N (tolerance 0.14 N); these are task targets, not measurements. Native full sequence/dynamics judging is unchanged.",
       "native_contract_verified": false,
       "calibration_overlap_audited": false,
       "development_seeds": [
@@ -180,15 +132,7 @@
       ],
       "physics_hz": 240,
       "action_rate": "native 30 Hz 4D target",
-      "readiness_note": "Native source present; no GPU validation or demo audit performed",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      },
+      "readiness_note": "Native source present; native contract not yet validated",
       "digit_config": "/mnt/data/ljz/opentacbench/shadow_digit_force_v1/balanced_50seed_v1/config/config_digit_piano_0_2.yml",
       "digit_config_sha256": "2c4e762965a06d1b38fbd6a54d638087ba2fa057dace69bdb77c741cb82f4208"
     },
@@ -209,15 +153,7 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Native source present; no GPU validation or demo audit performed",
-      "demo": {
-        "path": null,
-        "sha256": null,
-        "seed": null,
-        "world_only": false,
-        "no_overlays": false,
-        "native_success_audited": false
-      }
+      "readiness_note": "Native source present; native contract not yet validated"
     }
   }
 }

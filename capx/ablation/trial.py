@@ -7,9 +7,9 @@ import time
 from pathlib import Path
 
 from .client import BaselineClient
-from .demonstration import expert_parts, image_part
+from .vision import image_part
 from .execution import ProgramViolation, extract_program, run_program
-from .protocol import clear_proxies, contract_hash, read_json, request_for, require_ready, resolve, sha256, write_json
+from .protocol import clear_proxies, contract_hash, request_for, require_ready, resolve, sha256, write_json
 
 
 API_DOC = '''Write one complete Python program. Set capx_stop = True only when done.
@@ -29,15 +29,15 @@ Keep all image-derived intermediate values inside your program.
 '''
 
 
-def build_prompt(spec, request, demo_parts, scene, state):
+def build_prompt(spec, request, scene, state):
     import json
     text = (spec['task_prompt'] + '\nThis episode request: ' + json.dumps(request) + '\n' + API_DOC +
             spec['action_contract'] + '\nInitial robot state: ' + json.dumps(state))
     if spec['mode'] == 'tactile-rgb-opencv':
         text += '\n' + RGB_DOC
     return [{'role': 'system', 'content': 'Return executable Python only. Do not include prose.'},
-            {'role': 'user', 'content': [{'type': 'text', 'text': text}, *demo_parts,
-             {'type': 'text', 'text': 'CURRENT episode initial scene (not the demonstration):'}, image_part(scene)]}]
+            {'role': 'user', 'content': [{'type': 'text', 'text': text},
+             {'type': 'text', 'text': 'CURRENT episode initial scene:'}, image_part(scene)]}]
 
 
 def run_trial(env, trial, args, config, partial_artifacts=None, *, query=None):
@@ -72,14 +72,12 @@ def run_trial(env, trial, args, config, partial_artifacts=None, *, query=None):
     query_args.debug = False
     # Secrets are never written to request/config artifacts.
     query_args.api_key = getattr(args, 'api_key', None) or os.environ.get('CAPX_API_KEY') or os.environ.get('OPENAI_API_KEY')
-    assets = read_json(resolve(spec['assets_manifest']))['tasks'][spec['task']]
     write_json(output / 'effective_config.json', {'spec': spec, 'seed': seed, 'request': request,
-               'config_sha256': sha256(resolve(env.cfg.config_path)), 'demo': assets['demo']})
+               'config_sha256': sha256(resolve(env.cfg.config_path))})
     try:
         client.reset(seed)
         reset_verified = True
-        demo = expert_parts(assets['demo'], output)
-        prompt = build_prompt(spec, request, demo, client.get_scene_rgb(), client.get_robot_state())
+        prompt = build_prompt(spec, request, client.get_scene_rgb(), client.get_robot_state())
         write_json(output / 'request.json', {'model': query_args.model, 'max_output_tokens': 8192,
                    'reasoning_effort': query_args.reasoning_effort, 'messages': prompt})
         calls = 1

@@ -9,7 +9,6 @@ from PIL import Image
 import pytest
 
 from capx.ablation.client import BaselineClient
-from capx.ablation.demonstration import frame_indices, expert_parts, image_part
 from capx.ablation.execution import ProgramViolation, extract_program, run_program, validate_program
 from capx.ablation.protocol import ROOT, TASKS, load_spec, read_json, readiness, request_for, sha256
 from capx.ablation.server import BaselineServer, rgb_payload
@@ -79,41 +78,39 @@ def test_no_sensor_has_no_files_or_interface(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_sampling_covers_whole_video():
-    assert frame_indices(101, 10)[-1] == 100
-    assert frame_indices(101, 10)[:3] == [0,2,4]
-    indices = frame_indices(10001,30)
-    assert len(indices) == 64 and indices[0] == 0 and indices[-1] == 10000
-
-
-def test_real_video_frames_enter_request(tmp_path):
-    import cv2
-    path = tmp_path/'demo.avi'
-    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*'MJPG'), 10, (32,32))
-    for n in range(21):
-        writer.write(np.full((32,32,3), n*10, np.uint8))
-    writer.release()
-    parts = expert_parts({'path':str(path),'sha256':sha256(path)}, tmp_path/'extracted')
-    spec = {'task_prompt':'Goal','action_contract':'action API','mode':'no-tactile'}
-    prompt = build_prompt(spec, {'notes':['E4']}, parts, np.zeros((32,32,3),np.uint8), {'x':0})
+@pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
+def test_current_scene_is_the_only_prompt_image(mode):
+    spec = {'task_prompt':'Goal','action_contract':'action API','mode':mode}
+    scene = np.arange(90, dtype=np.uint8).reshape(5,6,3)
+    prompt = build_prompt(spec, {'notes':['E4']}, scene, {'x':0})
     content = prompt[-1]['content']
-    assert sum(p['type']=='image_url' for p in content) == 12
     urls = [p['image_url']['url'] for p in content if p['type']=='image_url']
-    assert all(url.startswith('data:image/jpeg;base64,') for url in urls[:-1])
-    assert urls[-1].startswith('data:image/png;base64,')  # initial scene unchanged
-    assert 'DIFFERENT seed' in str(content)
-    assert 'read_tactile_rgb' not in str(content)
-    assert 'depth' not in str(content)
+    assert len(urls) == 1 and urls[0].startswith('data:image/png;base64,')
+    image = Image.open(io.BytesIO(base64.b64decode(urls[0].split(',',1)[1])))
+    assert np.array_equal(np.asarray(image), scene)
+    assert 'CURRENT episode initial scene:' in str(content)
+    assert 'get_scene_rgb' in str(content)
+    assert 'demonstration' not in str(content).lower()
+    assert ('read_tactile_rgb' in str(content)) == (mode == 'tactile-rgb-opencv')
+    if mode == 'no-tactile':
+        assert 'depth' not in str(content)
 
 
-def test_expert_upload_is_bounded_and_decodable():
-    rgb = np.random.default_rng(0).integers(0, 256, (1080,1920,3), dtype=np.uint8)
-    url = image_part(rgb, demonstration=True)['image_url']['url']
-    encoded = base64.b64decode(url.split(',', 1)[1])
-    assert len(encoded) <= 96 * 1024
-    image = Image.open(io.BytesIO(encoded))
-    assert image.format == 'JPEG' and image.size == (768,432)
-    assert len(url) * 64 < 10 * 1024**2
+def test_readiness_needs_native_audits_but_no_expert_video(tmp_path):
+    source = tmp_path/'task.py'
+    source.write_text('# mock native task\n')
+    spec = load_spec('env_configs/ablations/tension_strap.yaml')
+    item = {'environment_root':str(tmp_path), 'native_entry':source.name,
+            'environment_commit':'pinned', 'native_sha256':sha256(source),
+            'native_contract_verified':True, 'calibration_overlap_audited':True,
+            'development_seeds':[42000,42001]}
+    assets = {'tasks':{spec['task']:item}}
+    assert readiness(spec, assets=assets) == []
+    item['native_contract_verified'] = False
+    assert 'native completion/action-rate/subtask contract not verified' in readiness(spec, assets=assets)
+    item['native_contract_verified'] = True
+    item['development_seeds'] = [41000]
+    assert 'split overlap' in readiness(spec, assets=assets)
 
 
 def test_frozen_40_requests_and_readiness_are_honest():
@@ -188,7 +185,6 @@ def test_http_model_error_is_one_request(monkeypatch):
 def test_full_trial_one_request_no_repair_or_skills(monkeypatch,tmp_path,code,expected_end):
     import capx.ablation.trial as module
     monkeypatch.setattr(module,'require_ready',lambda spec:None)
-    monkeypatch.setattr(module,'expert_parts',lambda *a:[{'type':'text','text':'demo'}])
     spec=load_spec('env_configs/ablations/shadow_piano.yaml')
     calls=[]
     class FakeClient:
@@ -213,6 +209,9 @@ def test_full_trial_one_request_no_repair_or_skills(monkeypatch,tmp_path,code,ex
     assert result.task_completed==expected_end
     data=json.loads((tmp_path/'seed_41000/result.json').read_text())
     assert data['model_requests']==1 and data['legal_end']==expected_end
+    assert sum(p['type']=='image_url' for p in queries[0][-1]['content']) == 1
+    assert not (tmp_path/'seed_41000/expert_frames').exists()
+    assert 'demo' not in read_json(tmp_path/'seed_41000/effective_config.json')
     logs=tmp_path/'seed_41000/univtac_actions.jsonl'
     if logs.exists(): assert 'force=999' not in logs.read_text()
 
