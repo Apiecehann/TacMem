@@ -9,7 +9,7 @@ from PIL import Image
 import pytest
 
 from capx.ablation.client import BaselineClient
-from capx.ablation.demonstration import frame_indices, expert_parts
+from capx.ablation.demonstration import frame_indices, expert_parts, image_part
 from capx.ablation.execution import ProgramViolation, extract_program, run_program, validate_program
 from capx.ablation.protocol import ROOT, TASKS, load_spec, read_json, readiness, request_for, sha256
 from capx.ablation.server import BaselineServer, rgb_payload
@@ -98,10 +98,22 @@ def test_real_video_frames_enter_request(tmp_path):
     prompt = build_prompt(spec, {'notes':['E4']}, parts, np.zeros((32,32,3),np.uint8), {'x':0})
     content = prompt[-1]['content']
     assert sum(p['type']=='image_url' for p in content) == 12
-    assert all(p['image_url']['url'].startswith('data:image/png;base64,') for p in content if p['type']=='image_url')
+    urls = [p['image_url']['url'] for p in content if p['type']=='image_url']
+    assert all(url.startswith('data:image/jpeg;base64,') for url in urls[:-1])
+    assert urls[-1].startswith('data:image/png;base64,')  # initial scene unchanged
     assert 'DIFFERENT seed' in str(content)
     assert 'read_tactile_rgb' not in str(content)
     assert 'depth' not in str(content)
+
+
+def test_expert_upload_is_bounded_and_decodable():
+    rgb = np.random.default_rng(0).integers(0, 256, (1080,1920,3), dtype=np.uint8)
+    url = image_part(rgb, demonstration=True)['image_url']['url']
+    encoded = base64.b64decode(url.split(',', 1)[1])
+    assert len(encoded) <= 96 * 1024
+    image = Image.open(io.BytesIO(encoded))
+    assert image.format == 'JPEG' and image.size == (768,432)
+    assert len(url) * 64 < 10 * 1024**2
 
 
 def test_frozen_40_requests_and_readiness_are_honest():
