@@ -114,7 +114,6 @@ class BaselineServer:
             self.peer._apply_task_config(cfg, task_config)
             label_field = {
                 'weight_classify': 'weight_label',
-                'roughness_classify': 'roughness_label',
                 'hardness_classify': 'hardness_label',
             }.get(task_id)
             if label_field is not None:
@@ -265,6 +264,8 @@ class BaselineServer:
                     self.task._hold(1)
                 else:
                     self.task._step(is_save=False)
+            if self.spec['task'] != 'blind_pick_balls':
+                self.task._update_render()
             return True
         from envs.utils.atom import Action
         from envs.utils.transforms import Pose

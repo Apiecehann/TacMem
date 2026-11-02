@@ -172,7 +172,7 @@ def test_frozen_40_requests_and_readiness_are_honest():
 
 @pytest.mark.parametrize('task,labels', [
     ('weight_classify', {'light': 'blue_plate', 'heavy': 'yellow_plate'}),
-    ('roughness_classify', {'smooth': 'blue_plate', 'rough': 'yellow_plate'}),
+    ('grasp_classify', {'smooth': 'green_pad', 'rough': 'orange_pad'}),
     ('hardness_classify', {'soft': 'blue_plate', 'hard': 'yellow_plate'}),
 ])
 @pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
@@ -195,9 +195,9 @@ def test_classification_uses_native_reset_random_label_and_private_scoring(monke
     if mode == 'no-tactile':
         assert 'tactile' not in text.lower()
 
-    field = task.replace('_classify', '_label')
+    field = task.replace('_classify', '_label') if task != 'grasp_classify' else None
     module = ModuleType(f'envs.{task}')
-    module.TaskCfg = lambda: SimpleNamespace(**{field: 'heavy'},
+    module.TaskCfg = lambda: SimpleNamespace(**({field: 'heavy'} if field else {}),
         sim=SimpleNamespace(dt=1/120), decimation=1, scene=SimpleNamespace(),
         skip_pre_move=False, use_adaptive_grasp=False)
     events = []
@@ -208,7 +208,8 @@ def test_classification_uses_native_reset_random_label_and_private_scoring(monke
             self.cfg = cfg
         def reset(self, seed):
             events.append(('reset', seed))
-            assert getattr(self.cfg, field) == 'random'
+            if field is not None:
+                assert getattr(self.cfg, field) == 'random'
             assert self.cfg.skip_pre_move is False
             self.step_count = 10
         def check_success(self):
@@ -401,3 +402,28 @@ def test_same_position_grasp_without_sensor_feedback_and_recoverable_planner(mon
     server.stopped=lambda:True
     server._franka_action('gripper', {'position':.4})
     assert task.plan_success is False  # native terminal status cannot be cleared
+
+
+@pytest.mark.parametrize('task', ['weight_classify', 'grasp_classify', 'hardness_classify', 'combined_match'])
+def test_wait_refreshes_camera_and_tactile_without_extra_physics(task):
+    native = SimpleNamespace(step_count=0, last_render=0, cfg=SimpleNamespace(sim=SimpleNamespace(dt=1/120), decimation=1))
+    native._step = lambda **kw: setattr(native, 'step_count', native.step_count + 1)
+    native._update_render = lambda: setattr(native, 'last_render', native.step_count)
+    pixels = lambda: np.full((2, 2, 3), native.last_render, np.uint8)
+    native._tactile_manager = SimpleNamespace(get_observations=lambda types: {'left_tactile': {'rgb': pixels()}})
+    native._camera_manager = SimpleNamespace(get_observations=lambda types: {'head': {'rgb': pixels()}})
+    server = object.__new__(BaselineServer)
+    server.task = native
+    server.spec = {'task': task, 'mode': 'tactile-rgb-opencv', 'action_call_budget': 10}
+    server.ended = False
+    server.calls = 0
+    server.cache = {}
+    server.episode = 'test'
+    server._capture_scene = lambda: None
+    before = server.rgb('left')
+    result = server.action('wait', {'steps': 3})
+    after = server.rgb('left')
+    assert result['physics_steps_executed'] == 3
+    assert native.last_render == after['physics_step'] == 3
+    assert not np.array_equal(decode_rgb(before['rgb_base64']), decode_rgb(after['rgb_base64']))
+    assert np.array_equal(decode_rgb(server.scene()['rgb_base64']), decode_rgb(after['rgb_base64']))

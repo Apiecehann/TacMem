@@ -11,7 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path('/mnt/data/ljz/opentacbench')
 MODES = ('tactile-rgb-opencv', 'no-tactile')
-TASKS = ('weight_classify', 'roughness_classify', 'hardness_classify', 'combined_match',
+TASKS = ('weight_classify', 'grasp_classify', 'hardness_classify', 'combined_match',
          'tension_strap', 'bulb_tightening', 'shadow_piano', 'blind_pick_balls')
 
 

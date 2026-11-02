@@ -24,15 +24,15 @@
         "weight_label": "random"
       }
     },
-    "roughness_classify": {
+    "grasp_classify": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
       "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
-      "native_entry": "envs/roughness_classify.py",
-      "native_module": "envs.roughness_classify",
-      "native_sha256": "1a9ac9a40271a93c712afd951f6189c98c4b3fe804f61b57fd34d437cd4fecea",
+      "native_entry": "envs/grasp_classify.py",
+      "native_module": "envs.grasp_classify",
+      "native_sha256": "9596a819c97e3ac53188da10683b6f3be60cc573067f572f3e5dbe1d7e29d48c",
       "task_config": "task_config/gelsight.yml",
       "sensor": "left/right GelSight Mini",
-      "native_completion": "smooth -> blue_plate; rough -> yellow_plate; physically place the current block upright at the native target, using the unchanged native check_success(). Release is not required.",
+      "native_completion": "rough -> orange_pad; smooth -> green_pad; physically place the current prism upright using native check_success(); release is not required.",
       "native_contract_verified": false,
       "calibration_overlap_audited": false,
       "development_seeds": [
@@ -41,11 +41,9 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Classification entry, task requirements and random label selection aligned; physical wiring and calibration split audit pending.",
+      "readiness_note": "Peer grasp_classify requirements and OpenTacBench prism task aligned; physical wiring and split audit pending.",
       "task_config_sha256": "2072a232e499103f7a14df21be0cb7563e2e89ebdada00515d10a286699cceaf",
-      "native_cfg_overrides": {
-        "roughness_label": "random"
-      }
+      "native_cfg_overrides": {}
     },
     "hardness_classify": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
