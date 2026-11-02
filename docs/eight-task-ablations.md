@@ -16,7 +16,7 @@
 | 重量分类 | OpenTacBench `envs.weight_classify` | 双 GelSight Mini | 轻物体放蓝盘、重物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
 | 粗糙度分类 | OpenTacBench `envs.roughness_classify` | 双 GelSight Mini | 光滑物体放蓝盘、粗糙物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
 | 硬度分类 | OpenTacBench `envs.hardness_classify` | 双 GelSight Mini | 软物体放蓝盘、硬物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
-| 随机组合匹配 | UniVTAC `envs.tactile_memory_match` | 双 GelSight Mini | 重量×粗糙度匹配，匹配候选放垫、释放并稳定 | 远端源码已核对；本机完整环境未部署，配置仍指向错误仓库 |
+| 随机组合匹配 | UniVTAC `envs.tactile_memory_match` | 双 GelSight Mini | 重量×粗糙度×硬度匹配，匹配候选放垫、释放并稳定 | 正确分支已固定；本机完整环境未部署 |
 | 弹力带 | envs.tension_strap | 双 GelSight Mini | 两段指定力与连续保持时间，合法 END | 源码存在；Kit 接线待验证 |
 | 拧灯泡 | envs.bulb_tightening | 双 GelSight Mini | 完成原生旋入、就位与安全判定 | 源码存在；Kit 接线待验证 |
 | 钢琴 | env.tasks.arm_shadow_piano | 单指 DIGIT | 指定八音的音高、力度、持音和释放 | 源码存在；Kit 接线待验证 |
@@ -24,11 +24,11 @@
 
 当前 OpenTacBench 固定为 `179bb8b5fe987f30ac17c407c5265b40c8f223a7`。
 2026-11-02 核对：前三项 classify 确实存在于上述 OpenTacBench；它们是单物体分类放盘，不包含参考物体匹配流程。
-第四项位于 [flyingc2004/UniVTAC 的 feat/task-transfer](https://github.com/flyingc2004/UniVTAC/tree/feat/task-transfer)，核对 commit 为 `015f972ee9c3e9173f862aed9038bd1c34fee9ac`。
-该版组合只有重量与粗糙度，没有硬度；入口为 `envs/tactile_memory_match.py`，配置为 `task_config/tactile_memory_match_smoke.yml`。
-其原生判分要求实际放置、释放并稳定，不是 selection-only。详情见 [来源审计](task-source-audit.md)。
-现有四项 YAML/资产清单仍保留旧的参考匹配约定和 `native_contract_verified=false`，本次只记录查证结果，未将不同任务静默替换为可运行配置。
-后续需按原生定义更新两组共同的任务 prompt、入口、配置和 seed 请求，并核对 UniVTAC 依赖与资产，才能放行接线测试。
+第四项按用户更正采用 [flyingc2004/UniVTAC 的 feat/composable-tactile-slots](https://github.com/flyingc2004/UniVTAC/tree/feat/composable-tactile-slots)，固定 commit 为 `1a131a416e57e95164b40c54aeb6b15c76ab4476`。
+该版是三个二值属性的 8 类组合；入口为 `envs/tactile_memory_match.py`，通用配置为 `task_config/tactile_memory_match_smoke.yml`。
+完整任务判分要求实际放置、释放并稳定；不得开启仅探测标定评分或使用固定类别 Easy-GT demo 代替正式任务。详情见 [来源审计](task-source-audit.md)。
+组合任务资产清单已更正来源；前三项 YAML 仍保留旧参考匹配要求，需与 classify 原生定义对齐。四项 `native_contract_verified=false` 均未放行。
+后续需完成两组共同任务配置的对齐、UniVTAC 部署与资产审核，才能放行接线测试。
 
 钢琴使用原生 240 Hz、action_repeat=8（30 Hz 四维目标），保持原生动作范围与严格力度评分。
 夹爪任务采用原生位置命令和运动规划，按实际物理 step 记时，不把一个宏动作当作一个物理步。

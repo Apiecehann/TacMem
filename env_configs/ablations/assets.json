@@ -59,12 +59,12 @@
       "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
     },
     "combined_match": {
-      "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
-      "environment_commit": "179bb8b5fe987f30ac17c407c5265b40c8f223a7",
+      "environment_root": "/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots",
+      "environment_commit": "1a131a416e57e95164b40c54aeb6b15c76ab4476",
       "native_entry": "envs/tactile_memory_match.py",
       "native_module": "envs.tactile_memory_match",
-      "native_sha256": null,
-      "task_config": "task_config/tactile_memory_match.yml",
+      "native_sha256": "3d137d90d5355667f96d58e82fa0bb8710eefb99e4de879ec71d54f555855eab",
+      "task_config": "task_config/tactile_memory_match_smoke.yml",
       "sensor": "left/right GelSight Mini",
       "native_completion": "Match the reference across its weight, surface roughness and hardness: examine the reference and both candidates, then place its matching twin on the match slot. Do not replace manipulation with a classification answer.",
       "native_contract_verified": false,
@@ -75,7 +75,10 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Reference-matching environment and per-property profiles unavailable; no classification substitution"
+      "readiness_note": "Three binary physical attributes (8 classes) verified in remote source; deployment root is reserved, complete runtime/asset installation and native contract audit pending. Use random classes, full placement scoring, no Easy-GT or calibration-only mode.",
+      "environment_repository": "https://github.com/flyingc2004/UniVTAC.git",
+      "environment_branch": "feat/composable-tactile-slots",
+      "task_config_sha256": "0f2629d900f414f6d1157fbd2524373d6a2a1855b2b298189451fb34fdcb37ba"
     },
     "tension_strap": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",

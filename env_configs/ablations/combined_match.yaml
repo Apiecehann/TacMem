@@ -33,5 +33,5 @@ env:
 trials: 1
 num_workers: 1
 record_video: false
-task_requirements_source: /mnt/data/ljz/opentacbench/cap-tac-baselines/env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
-task_requirements_source_sha256: 28e70afcb799ad7e2cb05eafc300f0033dcb8052601e8bcf1617ee7971a2d165
+task_requirements_source: https://github.com/flyingc2004/UniVTAC/blob/1a131a416e57e95164b40c54aeb6b15c76ab4476/envs/tactile_memory_match.py
+task_requirements_source_sha256: 3d137d90d5355667f96d58e82fa0bb8710eefb99e4de879ec71d54f555855eab
