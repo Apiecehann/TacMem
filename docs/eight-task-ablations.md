@@ -43,6 +43,15 @@ UniVTAC 已在数据盘部署，Kit 导入与组合任务资产依赖审核通�
 `capx/ablation/server.py` 在同学的 HTTP 服务和 Kit 主线程队列上注册受限端点。
 原服务的 `/tactile`、`/observation`、`/check_success` 等丰富端点在实验模式中均被拦截。
 任务源码、物理、安全终止和原生 scorer 不改。正常启动仍需同一份原生初始化/pre_move。
+弹力带严格沿用原生 `reset()` 后的策略交接点。固定版本 `179bb8b` 的
+`envs/_force_task_utils.py::run_force_task_episode` 在外部策略模式下执行
+`reset → policy.reset → policy.eval`；仅专家采集分支执行 `reset → play_once`。
+该任务的 `pre_move()` 只张开夹爪；到把手上方、下降接近、闭合与拉伸均在
+`_perform_strap_episode()` 的专家策略内。两个消融分支均由生成程序完成接近、闭合和拉伸，
+不调用完整专家策略，也不把专家的前两次移动截取为额外初始化。
+旧 t-cap 的 `force_task_adapter_pre_move` 是额外预定位，不属于当前实验的原生起点。
+2026-11-02 的 seed 42000 smoke 使用了原生 reset 交接；其闭合前未接近把手是执行策略问题，
+不能称为漏调用原生 pre_move，也不能单凭该次失败判断 RGB 力估计的有效性。
 原生物理的固定夹具释放、安全接触检查可能内部使用传感器，两个实验一致；它们不作为 agent 的控制反馈。
 程序发出的 gripper 命令强制使用位置模式，不调用自动触觉闭合、滑移矫正、自动重抓或示范策略。
 灯泡不开放同学原来读取真实力进行调整的 feed helper；程序只能组合位置/姿态命令。

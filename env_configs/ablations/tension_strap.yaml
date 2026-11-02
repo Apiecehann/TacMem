@@ -10,7 +10,11 @@ assets_manifest: env_configs/ablations/assets.json
 task_prompt: Grasp and pull the elastic strap. Complete the two requested force/time
   stages in order, with the requested continuous holds and tolerance. Do not rupture
   the strap or lose the grasp. Finish by setting capx_stop=True; the host then submits
-  native END. The requested forces are goals, not measurements.
+  native END. The requested forces are goals, not measurements. You start at the
+  native reset handoff with the gripper open; reset does not position it at the
+  strap handle. Your program must use the current scene and actual robot state to
+  approach the handle before closing the gripper, then perform the pull and hold
+  stages. No expert approach or grasp has been executed on your behalf.
 tactile_rgb_guidance: |
   Implement the following image-feedback procedure inside this single Python program.
   Read both left and right sensors with read_tactile_rgb. Each RGB image is an
