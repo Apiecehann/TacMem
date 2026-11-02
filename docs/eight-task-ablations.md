@@ -7,7 +7,7 @@
 
 ## 当前交付状态
 
-代码与 CPU 接线验证已实现；**尚不能宣称八任务均可运行，未启动任何 GPU 或模型请求**。
+代码与 CPU 接线验证已实现；**尚不能宣称八任务均可运行，正式实验尚未启动**。
 `assets.json` 保留明确的未就绪状态，缺失输入时在 Kit 启动和模型请求之前失败。
 这不是一个可通过删除检查来运行的占位实验。必须补齐证据后冻结配置、审核状态和文件 hash。
 
@@ -17,10 +17,10 @@
 | 粗糙度匹配 | 同上，粗糙度条件 | 双 GelSight Mini | 同上，匹配粗糙度 | 环境及粗糙度配对配置未提供 |
 | 硬度匹配 | 同上，硬度条件 | 双 GelSight Mini | 同上，匹配硬度 | 环境及硬度配对配置未提供 |
 | 随机组合匹配 | 同上，组合条件 | 双 GelSight Mini | 参考与候选多属性匹配并放置 | 环境及组合配对配置未提供 |
-| 弹力带 | envs.tension_strap | 双 GelSight Mini | 两段指定力与连续保持时间，合法 END | 源码存在；示范和 Kit 接线待验证 |
-| 拧灯泡 | envs.bulb_tightening | 双 GelSight Mini | 完成原生旋入、就位与安全判定 | 源码存在；示范和 Kit 接线待验证 |
-| 钢琴 | env.tasks.arm_shadow_piano | 单指 DIGIT | 指定八音的音高、力度、持音和释放 | 源码存在；示范审核和 Kit 接线待验证 |
-| 盲盒抓球 | env.tasks.blind_pick_balls | 双 GelSight Mini | 原生抓持验证、提离箱体、放入碗并释放 | 源码存在；示范和 Kit 接线待验证 |
+| 弹力带 | envs.tension_strap | 双 GelSight Mini | 两段指定力与连续保持时间，合法 END | 源码存在；Kit 接线待验证 |
+| 拧灯泡 | envs.bulb_tightening | 双 GelSight Mini | 完成原生旋入、就位与安全判定 | 源码存在；Kit 接线待验证 |
+| 钢琴 | env.tasks.arm_shadow_piano | 单指 DIGIT | 指定八音的音高、力度、持音和释放 | 源码存在；Kit 接线待验证 |
+| 盲盒抓球 | env.tasks.blind_pick_balls | 双 GelSight Mini | 原生抓持验证、提离箱体、放入碗并释放 | 源码存在；Kit 接线待验证 |
 
 当前 OpenTacBench 固定为 `179bb8b5fe987f30ac17c407c5265b40c8f223a7`。
 四个参考匹配任务不能用 `weight_classify` 等分类入口替代。也不能仅改 prompt 的属性名便声称原生任务已经改变。
@@ -70,19 +70,18 @@ RGB 只在程序实际读取时存入 `tactile_images/`，同 episode/传感器/
 - 接线开发 seed：42000、42001；默认 `CAPX_ABLATION_PHASE=smoke`。正式必须显式设为 `formal`。
 - 40 条弹力带请求已独立生成并冻结，目标 10–18 N、保持 1.3–2.0 秒；不是原 30 条清单循环补十条。
 - 钢琴请求沿用已有八音 `E4 F4 C#4 D#4 D#4 E4 C#4 F4`，轻重均衡，持音/释放 0.12 秒。
-- `assets.json`：任务入口、原生源码/版本 hash、传感器、配置、示范路径/hash/seed、划分审核状态。
+- `assets.json`：任务入口、原生源码/版本 hash、传感器、配置、划分审核状态。
 - 当前只能确认这些 seed 不属于已知开发编号；**完整标定训练与他人开发集的重叠审计未完成**，所以未放行正式运行。
-- 八段示范均未标为已审核。本机钢琴候选为 `shadow_digit_force_v1/episodes/3002_expert_b78fd3b21c/video.mp4` 和 `3003_expert_d45e2f439e/video.mp4`；其内容/相机/原生结果仍须审核，不能用 `digit.mp4` 当普通示范。
 
-示范需是独立 seed 的完整专家成功轨迹，只含普通相机。先去掉触觉面板、答案、数值/评分叠加，再登记最终视频 hash。
-抽帧默认 0.2 秒；超过 64 帧时覆盖完整视频均匀取样，保留首尾和时间戳，不截断前半段。
-原截图以 PNG 保存；上传示范帧使用最长边 768 像素、初始质量 80 的 JPEG，超出每帧 96 KiB 时逐步降低编码质量，必要时缩小尺寸，使 64 帧的 base64 数据约束在 8 MiB 内。编码设置记录在帧索引中，当前初始场景的 PNG 输入保持不变。
-真实图像 data URL 与初始场景、任务请求和接口文档一起进入唯一首次请求。仅提供视频路径不算完成。
+首次请求只包含任务说明、本次任务请求、API 文档、初始机器人状态和**当前 episode 的场景图片**。
+当前场景以 PNG data URL 输入；不读取专家视频、不切帧，也不要求登记专家视频资产。
+两个分支都保留 `get_scene_rgb()`，生成的完整程序可以在执行期间读取普通相机图像并自行处理；不会因此新增模型请求。
+此前视频接线测试的录像和产物保留在数据盘，不再作为本实验的输入依赖。
 模型冻结为 `gpt-6.1-sol`，Responses API、medium reasoning、8192 最大输出 token；请求超时 300 秒且不重试。
 所有模型请求清除大小写代理，HTTP Session 也关闭 trust_env。未知 token 统计保留未知，不伪造为零。
 
 这份文档、八项 YAML、seeds40.json、assets.json 及两个分支共同代码 commit 是给原表征组的实验约定。
-原表征组需使用同一底层动作集合、任务请求、示范文件、输入预算与原生判分。这里没有运行或自动通知该组。
+原表征组需使用同一底层动作集合、任务请求、当前场景视觉输入、输入预算与原生判分。这里没有运行或自动通知该组。
 
 ## CPU 检查
 
@@ -98,8 +97,8 @@ export CUDA_VISIBLE_DEVICES=''
 ```
 
 检查报告不需要 Kit/GPU/凭据。preflight 当前返回非零是对缺失输入的正确拦截。
-CPU 测试采用模拟原生任务/模拟模型，并真实解码测试视频；不能证明真实物理任务成功或跨版本 Kit 兼容。
-完整服务的动作/触觉时序、视频内容和判分需在输入就绪后的 16 条接线 smoke 中核验。
+CPU 测试采用模拟原生任务/模拟模型，并验证当前场景图片实际进入唯一请求；不能证明真实物理任务成功或跨版本 Kit 兼容。
+完整服务的动作/触觉时序、当前场景观测和判分需在输入就绪后的 16 条接线 smoke 中核验。
 
 ## 后续单 seed 启动方式（本轮未执行）
 
@@ -141,7 +140,7 @@ HTTP 依赖引用保存在 `/mnt/data/ljz/opentacbench/ablation-http-deps`，仅
 
 数据根目录：`/mnt/data/ljz/opentacbench/ablation-runs/<mode>/<task>/<RUN_ID>/`。
 `server/` 保存原生私有审计与普通相机的动作时刻截图；截图索引保存真实物理时间，不将稀疏截图冒充连续视频。
-`seed_<seed>/` 保存 effective_config、request/response、code、run.log、univtac_actions.jsonl、result.json、expert_frames 和原框架 trial 目录。
+`seed_<seed>/` 保存 effective_config、request/response、code、run.log、univtac_actions.jsonl、result.json 和原框架 trial 目录。
 RGB 组另有 tactile_images；private/native_result.json 只由宿主读取。
 记录模型调用/token、控制调用数、实际物理步数、合法 END、失败类型及耗时；公开错误与原生失败分开。
 连接中断时以终态审计的 server_physics_steps 为完整计数，缺少终态审计就保留未知。

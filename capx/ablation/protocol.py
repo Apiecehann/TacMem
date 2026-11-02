@@ -100,22 +100,15 @@ def readiness(spec, *, assets=None):
     if not item.get('native_contract_verified'):
         errors.append('native completion/action-rate/subtask contract not verified')
     if not item.get('calibration_overlap_audited'):
-        errors.append('development/demo/calibration split audit incomplete')
+        errors.append('development/calibration split audit incomplete')
     if spec['task'] == 'shadow_piano':
         path = Path(item['digit_config'])
         if not path.is_file() or sha256(path) != item.get('digit_config_sha256'):
             errors.append('DIGIT optical config missing/mismatch')
-    demo = item.get('demo', {})
-    if not demo.get('path') or not Path(demo['path']).is_file():
-        errors.append('world-camera expert demo missing')
-    elif not demo.get('sha256') or sha256(demo['path']) != demo['sha256']:
-        errors.append('demo hash missing/mismatch')
-    if not all(demo.get(k) is True for k in ('world_only', 'no_overlays', 'native_success_audited')):
-        errors.append('demo content/success audit incomplete')
     seeds = read_json(resolve(spec['seed_manifest']))
     if len(seeds['test_seeds']) != 40 or len(set(seeds['test_seeds'])) != 40:
         errors.append('expected exactly 40 distinct test seeds')
-    if demo.get('seed') in seeds['test_seeds'] + seeds['development_seeds'] or set(seeds['test_seeds']) & set(item.get('development_seeds', [])):
+    if set(seeds['test_seeds']) & set(item.get('development_seeds', [])):
         errors.append('split overlap')
     return errors
 

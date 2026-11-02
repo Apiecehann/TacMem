@@ -7,7 +7,7 @@ temperature: 0.2
 reasoning_effort: medium
 seed_manifest: env_configs/ablations/seeds40.json
 assets_manifest: env_configs/ablations/assets.json
-task_prompt: Grasp the bulb and screw it into the holder until it is seated as demonstrated.
+task_prompt: Grasp the bulb and screw it into the holder until it is seated.
   Do not break the glass, jam the thread or drop the bulb. Complete the full native
   task. Finish with capx_stop=True.
 action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
