@@ -109,6 +109,18 @@ class BaselineServer:
             if task_id == 'tension_strap':
                 task_config['task_parameters']['force_time_sequence'] = self.request['force_time_sequence']
             self.peer._apply_task_config(cfg, task_config)
+            # Match the peer classification server's random-label setup. The
+            # pinned native weight task otherwise defaults to heavy for every
+            # seed. Never put the sampled class in the public episode request.
+            label_field = {
+                'weight_classify': 'weight_label',
+                'roughness_classify': 'roughness_label',
+                'hardness_classify': 'hardness_label',
+            }.get(task_id)
+            if label_field is not None:
+                if self.asset['native_cfg_overrides'] != {label_field: 'random'}:
+                    raise ValueError('classification_sampling_contract_mismatch')
+                setattr(cfg, label_field, 'random')
             cfg.save_dir = self.output / 'private' / 'native'
             try:
                 from envs._force_task_utils import FINAL_TASKS, prepare_force_task_config
