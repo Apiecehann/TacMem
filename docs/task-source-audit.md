@@ -35,8 +35,10 @@
 `tactile_memory_match_composable_smoke.yml` 固定一对软/硬类别，仅用于软体可行性测试；`tactile_memory_match_composable_capx_demo.yml` 固定类别并开启 `capx_easy_gt_enabled`，都不作为正式 40-seed 任务配置。标定配置也不能替代完整操作评分。
 
 远端文件副本和 SHA256 存于 `/mnt/data/ljz/opentacbench/task-source-audit/20261102-composable-tactile-slots/`；旧分支审计保留在原目录。
-资产清单的部署目标为 `/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots`，当前尚未建立完整运行 checkout。源码副本不冒充运行安装；依赖、凸纹资产和 Kit 兼容性尚未验证，就绪标记保持 false。
+完整 checkout 已部署到 `/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots`，共用现有 Conda/Isaac Sim/Isaac Lab/cuRobo/UIPC 二进制，通过独立路径加载 UniVTAC 自带的四个 TacEx 包；未改 OpenTacBench 的安装映射。
+Kit 实际导入和相关 USD 依赖检查通过（含凸纹圆柱），未创建任务或执行物理。启动：`source /mnt/data/ljz/opentacbench/univtac-deployment/activate.sh`。
+部署报告与 UIPC 共用差异说明：`/mnt/data/ljz/opentacbench/univtac-deployment/DEPLOYMENT_REPORT.md`；判分/控制接线及划分审核仍未完成，就绪标记保持 false。
 
 ## 对当前实验配置的影响
 
-当前 `weight_match/roughness_match/hardness_match` 仍要求 reference 匹配，需要另行对齐前三个 classify。`combined_match` 的三属性要求与此次确认的分支一致；两个实验分支均已更正仓库、commit、源码 hash、任务配置和部署目标，不再指向 OpenTacBench 的不存在入口。后续完成环境部署、底层动作/信息隔离和划分审核后才能放行运行。
+当前 `weight_match/roughness_match/hardness_match` 仍要求 reference 匹配，需要另行对齐前三个 classify。`combined_match` 的三属性要求与此次确认的分支一致；两个实验分支均已更正仓库、commit、源码 hash、任务配置和部署目标，不再指向 OpenTacBench 的不存在入口。后续完成底层动作/信息隔离、物理接线和划分审核后才能放行运行。

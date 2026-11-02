@@ -75,10 +75,16 @@
       ],
       "physics_hz": 120,
       "action_rate": "position-commanded macro; physics step/time recorded per call",
-      "readiness_note": "Three binary physical attributes (8 classes) verified in remote source; deployment root is reserved, complete runtime/asset installation and native contract audit pending. Use random classes, full placement scoring, no Easy-GT or calibration-only mode.",
+      "readiness_note": "Runtime deployed using the shared Conda/base dependencies and UniVTAC bundled TacEx Python packages. Kit import and USD dependency checks passed; physical reset/control/scoring smoke and split audit remain pending.",
       "environment_repository": "https://github.com/flyingc2004/UniVTAC.git",
       "environment_branch": "feat/composable-tactile-slots",
-      "task_config_sha256": "0f2629d900f414f6d1157fbd2524373d6a2a1855b2b298189451fb34fdcb37ba"
+      "task_config_sha256": "0f2629d900f414f6d1157fbd2524373d6a2a1855b2b298189451fb34fdcb37ba",
+      "runtime_deployment": {
+        "base_prefix": "/mnt/data/ljz/opentacbench/conda-envs/UniVTAC",
+        "activation_script": "/mnt/data/ljz/opentacbench/univtac-deployment/activate.sh",
+        "kit_verification": "/mnt/data/ljz/opentacbench/univtac-deployment/kit-verify-cameras-20261102/result.json",
+        "physical_smoke_verified": false
+      }
     },
     "tension_strap": {
       "environment_root": "/mnt/a/ljz/cap/OpenTacBench",
