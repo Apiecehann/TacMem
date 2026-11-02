@@ -108,6 +108,9 @@ class BaselineServer:
             task_config = yaml.safe_load(path.read_text(encoding='utf-8'))
             if task_id == 'tension_strap':
                 task_config['task_parameters']['force_time_sequence'] = self.request['force_time_sequence']
+                parameters = self.spec.get('task_parameters', {})
+                if 'strap_color_mode' in parameters:
+                    task_config['task_parameters']['strap_color_mode'] = parameters['strap_color_mode']
             self.peer._apply_task_config(cfg, task_config)
             label_field = {
                 'weight_classify': 'weight_label',
