@@ -123,7 +123,9 @@ class BaselineServer:
             self.task = module.Task(cfg, mode='collect')
         self.peer._TASK = self.task
         self.peer._TASK_NAME = self.asset['native_module'].split('.')[-1]
-        # Existing native reset/pre_move, identical in both variants, no expert policy.
+        # Native policy handoff, identical in both variants. For tension_strap,
+        # reset/pre_move only opens the gripper; approach is part of the policy.
+        # Do not run play_once() or splice an expert prefix into initialization.
         self.task.reset(seed=self.seed)
         self.started_step = self.step()
         self._capture_scene()
