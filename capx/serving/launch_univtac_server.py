@@ -3572,7 +3572,8 @@ def main() -> None:
     # Set defaults that UniVTAC tasks expect — must match scripts/eval_policy.py
     cli.enable_cameras = True
     cli.num_envs = 1
-    cli.livestream = 2  # headless rendering mode (required for GelSight to init)
+    # Baselines use local HTTP and camera render products, not a streaming client.
+    cli.livestream = 0 if baseline else 2
 
     # NOTE: GPU selection must happen via CUDA_VISIBLE_DEVICES (set by
     # scripts/launch_univtac_server.sh), NOT via --device cuda:N.  Isaac
@@ -3583,6 +3584,9 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Step 2: Launch Isaac Sim app (must happen before isaaclab imports)
     # -------------------------------------------------------------------
+    if baseline:
+        import faulthandler
+        faulthandler.dump_traceback_later(60, repeat=True)
     app_launcher = AppLauncher(cli)
     simulation_app = app_launcher.app
 
@@ -3632,7 +3636,8 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Start uvicorn in daemon thread; keep main thread for Isaac Sim.
     # -------------------------------------------------------------------
-    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning")
+    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning",
+                            ws="none" if baseline else "auto")
     server = uvicorn.Server(config)
 
     def _run_uvicorn() -> None:
@@ -3659,6 +3664,8 @@ def main() -> None:
         sys.exit(1)
 
     logger.info("UniVTAC API server ready on %s:%d", cli.host, cli.port)
+    if baseline:
+        faulthandler.cancel_dump_traceback_later()
 
     # Spawn an external freeze watchdog (a separate stdlib-only process).  A
     # cuRobo hang can hold the GIL inside C++/CUDA so that no Python thread —

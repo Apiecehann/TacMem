@@ -8,7 +8,8 @@
 ## 当前交付状态
 
 代码与 CPU 接线验证已实现；**尚不能宣称八任务均可运行，正式实验尚未启动**。
-`assets.json` 保留明确的未就绪状态，缺失输入时在 Kit 启动和模型请求之前失败。
+`assets.json` 保留明确的未就绪状态。两种运行都检查源码路径、版本和 hash；正式实验还要求原生契约与划分审计通过。
+开发 seed 的 `smoke` 用于取得接线证据，允许这两项审计尚未完成；一次 smoke 不会自动放行正式实验或改写审核标记。
 这不是一个可通过删除检查来运行的占位实验。必须补齐证据后冻结配置、审核状态和文件 hash。
 
 | 任务 | 原生入口 | 传感器 | 原生完整操作要求 | 当前缺项 |
@@ -100,13 +101,13 @@ export CUDA_VISIBLE_DEVICES=''
   --config env_configs/ablations/shadow_piano.yaml
 ```
 
-检查报告不需要 Kit/GPU/凭据。preflight 当前返回非零是对缺失输入的正确拦截。
+检查报告不需要 Kit/GPU/凭据。preflight 按 smoke/正式阶段检查；缺失源码或版本不符在两个阶段都会拦截。
 CPU 测试采用模拟原生任务/模拟模型，并验证当前场景图片实际进入唯一请求；不能证明真实物理任务成功或跨版本 Kit 兼容。
 完整服务的动作/触觉时序、当前场景观测和判分需在输入就绪后的 16 条接线 smoke 中核验。
 
-## 后续单 seed 启动方式（本轮未执行）
+## 单 seed 启动方式
 
-先补齐并审核 assets.json。使用原框架的两个入口，不启动任何 Claude/SkillOpt/代码记忆循环。
+先核对 assets.json 中的源码与版本，正式实验另须完成契约和划分审核。使用原框架的两个入口，不启动任何 Claude/SkillOpt/代码记忆循环。
 两个终端使用相同 branch、配置、RUN_ID、seed 和明确 GPU。每 seed 都启动新服务，尤其是灯泡和盲盒。
 
 ```bash
@@ -131,7 +132,7 @@ python -m capx.envs.launch \
 ```
 
 必须显式设置 GPU；运行前解析为单卡 UUID，CUDA 仅看见这一张卡，Kit 禁用 multi-GPU，EGL 显式使用指定物理设备。
-首次运行仍须实机验证 GPU 隔离；本轮没有占卡确认。
+每次 smoke 都应实机核对 GPU 隔离。基线模式关闭 livestream 和 WebSocket，仅使用本地 HTTP 与相机渲染。
 服务就绪后，原有独立 watchdog 另外执行 process_timeout_s 的墙钟上限，即使 /health 正常也会到期结束本次服务。
 它核对 /proc 的进程启动标识，只针对本次 PID；没有自动重启。Kit 启动阶段仍建议外部进程管理器设置启动超时。
 不要使用按名称 kill，也不要用原有会 respawn 的 shell 循环批跑此实验。
