@@ -369,326 +369,326 @@
         "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "roughness_classify": {
+    "grasp_classify": {
       "41000": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41001": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41002": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41003": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41004": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41005": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41006": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41007": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41008": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41009": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41010": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41011": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41012": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41013": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41014": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41015": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41016": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41017": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41018": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41019": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41020": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41021": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41022": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41023": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41024": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41025": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41026": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41027": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41028": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41029": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41030": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41031": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41032": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41033": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41034": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41035": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41036": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41037": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41038": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "41039": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       }
     },
     "hardness_classify": {
@@ -3288,22 +3288,22 @@
         "operation": "classify the current block and physically place it upright on the corresponding plate"
       }
     },
-    "roughness_classify": {
+    "grasp_classify": {
       "42000": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       },
       "42001": {
         "classification_property": "roughness",
         "label_to_plate": {
-          "smooth": "blue_plate",
-          "rough": "yellow_plate"
+          "smooth": "green_pad",
+          "rough": "orange_pad"
         },
-        "operation": "classify the current block and physically place it upright on the corresponding plate"
+        "operation": "classify the current prism and physically place it upright on the corresponding pad"
       }
     },
     "hardness_classify": {
