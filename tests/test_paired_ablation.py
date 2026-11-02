@@ -134,6 +134,24 @@ def test_tension_image_guidance_is_only_in_rgb_prompt(mode):
     assert ('read_tactile_rgb' in text) == (mode == 'tactile-rgb-opencv')
 
 
+def test_development_smoke_keeps_source_checks_and_does_not_release_formal(tmp_path):
+    source = tmp_path/'task.py'
+    source.write_text('# native task fixture\n')
+    spec = load_spec('env_configs/ablations/tension_strap.yaml')
+    item = {'environment_root':str(tmp_path), 'native_entry':source.name,
+            'environment_commit':'pinned', 'native_sha256':sha256(source),
+            'native_contract_verified':False, 'calibration_overlap_audited':False}
+    assets = {'tasks':{'tension_strap':item}}
+    assert len(readiness(spec, assets=assets)) == 2
+    spec['phase'] = 'smoke'
+    assert readiness(spec, assets=assets) == []
+    assert request_for(spec,42000)
+    with pytest.raises(ValueError):
+        request_for(spec,41000)
+    source.write_text('# changed after pinning\n')
+    assert 'native source hash missing/mismatch' in readiness(spec, assets=assets)
+
+
 def test_frozen_40_requests_and_readiness_are_honest():
     manifest = read_json(ROOT/'env_configs/ablations/seeds40.json')
     seeds = manifest['test_seeds']

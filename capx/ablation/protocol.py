@@ -97,9 +97,12 @@ def readiness(spec, *, assets=None):
             errors.append('environment HEAD differs from manifest')
     if source.is_file() and (not item.get('native_sha256') or sha256(source) != item['native_sha256']):
         errors.append('native source hash missing/mismatch')
-    if not item.get('native_contract_verified'):
+    # Development smoke establishes wiring evidence; it cannot certify the
+    # formal contract or train/test split. Pinned sources are required in both.
+    formal = spec.get('phase', 'formal') != 'smoke'
+    if formal and not item.get('native_contract_verified'):
         errors.append('native completion/action-rate/subtask contract not verified')
-    if not item.get('calibration_overlap_audited'):
+    if formal and not item.get('calibration_overlap_audited'):
         errors.append('development/calibration split audit incomplete')
     if spec['task'] == 'shadow_piano':
         path = Path(item['digit_config'])
