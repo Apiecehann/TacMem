@@ -70,6 +70,7 @@ def contract_hash(spec, seed):
     assets = read_json(resolve(spec['assets_manifest']))['tasks'][spec['task']]
     record = {'task': spec['task'], 'mode': spec['mode'], 'seed': seed, 'phase': spec['phase'],
               'request': request_for(spec, seed), 'assets': assets,
+              'task_parameters': spec.get('task_parameters', {}),
               'action_contract': spec['action_contract'], 'action_call_budget': spec['action_call_budget']}
     return hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()
 

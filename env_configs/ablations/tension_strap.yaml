@@ -7,6 +7,8 @@ temperature: 0.2
 reasoning_effort: medium
 seed_manifest: env_configs/ablations/seeds40.json
 assets_manifest: env_configs/ablations/assets.json
+task_parameters:
+  strap_color_mode: tricolor
 task_prompt: Grasp and pull the elastic strap. Complete the two requested force/time
   stages in order, with the requested continuous holds and tolerance. Do not rupture
   the strap or lose the grasp. Finish by setting capx_stop=True; the host then submits

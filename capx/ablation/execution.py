@@ -32,7 +32,7 @@ CV2 = set('cvtColor GaussianBlur medianBlur Sobel Scharr Laplacian Canny thresho
 METHODS = set('copy astype reshape flatten ravel transpose squeeze mean sum min max std var all any '
               'tolist item append extend pop get keys values items update setdefault count index sort '
               'reverse split strip lower upper is_integer'.split())
-FORBIDDEN = set('env APIS obs get_tactile_data get_tactile_features get_estimated_force '
+FORBIDDEN = set('env APIS get_tactile_data get_tactile_features get_estimated_force '
                 'get_key_force get_tactile_force get_tactile_depth get_marker get_marker_positions '
                 'check_success is_contacting is_slipping is_grasp_stable detect_contact detect_slip '
                 'sample_grasp_pose read_force check_force_stability'.split())

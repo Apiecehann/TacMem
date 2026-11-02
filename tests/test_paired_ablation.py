@@ -22,7 +22,7 @@ def formal_test_phase(monkeypatch):
 
 @pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
 def test_program_has_no_native_or_file_handles(mode):
-    for code in ["env.check_success()", "APIS.get('x')", "import os", "import requests", "import pathlib",
+    for code in ["env.check_success()", "APIS.get('x')", "x=obs", "import os", "import requests", "import pathlib",
                  "import numpy as np\nnp.load('/private.npy')", "get_robot_state.__self__",
                  "import cv2\ncv2.imread('/private.png')", "getattr(get_robot_state, '__self__')"]:
         with pytest.raises((ProgramViolation, NameError)):
@@ -43,7 +43,8 @@ def test_single_program_and_legal_end():
 def test_cv_program_computes_internally_and_cannot_print_features(capsys):
     code = '''import numpy as np
 import cv2
-image = read_tactile_rgb('index')['rgb']
+obs = read_tactile_rgb('index')
+image = obs['rgb']
 gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 feature = float(np.mean(gray))
 print(feature)
