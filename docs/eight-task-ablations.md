@@ -16,7 +16,7 @@
 | 重量分类 | OpenTacBench `envs.weight_classify` | 双 GelSight Mini | 轻物体放蓝盘、重物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
 | 粗糙度分类 | OpenTacBench `envs.roughness_classify` | 双 GelSight Mini | 光滑物体放蓝盘、粗糙物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
 | 硬度分类 | OpenTacBench `envs.hardness_classify` | 双 GelSight Mini | 软物体放蓝盘、硬物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
-| 随机组合匹配 | UniVTAC `envs.tactile_memory_match` | 双 GelSight Mini | 重量×粗糙度×硬度匹配，匹配候选放垫、释放并稳定 | 正确分支已固定；本机完整环境未部署 |
+| 随机组合匹配 | UniVTAC `envs.tactile_memory_match` | 双 GelSight Mini | 重量×粗糙度×硬度匹配，匹配候选放垫、释放并稳定 | 共用环境已部署，Kit 导入/资产通过；物理接线待验证 |
 | 弹力带 | envs.tension_strap | 双 GelSight Mini | 两段指定力与连续保持时间，合法 END | 源码存在；Kit 接线待验证 |
 | 拧灯泡 | envs.bulb_tightening | 双 GelSight Mini | 完成原生旋入、就位与安全判定 | 源码存在；Kit 接线待验证 |
 | 钢琴 | env.tasks.arm_shadow_piano | 单指 DIGIT | 指定八音的音高、力度、持音和释放 | 源码存在；Kit 接线待验证 |
@@ -28,7 +28,8 @@
 该版是三个二值属性的 8 类组合；入口为 `envs/tactile_memory_match.py`，通用配置为 `task_config/tactile_memory_match_smoke.yml`。
 完整任务判分要求实际放置、释放并稳定；不得开启仅探测标定评分或使用固定类别 Easy-GT demo 代替正式任务。详情见 [来源审计](task-source-audit.md)。
 组合任务资产清单已更正来源；前三项 YAML 仍保留旧参考匹配要求，需与 classify 原生定义对齐。四项 `native_contract_verified=false` 均未放行。
-后续需完成两组共同任务配置的对齐、UniVTAC 部署与资产审核，才能放行接线测试。
+UniVTAC 已在数据盘部署，Kit 导入与组合任务资产依赖审核通过；使用 `/mnt/data/ljz/opentacbench/univtac-deployment/activate.sh` 激活共用基础环境和该仓库的 TacEx 路径。
+后续仍需完成两组共同任务配置的对齐、物理接线与划分审核，才能放行正式实验。
 
 钢琴使用原生 240 Hz、action_repeat=8（30 Hz 四维目标），保持原生动作范围与严格力度评分。
 夹爪任务采用原生位置命令和运动规划，按实际物理 step 记时，不把一个宏动作当作一个物理步。
