@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .client import BaselineClient
 from .vision import image_part
-from .execution import ProgramViolation, extract_program, run_program
+from .execution import CV2, NUMPY, ProgramViolation, extract_program, run_program
 from .protocol import clear_proxies, contract_hash, request_for, require_ready, resolve, sha256, write_json
 
 
@@ -33,8 +33,14 @@ def build_prompt(spec, request, scene, state):
     import json
     text = (spec['task_prompt'] + '\nThis episode request: ' + json.dumps(request) + '\n' + API_DOC +
             spec['action_contract'] + '\nInitial robot state: ' + json.dumps(state))
+    text += ('\nAvailable numpy functions/types: ' + ', '.join(sorted(NUMPY)) +
+             '\nAvailable cv2 functions: ' + ', '.join(sorted(CV2)) +
+             '\nUse only these functions and standard cv2 image-processing constants. '
+             'No numpy.linalg, file/image loading, camera capture or model inference functions are exposed.')
     if spec['mode'] == 'tactile-rgb-opencv':
         text += '\n' + RGB_DOC
+        if spec.get('tactile_rgb_guidance'):
+            text += '\nTask-specific RGB analysis guidance:\n' + spec['tactile_rgb_guidance']
     return [{'role': 'system', 'content': 'Return executable Python only. Do not include prose.'},
             {'role': 'user', 'content': [{'type': 'text', 'text': text},
              {'type': 'text', 'text': 'CURRENT episode initial scene:'}, image_part(scene)]}]

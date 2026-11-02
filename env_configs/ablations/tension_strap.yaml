@@ -11,6 +11,37 @@ task_prompt: Grasp and pull the elastic strap. Complete the two requested force/
   stages in order, with the requested continuous holds and tolerance. Do not rupture
   the strap or lose the grasp. Finish by setting capx_stop=True; the host then submits
   native END. The requested forces are goals, not measurements.
+tactile_rgb_guidance: |
+  Implement the following image-feedback procedure inside this single Python program.
+  Read both left and right sensors with read_tactile_rgb. Each RGB image is an
+  HxWx3 uint8 array in RGB order, with physics_step and time_s. Compare observations
+  at matching steps; repeated reads at one step are not new temporal evidence.
+  Keep per-sensor reference and previous images, with their sampling times.
+  A first image is only a comparison reference; do not declare it unloaded unless
+  the public scene and executed opening/retraction establish no contact.
+
+  Use numpy and cv2 to compute image differences yourself: convert RGB to gray
+  with cv2.cvtColor, reduce noise with cv2.GaussianBlur, then cv2.absdiff and a
+  threshold estimated from repeated stationary images. Compare the changed-area
+  fraction, spatial distribution and their temporal changes separately on both
+  sides. These are image scores, not depth, physical contact area or force.
+  Use cv2.calcOpticalFlowFarneback only if visible texture supports tracking;
+  uniform/saturated frames or ambiguous changes must remain uncertain.
+  No numeric marker positions or precomputed features are available.
+
+  Use these observations to inform small position-commanded grasp adjustments
+  and monitor changing/asymmetric contact during pulling and holding. After each
+  action, check actual robot position and fresh timestamps. Use physical time,
+  not loop counts, for the requested holds. Keep loops bounded by the action
+  budget and handle unreliable observations explicitly. All recovery must be
+  inside the same program; no later code block or additional model call is available.
+
+  No RGB-to-newton calibration, material stiffness or known-force measurement is
+  supplied. Do not invent a brightness/area/flow-to-newton conversion, treat a
+  requested force as a measured value, or assume a known spring constant.
+  Image stability alone does not establish that a force target was reached.
+  Preserve this distinction in the code; final task judging is performed only
+  by the native environment at END. Do not print image scores or observations.
 action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
   world EE pose, metres; unit quaternion, z >= 0.01. Position-commanded motion, no
   automatic grasp correction.
