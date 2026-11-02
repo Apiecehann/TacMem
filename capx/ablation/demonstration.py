@@ -21,10 +21,30 @@ def frame_indices(count, fps, interval=.2, maximum=64):
     return indices.tolist()
 
 
-def image_part(rgb):
+def image_part(rgb, *, demonstration=False):
     stream = io.BytesIO()
-    Image.fromarray(rgb).save(stream, format='PNG')
-    return {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,' +
+    image = Image.fromarray(rgb)
+    if demonstration:
+        # 64 lossless frames exceeded the deployed gateway's request limit.
+        # Keep original PNGs on disk; compress only the model input images.
+        image = image.convert('RGB')
+        image.thumbnail((768, 768), Image.Resampling.LANCZOS)
+        quality = 80
+        while True:
+            stream.seek(0)
+            stream.truncate()
+            image.save(stream, format='JPEG', quality=quality)
+            if stream.tell() <= 96 * 1024:
+                break
+            if quality > 40:
+                quality -= 10
+            else:
+                image.thumbnail((max(1, image.width * 3 // 4),
+                                 max(1, image.height * 3 // 4)), Image.Resampling.LANCZOS)
+    else:
+        image.save(stream, format='PNG')
+    mime = 'image/jpeg' if demonstration else 'image/png'
+    return {'type': 'image_url', 'image_url': {'url': 'data:' + mime + ';base64,' +
             base64.b64encode(stream.getvalue()).decode('ascii')}}
 
 
@@ -50,9 +70,13 @@ def expert_parts(demo, output):
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             path = folder / f'{index:08d}.png'
             Image.fromarray(rgb).save(path)
-            parts.extend([{'type': 'text', 'text': f'Demonstration t={index/fps:.3f}s'}, image_part(rgb)])
+            parts.extend([{'type': 'text', 'text': f'Demonstration t={index/fps:.3f}s'},
+                          image_part(rgb, demonstration=True)])
             records.append({'frame': index, 'time_s': index/fps, 'path': str(path), 'sha256': sha256(path)})
-        write_json(folder / 'index.json', {'video_sha256': demo['sha256'], 'frames': records})
+        write_json(folder / 'index.json', {'video_sha256': demo['sha256'], 'frames': records,
+                   'model_input_encoding': {'format': 'jpeg', 'max_quality': 80, 'max_edge': 768,
+                                            'max_bytes_per_frame': 96 * 1024},
+                   'stored_frame_encoding': 'png'})
         return parts
     finally:
         cap.release()
