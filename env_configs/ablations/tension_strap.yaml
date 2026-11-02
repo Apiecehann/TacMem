@@ -36,12 +36,25 @@ tactile_rgb_guidance: |
   budget and handle unreliable observations explicitly. All recovery must be
   inside the same program; no later code block or additional model call is available.
 
-  No RGB-to-newton calibration, material stiffness or known-force measurement is
-  supplied. Do not invent a brightness/area/flow-to-newton conversion, treat a
-  requested force as a measured value, or assume a known spring constant.
-  Image stability alone does not establish that a force target was reached.
-  Preserve this distinction in the code; final task judging is performed only
-  by the native environment at END. Do not print image scores or observations.
+  This is an uncalibrated RGB/OpenCV baseline. No RGB-to-newton calibration,
+  material stiffness or known-force measurement is supplied. You may propose
+  your own approximate mapping from image changes and public robot motion to a
+  heuristic force in newtons, including self-chosen gains or stiffness assumptions.
+  Identify these assumptions in code comments and name the output heuristic_force_N
+  or similar: it is an unverified controller estimate, not a measured force or a
+  calibrated prediction. Do not assign the requested target to the estimated force.
+  Do not access calibration files, expert labels, native force, reward or scoring.
+
+  Use your heuristic estimate to attempt both requested pull/hold stages within
+  the existing action bounds and budget. If the estimate is unavailable, a bounded
+  position-based attempt is allowed. Do not stop at stationary image sampling or
+  refuse all pulling solely because a calibration is absent. Preserve native
+  termination and safety constraints; do not continue actions after termination.
+  When the bounded task attempt ends, set capx_stop=True to submit native evaluation,
+  even if the force accuracy or task outcome is uncertain. END is not a claim of
+  success. The native evaluator determines whether the actual forces and holds
+  passed; image stability and the heuristic estimate do not replace that judgment.
+  Do not print image scores, heuristic forces or observations.
 action_contract: 'action(''goto_pose'', position=[x,y,z], quaternion_wxyz=[w,x,y,z]):
   world EE pose, metres; unit quaternion, z >= 0.01. Position-commanded motion, no
   automatic grasp correction.

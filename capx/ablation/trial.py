@@ -12,7 +12,8 @@ from .execution import CV2, NUMPY, ProgramViolation, extract_program, run_progra
 from .protocol import clear_proxies, contract_hash, request_for, require_ready, resolve, sha256, write_json
 
 
-API_DOC = '''Write one complete Python program. Set capx_stop = True only when done.
+API_DOC = '''Write one complete Python program. Set capx_stop = True when the bounded task attempt is finished.
+END submits native evaluation; it does not claim that the task succeeded.
 No extra model calls, blocks, skills, saved programs, filesystem, networking or introspection.
 You may import math, numpy and cv2. Use loops, functions and recovery inside this program.
 get_scene_rgb(camera='head'): ordinary RGB image (H,W,3 uint8).
