@@ -18,18 +18,25 @@
 
 ## UniVTAC：组合匹配
 
-仓库：[flyingc2004/UniVTAC](https://github.com/flyingc2004/UniVTAC/tree/feat/task-transfer)。分支 `feat/task-transfer`，核对 commit `015f972ee9c3e9173f862aed9038bd1c34fee9ac`。
+仓库：[flyingc2004/UniVTAC](https://github.com/flyingc2004/UniVTAC/tree/feat/composable-tactile-slots)。按用户更正采用 `feat/composable-tactile-slots`，核对 commit `1a131a416e57e95164b40c54aeb6b15c76ab4476`；此前 `feat/task-transfer` 的双属性结论不适用于本实验。
 
-- [原生任务](https://github.com/flyingc2004/UniVTAC/blob/015f972ee9c3e9173f862aed9038bd1c34fee9ac/envs/tactile_memory_match.py)：`envs.tactile_memory_match.TaskCfg/Task`。
-- [配置](https://github.com/flyingc2004/UniVTAC/blob/015f972ee9c3e9173f862aed9038bd1c34fee9ac/task_config/tactile_memory_match_smoke.yml)：`sensor_type: gsmini`，不是 selection-only 配置。
-- 四类为 `light_smooth / light_rough / heavy_smooth / heavy_rough`，由密度和摩擦系数组合产生；该版未加入硬度。
-- 一个 reference、两个候选，其中一个与 reference 同类，另一个为不同类；左右匹配位置随机。
-- 原生判分要求匹配候选实际放到匹配垫上、非匹配候选未放入。放置检查包含垫面重叠、支撑高度误差小于 0.012 m、夹爪开度大于 0.020 m，并连续满足 10 步。仅输出候选名称不足以成功。
-- `check_success()` 不单独要求历史上触摸过 reference；不能把“原生成功”当作“证明执行了参考探测”的证据。
-- `TaskCfg.use_adaptive_grasp=True`，任务还会记录触觉 timeline。接入消融时须复核公共动作路径不执行触觉自动抓持、原生诊断留在私有审计，不让标量日志进入无触觉组。此次未改变这些行为。
+- [原生任务](https://github.com/flyingc2004/UniVTAC/blob/1a131a416e57e95164b40c54aeb6b15c76ab4476/envs/tactile_memory_match.py)：`envs.tactile_memory_match.TaskCfg/Task`。
+- 三个二值属性为重量 `light/heavy`、粗糙度 `smooth/rough`、硬度 `rigid/soft`，共 8 类。一个 reference、两个候选，其中一个三属性均匹配，另一个至少一项不同；左右匹配位置随机。
+- 重量由密度设置；粗糙度由 `Can_d4cm.usd` / `Can_d4cm_axial_ridges.usda` 表面网格设置，摩擦系数统一为 2.5；柔软类别使用 `StableNeoHookeanCfg(youngs_modulus=0.1, poisson_rate=0.45)`。单位遵循 UIPC 配置，不能将该参数擅自解释为牛顿力值。
+- 代码的公开探测协议是 `tactile_probe.v4`，包含动作、depth/marker 与预计算摘要；仓库 benchmark 文档仍有 v3 和全同网格的旧描述，以该 commit 的源码为准。
+- 完整任务判分要求匹配候选实际放到垫上、非匹配候选未放入。放置要求垫面重叠、中心高度不超过任务给定的支撑上限、夹爪开度大于 0.020 m，连续满足 10 步。仅输出候选名称不足以成功。
+- `calibration_probe_only=True` 会改为检查三个探测质量有效，因此正式实验必须保留默认 `False`；完整任务判分不单独要求历史上触摸过 reference。
+- `TaskCfg.use_adaptive_grasp=True`，公开 probe 自带触觉自适应闭合。两组消融不能直接调用整个 probe 或投递其摘要；仍使用共同的底层位置动作接口。原生触觉诊断应留在私有审计。
 
-远端文件副本和 SHA256 存于 `/mnt/data/ljz/opentacbench/task-source-audit/20261102/`。这是源码审计副本，不是完整可运行的 UniVTAC 安装；未验证其全部依赖、资产和 Kit 兼容性。
+### 配置选择
+
+资产清单选用 [通用配置](https://github.com/flyingc2004/UniVTAC/blob/1a131a416e57e95164b40c54aeb6b15c76ab4476/task_config/tactile_memory_match_smoke.yml) 的传感器/观测设置，配合 `TaskCfg` 的随机类别、完整任务判分和关闭 Easy-GT 的默认值；单次 seed 仍由实验清单传入。此配置选择尚待 Kit 接线验证。
+
+`tactile_memory_match_composable_smoke.yml` 固定一对软/硬类别，仅用于软体可行性测试；`tactile_memory_match_composable_capx_demo.yml` 固定类别并开启 `capx_easy_gt_enabled`，都不作为正式 40-seed 任务配置。标定配置也不能替代完整操作评分。
+
+远端文件副本和 SHA256 存于 `/mnt/data/ljz/opentacbench/task-source-audit/20261102-composable-tactile-slots/`；旧分支审计保留在原目录。
+资产清单的部署目标为 `/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots`，当前尚未建立完整运行 checkout。源码副本不冒充运行安装；依赖、凸纹资产和 Kit 兼容性尚未验证，就绪标记保持 false。
 
 ## 对当前实验配置的影响
 
-当前 `weight_match/roughness_match/hardness_match` 仍要求 reference 匹配，`combined_match` 仍写三属性且指向 OpenTacBench，均与查证源码不符。这次只审计来源，不擅自更换任务或修改评分；就绪标记继续为 false。后续应统一修正两组配置，并与原表征组保持相同任务定义。
+当前 `weight_match/roughness_match/hardness_match` 仍要求 reference 匹配，需要另行对齐前三个 classify。`combined_match` 的三属性要求与此次确认的分支一致；两个实验分支均已更正仓库、commit、源码 hash、任务配置和部署目标，不再指向 OpenTacBench 的不存在入口。后续完成环境部署、底层动作/信息隔离和划分审核后才能放行运行。
