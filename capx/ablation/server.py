@@ -28,7 +28,15 @@ def rgb_payload(value):
     rgb = array(value)
     if rgb.ndim == 4 and rgb.shape[0] == 1:
         rgb = rgb[0]
-    if rgb.ndim != 3 or rgb.shape[2] not in (3, 4) or rgb.dtype != np.uint8:
+    if rgb.ndim != 3 or rgb.shape[2] not in (3, 4) or not rgb.size:
+        raise ValueError('invalid_raw_rgb')
+    if np.issubdtype(rgb.dtype, np.floating):
+        # Native GelSight optical RGB is also recorded as float32 in [0, 255].
+        # Preserve that byte scale; never normalize each frame by its extrema.
+        if not np.isfinite(rgb).all() or np.any(rgb < 0) or np.any(rgb > 255):
+            raise ValueError('invalid_raw_rgb')
+        rgb = np.rint(rgb).astype(np.uint8)
+    elif rgb.dtype != np.uint8:
         raise ValueError('invalid_raw_rgb')
     buffer = io.BytesIO()
     Image.fromarray(rgb[:, :, :3]).save(buffer, format='PNG')

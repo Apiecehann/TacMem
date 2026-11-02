@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import pytest
 
-from capx.ablation.client import BaselineClient
+from capx.ablation.client import BaselineClient, decode_rgb
 from capx.ablation.execution import ProgramViolation, extract_program, run_program, validate_program
 from capx.ablation.protocol import ROOT, TASKS, load_spec, read_json, readiness, request_for, sha256
 from capx.ablation.server import BaselineServer, rgb_payload
@@ -78,6 +78,16 @@ def test_no_sensor_has_no_files_or_interface(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_native_float_rgb_preserves_byte_scale():
+    rgb = np.array([[[8.,65.,182.],[0.,128.,255.]]], dtype=np.float32)
+    assert np.array_equal(decode_rgb(rgb_payload(rgb)), rgb.astype(np.uint8))
+    for bad_value in (float('nan'), float('inf'), -1., 256.):
+        invalid = rgb.copy()
+        invalid[0,0,0] = bad_value
+        with pytest.raises(ValueError, match='invalid_raw_rgb'):
+            rgb_payload(invalid)
+
+
 @pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
 def test_current_scene_is_the_only_prompt_image(mode):
     spec = {'task_prompt':'Goal','action_contract':'action API','mode':mode}
@@ -111,6 +121,17 @@ def test_readiness_needs_native_audits_but_no_expert_video(tmp_path):
     item['native_contract_verified'] = True
     item['development_seeds'] = [41000]
     assert 'split overlap' in readiness(spec, assets=assets)
+
+
+@pytest.mark.parametrize('mode', ['no-tactile', 'tactile-rgb-opencv'])
+def test_tension_image_guidance_is_only_in_rgb_prompt(mode):
+    spec = load_spec('env_configs/ablations/tension_strap.yaml')
+    spec['mode'] = mode
+    prompt = build_prompt(spec, request_for(spec,41000), np.zeros((8,8,3),np.uint8), {})
+    text = '\n'.join(part['text'] for part in prompt[-1]['content'] if part['type']=='text')
+    assert (spec['tactile_rgb_guidance'] in text) == (mode == 'tactile-rgb-opencv')
+    assert ('cv2.absdiff' in text) == (mode == 'tactile-rgb-opencv')
+    assert ('read_tactile_rgb' in text) == (mode == 'tactile-rgb-opencv')
 
 
 def test_frozen_40_requests_and_readiness_are_honest():
