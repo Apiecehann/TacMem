@@ -196,8 +196,6 @@ def test_classification_uses_native_reset_random_label_and_private_scoring(monke
 
     field = task.replace('_classify', '_label')
     module = ModuleType(f'envs.{task}')
-    # Reproduce the native weight default; initialization must not leave it
-    # fixed. No Kit/native imports are needed for this wiring test.
     module.TaskCfg = lambda: SimpleNamespace(**{field: 'heavy'},
         sim=SimpleNamespace(dt=1/120), decimation=1, scene=SimpleNamespace(),
         skip_pre_move=False, use_adaptive_grasp=False)
@@ -238,7 +236,6 @@ def test_classification_uses_native_reset_random_label_and_private_scoring(monke
     assert events == [('reset', 41000)]
     assert peer._TASK_NAME == task
     assert server.started_step == 10
-    # Host-only END still uses the native scorer, not the supplied class name.
     assert server.finish(True)['native_result']['completed'] is True
     assert events == [('reset', 41000), ('native_score', 10)]
     assert (server.output/'private/native_result.json').is_file()

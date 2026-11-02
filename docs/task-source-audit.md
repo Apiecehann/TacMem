@@ -12,18 +12,9 @@
 | 粗糙度 | `envs/roughness_classify.py` | 光滑物体→蓝盘，粗糙物体→黄盘 |
 | 硬度 | `envs/hardness_classify.py` | 软物体→蓝盘，硬物体→黄盘 |
 
-三者均有 `TaskCfg` 和 `Task`，使用单个当前物体；另一属性的备用物体停在场景外侧。没有参考物体、两个候选和参考匹配流程。
-重量原生默认 `weight_label="heavy"`；粗糙度和硬度默认 `random`。同学服务对重量/硬度显式设置随机标签；两个消融分支也将这三项的标签配置统一为 `random`，由原生 seed 决定本次类别。本次实际类别不进入公开请求。
+三者均有 `TaskCfg` 和 `Task`，默认属性标签为 `random`，使用单个当前物体；另一属性的备用物体停在场景外侧。没有参考物体、两个候选和参考匹配流程。
 原生 `check_success()` 检查相对目标位姿：各水平轴误差小于 0.04 m、竖直误差小于 0.01 m、朝向点积大于 0.965。不能把只输出分类标签记为原生成功。
-本机没有单独的 `task_config/weight_classify.yml` 等配置；公共 `task_config/gelsight.yml` 存在，指定 `gsmini`。三个消融配置均加载它的传感器/观测设置，并保留原生 `reset/pre_move`；不执行专家 `play_once()`。
-
-### 同学 CaP-X 配置的复用
-
-- 重量：`env_configs/univtac/weight_classify/univtac_weight_classify.yaml`。
-- 硬度：`env_configs/univtac/hardness_classify/univtac_hardness_classify.yaml`。
-- 两者详细 prompt 位于 `capx/envs/tasks/tactile/univtac_<task>.py` 的 `PROMPT`。消融 YAML 复用单物体分类、颜色映射及放置要求；原文件保留，不导入其技能、预计算特征、标定阈值或 `ORACLE_CODE`。
-- 此版本没有 `roughness_classify` 对应的同学 YAML。已有 `grasp_classify` 是棱柱→绿/橙垫，不能直接替代蓝/黄盘任务；新增消融配置的要求来自 OpenTacBench `envs/roughness_classify.py`。
-- 三项消融 YAML 使用 `weight_classify/roughness_classify/hardness_classify` 命名，来源与 SHA256 已记录。完整程序和动作接口仍遵循两个消融分支共同的单次生成协议。
+本机没有单独的 `task_config/weight_classify.yml` 等配置；公共 `task_config/gelsight.yml` 存在，指定 `gsmini`。同学服务已有重量/硬度的 `gelsight.yml` 配置路由；粗糙度入口和实验路由仍需显式接线。
 
 ## UniVTAC：组合匹配
 
@@ -50,6 +41,4 @@ Kit 实际导入和相关 USD 依赖检查通过（含凸纹圆柱），未创�
 
 ## 对当前实验配置的影响
 
-前三项已按用户确认改为 OpenTacBench 的实际 classify，配置、入口、源码 hash 与 40-seed 请求一起更新；仍使用原来的 41000–41039 正式 seed 和 42000/42001 开发 seed。`combined_match` 保留 UniVTAC 的三属性参考匹配。原生源码、专家策略、物理和判分均未修改；分类任务也不额外要求原生判分中没有的释放动作。
-CPU 检查覆盖随机标签传入、原生 reset/最终判分调用、请求不泄露实际类别，以及两个模式的 prompt 边界；它不能替代真实物理接线验证。四项 `native_contract_verified=false` 保持不变，正式实验仍需物理接线与划分审核。
-本次 `tests/test_paired_ablation.py`：32 passed（CPU、模拟任务，无 GPU/模型请求）。报告：`/mnt/data/ljz/opentacbench/ablation-cpu-tests/classify-wiring-20261102-v2.xml`。
+当前 `weight_match/roughness_match/hardness_match` 仍要求 reference 匹配，需要另行对齐前三个 classify。`combined_match` 的三属性要求与此次确认的分支一致；两个实验分支均已更正仓库、commit、源码 hash、任务配置和部署目标，不再指向 OpenTacBench 的不存在入口。后续完成底层动作/信息隔离、物理接线和划分审核后才能放行运行。
