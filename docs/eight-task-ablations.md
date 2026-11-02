@@ -13,19 +13,22 @@
 
 | 任务 | 原生入口 | 传感器 | 原生完整操作要求 | 当前缺项 |
 |---|---|---|---|---|
-| 重量匹配 | envs.tactile_memory_match，重量条件 | 双 GelSight Mini | 参考→两个候选→将匹配物体放到匹配位 | 对应环境及重量配对配置未提供 |
-| 粗糙度匹配 | 同上，粗糙度条件 | 双 GelSight Mini | 同上，匹配粗糙度 | 环境及粗糙度配对配置未提供 |
-| 硬度匹配 | 同上，硬度条件 | 双 GelSight Mini | 同上，匹配硬度 | 环境及硬度配对配置未提供 |
-| 随机组合匹配 | 同上，组合条件 | 双 GelSight Mini | 参考与候选多属性匹配并放置 | 环境及组合配对配置未提供 |
+| 重量分类 | OpenTacBench `envs.weight_classify` | 双 GelSight Mini | 轻物体放蓝盘、重物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
+| 粗糙度分类 | OpenTacBench `envs.roughness_classify` | 双 GelSight Mini | 光滑物体放蓝盘、粗糙物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
+| 硬度分类 | OpenTacBench `envs.hardness_classify` | 双 GelSight Mini | 软物体放蓝盘、硬物体放黄盘 | 源码已找到；当前实验 YAML 仍错误要求参考匹配，待对齐 |
+| 随机组合匹配 | UniVTAC `envs.tactile_memory_match` | 双 GelSight Mini | 重量×粗糙度匹配，匹配候选放垫、释放并稳定 | 远端源码已核对；本机完整环境未部署，配置仍指向错误仓库 |
 | 弹力带 | envs.tension_strap | 双 GelSight Mini | 两段指定力与连续保持时间，合法 END | 源码存在；Kit 接线待验证 |
 | 拧灯泡 | envs.bulb_tightening | 双 GelSight Mini | 完成原生旋入、就位与安全判定 | 源码存在；Kit 接线待验证 |
 | 钢琴 | env.tasks.arm_shadow_piano | 单指 DIGIT | 指定八音的音高、力度、持音和释放 | 源码存在；Kit 接线待验证 |
 | 盲盒抓球 | env.tasks.blind_pick_balls | 双 GelSight Mini | 原生抓持验证、提离箱体、放入碗并释放 | 源码存在；Kit 接线待验证 |
 
 当前 OpenTacBench 固定为 `179bb8b5fe987f30ac17c407c5265b40c8f223a7`。
-四个参考匹配任务不能用 `weight_classify` 等分类入口替代。也不能仅改 prompt 的属性名便声称原生任务已经改变。
-需要同学提供实际参考匹配环境、各单属性/组合条件的配置或 seed 对应关系，以及原生完整成功检查。
-当前四项的 `native_contract_verified=false`，源码检查也直接失败；尚未猜测任何控制参数来补这个缺口。
+2026-11-02 核对：前三项 classify 确实存在于上述 OpenTacBench；它们是单物体分类放盘，不包含参考物体匹配流程。
+第四项位于 [flyingc2004/UniVTAC 的 feat/task-transfer](https://github.com/flyingc2004/UniVTAC/tree/feat/task-transfer)，核对 commit 为 `015f972ee9c3e9173f862aed9038bd1c34fee9ac`。
+该版组合只有重量与粗糙度，没有硬度；入口为 `envs/tactile_memory_match.py`，配置为 `task_config/tactile_memory_match_smoke.yml`。
+其原生判分要求实际放置、释放并稳定，不是 selection-only。详情见 [来源审计](task-source-audit.md)。
+现有四项 YAML/资产清单仍保留旧的参考匹配约定和 `native_contract_verified=false`，本次只记录查证结果，未将不同任务静默替换为可运行配置。
+后续需按原生定义更新两组共同的任务 prompt、入口、配置和 seed 请求，并核对 UniVTAC 依赖与资产，才能放行接线测试。
 
 钢琴使用原生 240 Hz、action_repeat=8（30 Hz 四维目标），保持原生动作范围与严格力度评分。
 夹爪任务采用原生位置命令和运动规划，按实际物理 step 记时，不把一个宏动作当作一个物理步。
