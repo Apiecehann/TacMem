@@ -45,6 +45,7 @@ from capx.utils.launch_utils import (
     _build_multi_turn_decision_prompt,
     _build_multi_turn_decision_prompt_legacy,
     _extract_code,
+    _single_program,
     _get_visual_feedback,
     _parse_multi_turn_decision,
     _save_trial_artifacts,
@@ -669,6 +670,10 @@ def _run_single_trial(
         5. Save artifacts (code, logs, per-turn videos, combined video) and return a TrialSummary.
     """
     trial_start_time = time.time()
+    if config.get("agent0_mode"):
+        multi_turn_prompt = None
+        if partial_artifacts is not None:
+            partial_artifacts["phase"] = "reset"
 
     use_video_diff = config.get("use_video_differencing", False)
     use_wrist = config.get("use_wrist_camera", False)
@@ -745,6 +750,11 @@ def _run_single_trial(
                 f"{base64.b64encode(buf.getvalue()).decode('utf-8')}"
             )
 
+    if config.get("agent0_mode"):
+        if not visual_feedback_imgs:
+            raise RuntimeError("Initial scene image was not captured")
+        if partial_artifacts is not None:
+            partial_artifacts["phase"] = "generation"
     # --- 3. Initial code generation ---
     if config["use_oracle_code"]:
         raw_code = env.oracle_code
@@ -775,7 +785,7 @@ def _run_single_trial(
         })
 
     # Parse initial code into blocks
-    initial_blocks = _extract_code(raw_code)
+    initial_blocks = [_single_program(raw_code)] if config.get("agent0_mode") else _extract_code(raw_code)
     code_blocks.extend(initial_blocks)
     code_block_metadata.extend([{"generation": 0, "regenerated": False}] * len(initial_blocks))
     all_responses.append({
@@ -831,6 +841,9 @@ def _run_single_trial(
         # Record frame index before step
         frame_start = env.get_video_frame_count() if recording_frames else 0
 
+        if partial_artifacts is not None:
+            partial_artifacts["phase"] = "execution"
+            partial_artifacts["num_code_blocks"] = code_block_idx
         obs_next, reward, terminated, truncated, info_step = env.step(code)
 
         # Record frame index after step
@@ -941,7 +954,7 @@ def _run_single_trial(
         partial_artifacts["num_code_blocks"] = num_code_blocks
 
     # Override sandbox_rc for terminated-episode stderr
-    if "executing action in terminated episode" in info_step["stderr"]:
+    if not config.get("agent0_mode") and "executing action in terminated episode" in info_step["stderr"]:
         sandbox_rc_override = 0
     if sandbox_rc_override is not None:
         info_step["sandbox_rc"] = sandbox_rc_override

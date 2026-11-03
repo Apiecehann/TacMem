@@ -1,10 +1,3 @@
-# UniVTAC: tactile_memory_match (privileged)
-# Tactile memory matching: probe the reference can, probe both identical
-# candidates, place the twin (closest tactile + weight feel) on the pad.
-# Object poses come from the simulator's ground-truth /object_pose.
-#
-# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
-
 env:
   _target_: capx.envs.tasks.tactile.univtac_tactile_memory_match.UniVTACTactileMemoryMatchCodeEnv
   cfg:
@@ -12,27 +5,98 @@ env:
     low_level: env_configs/univtac/tactile_memory_match/low_level_tactile_memory_match.yaml
     privileged: false
     apis:
-      - UniVTACTactileApi
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+      - get_tactile_image
+      - get_tactile_depth
+    prompt: 'You control a Franka robot through the documented native API. Use allowed position and robot-state
+      queries and ordinary scene vision. Use only documented functions; do not read task internals, files, hidden
+      labels or private evaluation endpoints. Gripper closing is position-controlled. Write one complete Python
+      program and call its entry function, without Markdown fences or prose. Only one generation is available: loops
+      and recoverable error handling must be inside that program. Do not continue after native termination. The
+      host evaluates native completion after the program returns; code execution success is separate from task success.
 
+
+      Task: Match the reference can to one of two candidate cans, then physically place that candidate on match_slot.
+      Public object names are reference_object, candidate_left, candidate_right and match_slot. They look identical
+      but differ in surface texture, weight and hardness. One candidate matches the reference in all three properties;
+      the other differs in at least one. Examine the reference and both candidates before choosing. Completing a
+      label or selection without physical placement does not complete the task.
+
+
+      Available sensor signals are full floating-point depth maps in mm, uint8 tactile RGB, and separate uint8 RGB
+      with marker texture for each fingertip, with sensor identity, physical step and simulation time. A missing
+      channel is None, not a substitute image. Use get_tactile_data for a synchronized snapshot, get_tactile_image(side,
+      image_type="rgb" or "rgb_marker") or get_tactile_depth(side). You may write numpy/cv2 processing inside your
+      program. No marker coordinates, processed contact/slip/property features, calibrated force models, classification
+      thresholds or feature-conversion recipes are supplied. Compute any needed decision from the available raw
+      signals; a pixel value is not a measured force.
+
+
+      For this wiring smoke, sample the three available raw channels once before the first manipulation and after
+      at least one completed motion while the episode is active. Keep any further sensing and interpretation inside
+      this single program.'
+    observation_mode: raw
+    tactile_skills:
+    - one-call-approach
+    - lift-before-lateral
+    - world-frame-transport
+    - seat-height-from-plate
+    - settle-after-release
+    - keep-closed-if-task-allows
+    - finger-position-grip
+    - cruise-height
+    - preserve-existing-grasp
+    - orientation-fix-high
+    - descend-until-supported
+    - differential-across-states
+    - grasp-verification
+    - tactile-cannot-locate
+    - no-calibration-transfer
+    - memory-match-one-grasp
+    - one-grasp-multi-property
+    - no-absolute-without-reference
+    multi_turn_prompt: ''
+agent0_mode: raw
+task_name: tactile_memory_match
+seed_manifest: env_configs/ablations/seeds40.json
+model: gpt-6.1-sol
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 api_servers:
-  - _target_: capx.serving.launch_univtac_server.main
-    task: tactile_memory_match
-    port: 8120
-    host: 127.0.0.1
-
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: tactile_memory_match
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: raw
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
 record_video: true
-output_dir: ./outputs/univtac_tactile_memory_match
-
-trials: 22
-num_workers: 1  # Isaac Sim is not parallel-safe
-# seed = trial id, and the balanced schedule maps it through
-# ORDERED_CLASS_PAIRS[seed % 56], so trial 7 is a HARDNESS-ONLY pair
-# (light_smooth_soft vs light_smooth_rigid) -- the dimension Phase C added
-# an axis for.  runner.py runs range(resume_idx, total_trials + 1), so
-# trials == resume_idx is how a single seed is selected.
-#
-# These two lines are per-seed scratch state: scripts/run_mm_oracle_seeds.sh
-# rewrites them before each launch (launch.py has no CLI flag for resume_idx)
-# and leaves them pointing at whichever seed ran last.  Edit them by hand only
-# to run one seed on its own.
-resume_idx: 17
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 3600
+trial_timeout_seconds: 4200
+process_timeout_seconds: 4800
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/raw_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

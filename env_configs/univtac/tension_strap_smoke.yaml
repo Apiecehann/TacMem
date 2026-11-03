@@ -1,0 +1,97 @@
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+      task_name: tension_strap
+    privileged: false
+    apis:
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+      - get_tactile_image
+      - get_tactile_depth
+      - submit_episode
+    append_final_check: submit_episode
+    multi_turn_prompt: ''
+    prompt: 'You control a Franka robot through the documented native API. Use allowed position and robot-state
+      queries and ordinary scene vision. Use only documented functions; do not read task internals, files, hidden
+      labels or private evaluation endpoints. Gripper closing is position-controlled. Write one complete Python
+      program and call its entry function, without Markdown fences or prose. Only one generation is available: loops
+      and recoverable error handling must be inside that program. Do not continue after native termination. The
+      host evaluates native completion after the program returns; code execution success is separate from task success.
+
+
+      Task: Grasp the free handle and pull the elastic strap to complete these ordered force/time targets: {force_request}.
+      These are task goals, not measured forces. Preserve the grasp across stages. Native grasp-loss, overload,
+      travel and time limits remain authoritative. Reset opens the gripper; it does not approach or grasp the handle.
+      Approach using the native pose and motion APIs before closing. Return normally after attempting the sequence;
+      the host submits native END and records the verdict. Do not call private scoring endpoints.
+
+
+      Available sensor signals are full floating-point depth maps in mm, uint8 tactile RGB, and separate uint8 RGB
+      with marker texture for each fingertip, with sensor identity, physical step and simulation time. A missing
+      channel is None, not a substitute image. Use get_tactile_data for a synchronized snapshot, get_tactile_image(side,
+      image_type="rgb" or "rgb_marker") or get_tactile_depth(side). You may write numpy/cv2 processing inside your
+      program. No marker coordinates, processed contact/slip/property features, calibrated force models, classification
+      thresholds or feature-conversion recipes are supplied. Compute any needed decision from the available raw
+      signals; a pixel value is not a measured force.
+
+
+      For this wiring smoke, sample the three available raw channels once before the first manipulation and after
+      at least one completed motion while the episode is active. Keep any further sensing and interpretation inside
+      this single program.'
+    observation_mode: raw
+    tactile_skills:
+    - one-call-approach
+    - world-frame-transport
+    - preserve-existing-grasp
+    - finger-position-grip
+    - differential-across-states
+    - grasp-verification
+    - tactile-cannot-locate
+    - no-calibration-transfer
+    - no-absolute-without-reference
+agent0_mode: raw
+task_name: tension_strap
+seed_manifest: env_configs/ablations/seeds40.json
+model: gpt-6.1-sol
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: tension_strap
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: raw
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+record_video: true
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 1200
+trial_timeout_seconds: 1800
+process_timeout_seconds: 2400
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/raw_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1
