@@ -27,6 +27,7 @@ from capx.envs.trial import (
 )
 from capx.utils.launch_utils import (
     TrialSummary,
+    _agent0_metrics,
     _print_and_save_summary,
     _save_trial_artifacts,
     run_server_proc,
@@ -65,6 +66,8 @@ def _start_api_servers(
             if port is not None:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     if s.connect_ex((host, int(port))) == 0:
+                        if api_server.get("observation_mode") in {"raw", "none"}:
+                            raise RuntimeError(f"Refusing to reuse an existing server on {host}:{port}")
                         print(f"API server on {host}:{port} already running, skipping")
                         continue
             proc = run_server_proc(api_server)
@@ -94,6 +97,9 @@ def _stop_api_servers(server_procs: list) -> None:
     for proc in server_procs:
         proc.terminate()
         proc.join(timeout=5.0)
+        if proc.is_alive():
+            proc.kill()
+            proc.join(timeout=5.0)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +116,9 @@ def _setup_output_dir(args, config: dict[str, Any]) -> None:
     # use_oracle_code too, and the folder/name should say "oracle" either way.
     if config.get("use_oracle_code"):
         args.model = "oracle"
+    if config.get("agent0_mode"):
+        Path(config["output_dir"]).mkdir(parents=True, exist_ok=True)
+        return
     if config["output_dir"]:
         parts = config["output_dir"].split("/")
         parts.insert(-1, str(args.model).replace("/", "_"))
@@ -232,9 +241,10 @@ def _run_trial_with_retries(
     """Attempt a trial up to MAX_TRIAL_RETRIES times, retrying on timeout."""
     # Bridge the respawn window after a cuRobo hang (see _wait_for_server_healthy).
     _wait_for_server_healthy(env)
-    for attempt in range(MAX_TRIAL_RETRIES):
+    attempts = config.get("max_trial_attempts", MAX_TRIAL_RETRIES)
+    for attempt in range(attempts):
         try:
-            is_last_attempt = attempt == MAX_TRIAL_RETRIES - 1
+            is_last_attempt = attempt == attempts - 1
             timeout = getattr(args, "trial_timeout", TRIAL_TIMEOUT_SECONDS) or TRIAL_TIMEOUT_SECONDS
             return _run_single_trial_with_timeout(
                 env=env,
@@ -294,7 +304,10 @@ def _run_trial_batch(
 
     summaries: list[TrialSummary] = []
     for trial in tqdm(trial_indices, desc="Running Trials"):
+        started = time.time()
         summary = _run_trial_with_retries(env, trial, args, config, multi_turn_prompt)
+        if config.get("agent0_mode"):
+            summary.metrics = _agent0_metrics(summary, config, time.time() - started)
         summaries.append(summary)
 
     summaries.sort(key=lambda s: s.trial)
@@ -330,9 +343,15 @@ def _run_single_trial_with_timeout(
     signal.alarm(timeout_seconds)
     partial_artifacts: dict[str, Any] = {}
     try:
-        return _run_single_trial(
+        summary = _run_single_trial(
             env, trial, args, config, multi_turn_prompt, partial_artifacts=partial_artifacts
         )
+        if timed_out and config.get("agent0_mode"):
+            summary.truncated = True
+            summary.success = False
+            summary.sandbox_rc = 1
+            summary.failure_phase = partial_artifacts.get("phase")
+        return summary
     except BaseException as exc:
         is_timeout = timed_out or isinstance(exc, TimeoutError)
         try:
@@ -341,13 +360,12 @@ def _run_single_trial_with_timeout(
         except Exception:
             pass
 
-        if not is_timeout:
+        if not is_timeout and not config.get("agent0_mode"):
             raise
         if raise_on_timeout:
             raise TimeoutError(f"Trial {trial} timed out") from exc
 
-        print(f"Trial {trial} timed out on its wall-clock alarm")
-        return _build_timeout_summary(trial, timeout_seconds, partial_artifacts, config, exc)
+        return _build_timeout_summary(trial, timeout_seconds, partial_artifacts, config, exc, timed_out=is_timeout)
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, previous_handler)
@@ -359,6 +377,7 @@ def _build_timeout_summary(
     pa: dict[str, Any],
     config: dict[str, Any],
     exc: BaseException,
+    timed_out: bool = True,
 ) -> TrialSummary:
     """Build a TrialSummary from partial artifacts after a timeout."""
     raw_code = pa.get("raw_code", "")
@@ -390,7 +409,7 @@ def _build_timeout_summary(
 
     reward = pa.get("reward", 0.0)
     terminated = pa.get("terminated", False)
-    truncated = pa.get("truncated", False)
+    truncated = timed_out or pa.get("truncated", False)
     num_regenerations = pa.get("num_regenerations", 0)
     num_finishes = pa.get("num_finishes", 0)
     num_code_blocks = pa.get("num_code_blocks", len(code_blocks))
@@ -398,7 +417,7 @@ def _build_timeout_summary(
     log_lines = _build_log_lines(
         final_code, info_step, reward, terminated, truncated,
         num_regenerations, num_finishes, num_code_blocks,
-        prefix=f"Trial {trial} timed out on its wall-clock alarm.",
+        prefix=f"Trial {trial} {'timed out' if timed_out else 'failed'}: {type(exc).__name__}: {exc}",
     )
 
     code_path = _save_trial_artifacts(
@@ -423,9 +442,10 @@ def _build_timeout_summary(
         truncated=truncated,
         sandbox_rc=1,
         log="\n".join(log_lines),
-        task_completed=info_step.get("task_completed", False),
+        task_completed=info_step.get("task_completed"),
         code_path=code_path,
         num_regenerations=num_regenerations,
         num_finishes=num_finishes,
         num_code_blocks=num_code_blocks,
+        failure_phase=pa.get("phase"),
     )

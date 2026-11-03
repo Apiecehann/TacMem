@@ -1,6 +1,6 @@
 import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import lru_cache
 from typing import Any
 
@@ -46,6 +46,7 @@ class ApiBase(ABC):
     # success check) that the framework wants to invoke without the agent
     # knowing about them.
     _prompt_hidden: set[str] = set()
+    _optional_functions: tuple[str, ...] = ()
 
     def __init__(self, env: BaseEnv) -> None:
         self._env = env
@@ -102,6 +103,27 @@ class ApiBase(ABC):
     def functions(self) -> dict[str, Callable[..., Any]]:
         """Return mapping of public function name -> callable."""
 
+    def configure_functions(self, names: Sequence[str]) -> None:
+        if isinstance(names, (str, bytes)) or not isinstance(names, Sequence):
+            raise TypeError("api_functions must be a list of function names")
+        if any(not isinstance(name, str) for name in names):
+            raise TypeError("api_functions entries must be strings")
+        if len(names) != len(set(names)):
+            raise ValueError("api_functions contains duplicate names")
+        defaults = self.functions()
+        available = dict(defaults)
+        available.update({name: getattr(self, name) for name in self._optional_functions})
+        unknown = set(names) - available.keys()
+        if unknown:
+            raise ValueError(f"Unknown functions for {type(self).__name__}: {sorted(unknown)}")
+        selected = {name: available[name] for name in names}
+        selected.update({name: fn for name, fn in defaults.items() if name in self._prompt_hidden})
+        self._configured_functions = selected
+
+    def selected_functions(self) -> dict[str, Callable[..., Any]]:
+        configured = getattr(self, "_configured_functions", None)
+        return dict(configured) if configured is not None else self.functions()
+
     def combined_doc(self) -> str:
         """Aggregate function docs in a simple, consistent format.
 
@@ -113,7 +135,7 @@ class ApiBase(ABC):
         # we need to discuss this design further down the line
         lines: list[str] = []
         # lines: list[str] = [f"API: {self.__class__.__name__}", ""]
-        for name, fn in self.functions().items():
+        for name, fn in self.selected_functions().items():
             if name in self._prompt_hidden:
                 continue
             try:

@@ -18,6 +18,7 @@ Execution flow::
 from __future__ import annotations
 
 import os
+import signal
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -217,20 +218,33 @@ def main(args: LaunchArgs) -> None:
 
     start_time = time.time()
     env_factory, config, api_servers = _load_config(args)
-    server_procs = _start_api_servers(api_servers)
-
+    server_procs = []
+    previous_term = None
+    if config.get("agent0_mode"):
+        def stop_requested(signum, frame):
+            raise TimeoutError("Process stopped by its owner or external time limit")
+        previous_term = signal.signal(signal.SIGTERM, stop_requested)
     try:
+        server_procs = _start_api_servers(api_servers)
         if config.get("web_ui", False):
             _run_web_ui(args, config)
         else:
             _run_headless_trials(args, env_factory, config, start_time)
+    except Exception as exc:
+        if not config.get("agent0_mode"):
+            raise
+        from capx.utils.launch_utils import TrialSummary, _agent0_metrics, _print_and_save_summary
+        summary = TrialSummary(trial=config["resume_idx"], success=False, reward=0.0,
+                               terminated=False, truncated=isinstance(exc, TimeoutError), sandbox_rc=1,
+                               log=f"Infrastructure failure: {type(exc).__name__}: {exc}",
+                               failure_phase="runner" if server_procs else "startup")
+        summary.metrics = _agent0_metrics(summary, config, time.time() - start_time)
+        _print_and_save_summary([summary], args, config, start_time)
+        raise SystemExit(1) from exc
     finally:
-        try:
-            _stop_api_servers(server_procs)
-        except KeyboardInterrupt:
-            # Force exit if user interrupts during cleanup
-            import sys
-            sys.exit(1)
+        if previous_term is not None:
+            signal.signal(signal.SIGTERM, previous_term)
+        _stop_api_servers(server_procs)
 
 
 if __name__ == "__main__":

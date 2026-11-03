@@ -14,6 +14,7 @@ import random
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -40,6 +41,7 @@ RESPONSES_MODELS = [
     "gpt-6-astra",
 ]
 VLM_MODELS = [
+    "gpt-6.1-sol",
     "google/gemini-3.1-pro-preview",
     "google/gemini-2.5-flash-lite",
     "anthropic/claude-opus-4-5",
@@ -273,6 +275,7 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         prompt = _completions_to_responses_convert_prompt(prompt)
         payload = {
             "model": args.model,
+            "max_output_tokens": args.max_tokens,
             "input": prompt,
             # Same knob as the chat path, under the Responses API's own name.
             # Left unset the provider picks its default, which for reasoning
@@ -328,25 +331,56 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         headers["Authorization"] = f"Bearer {os.getenv('OPENAI_API_KEY')}"
     start_time = time.time()
 
-    # keep calling until it works
-    response = requests.post(
-        server_url, headers=headers, data=json.dumps(payload), timeout=600
-    )
-    retry = 1
-    while response.status_code in [404, 500, 502, 503, 504]:
-        sleep_time = 240 + random.uniform(-90, 90)
-        print(f"Retry {retry}. Model query failed with status code {response.status_code}. Error: {response.text}. Retrying in {sleep_time} seconds...")
-        time.sleep(sleep_time)
-        response = requests.post(
-            server_url, headers=headers, data=json.dumps(payload), timeout=600
-        )
-        retry += 1
-
-    end_time = time.time()
-    print(f"Time taken to query model: {end_time - start_time:.2f} seconds")
-    response.raise_for_status()
-    body = response.json()
-    out = {}
+    log_dir = getattr(args, "request_log_dir", None)
+    if getattr(args, "single_program", False):
+        count = getattr(args, "_code_request_count", 0)
+        if count:
+            raise RuntimeError("The single-program request budget is exhausted")
+        args._code_request_count = count + 1
+    folder = Path(log_dir) if log_dir else None
+    if folder is not None:
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "request.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    timeout = getattr(args, "model_timeout_seconds", 600)
+    retry_limit = getattr(args, "max_query_retries", None)
+    session = requests.Session()
+    if getattr(args, "disable_proxy", False):
+        session.trust_env = False
+    response = None
+    body = None
+    try:
+        retry = 0
+        while True:
+            response = session.post(server_url, headers=headers, json=payload, timeout=timeout)
+            if folder is not None:
+                (folder / "response.json").write_text(response.text, encoding="utf-8")
+            if response.status_code not in [404, 500, 502, 503, 504]:
+                break
+            if retry_limit is not None and retry >= retry_limit:
+                break
+            retry += 1
+            sleep_time = 240 + random.uniform(-90, 90)
+            print(f"Retry {retry}: status {response.status_code}; waiting {sleep_time:.0f}s")
+            time.sleep(sleep_time)
+        response.raise_for_status()
+        body = response.json()
+    except BaseException as exc:
+        if folder is not None:
+            (folder / "request_status.json").write_text(json.dumps({
+                "completed": False, "error_type": type(exc).__name__,
+                "http_status": response.status_code if response is not None else None,
+                "elapsed_seconds": time.time() - start_time,
+            }), encoding="utf-8")
+        raise
+    finally:
+        session.close()
+    if folder is not None:
+        (folder / "request_status.json").write_text(json.dumps({
+            "completed": True, "http_status": response.status_code,
+            "elapsed_seconds": time.time() - start_time, "usage": body.get("usage"),
+        }), encoding="utf-8")
+    print(f"Time taken to query model: {time.time() - start_time:.2f} seconds")
+    out = {"usage": body.get("usage")}
     if args.debug:
         print(json.dumps(body, indent=2))
     try:
