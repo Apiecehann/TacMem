@@ -120,6 +120,10 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
 
     # Build merged config dict (CLI args override YAML)
     merged_config = {
+        "logger2skill_episode": configs_dict.get("logger2skill_episode", False),
+        "episode_seed": configs_dict.get("episode_seed"),
+        "case_id": configs_dict.get("case_id"),
+        "single_program": getattr(args, "single_program", False) or configs_dict.get("single_program", False),
         "total_trials": args.total_trials
         if args.total_trials is not None
         else configs_dict.get("trials", 10),

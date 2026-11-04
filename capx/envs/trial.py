@@ -516,6 +516,10 @@ def _query_initial_code(
     else:
         out = _query_model(args, obs["full_prompt"])
 
+    if config.get("logger2skill_episode"):
+        from capx.logger2skill.storage import write_json
+        from pathlib import Path
+        write_json(Path(config["output_dir"]) / "coding_usage.json", out.get("usage") or {})
     return out["content"], out["reasoning"], ensemble_data
 
 
@@ -674,7 +678,7 @@ def _run_single_trial(
     use_wrist = config.get("use_wrist_camera", False)
 
     # --- 1. Reset environment ---
-    obs, _ = env.reset(options={"trial": trial}, seed=trial)
+    obs, _ = env.reset(options={"trial": trial}, seed=config.get("episode_seed") if config.get("episode_seed") is not None else trial)
     # Reset the SIGALRM timer AFTER env.reset() so the timeout only covers
     # actual task execution, not scene loading / cuRobo JIT compilation.
     import signal
@@ -775,7 +779,19 @@ def _run_single_trial(
         })
 
     # Parse initial code into blocks
-    initial_blocks = _extract_code(raw_code)
+    if config.get("single_program"):
+        from capx.logger2skill.evidence import one_program
+        try:
+            initial_blocks = [one_program(raw_code)]
+        except (SyntaxError, ValueError):
+            if config.get("logger2skill_episode"):
+                from capx.logger2skill.evidence import save_case
+                import traceback
+                save_case(env, config, raw_code or "", {"sandbox_rc": 1, "stdout": "",
+                          "stderr": traceback.format_exc(), "task_completed": None})
+            raise
+    else:
+        initial_blocks = _extract_code(raw_code)
     code_blocks.extend(initial_blocks)
     code_block_metadata.extend([{"generation": 0, "regenerated": False}] * len(initial_blocks))
     all_responses.append({
@@ -848,7 +864,7 @@ def _run_single_trial(
         obs = obs_next
 
         # Multi-turn decision
-        if multi_turn_prompt:
+        if multi_turn_prompt and not config.get("single_program"):
             if "terminated episode" in info_step["stderr"]:
                 truncated = True
                 break
@@ -960,6 +976,10 @@ def _run_single_trial(
         ensemble_data=ensemble_data,
         multiturn_ensemble_data=multiturn_ensemble_data,
     )
+
+    if config.get("logger2skill_episode"):
+        from capx.logger2skill.evidence import save_case
+        save_case(env, config, final_code, info_step)
 
     # Save per-turn and combined videos
     if recording_frames and turn_frame_ranges:

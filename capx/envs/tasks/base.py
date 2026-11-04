@@ -59,6 +59,9 @@ class CodeExecEnvConfig:
     privileged: bool = False
     enable_render: bool = True
     viser_debug: bool = False
+    tactile_skill_root: str | None = None
+    tactile_skill_max_chars: int = 12000
+    logger2skill_episode: bool = False
 
 
 class SimpleExecutor:
@@ -118,6 +121,8 @@ class CodeExecutionEnvBase(Env):
         # Oracle code: YAML config overrides class attribute
         if cfg.oracle_code is not None:
             self.oracle_code = cfg.oracle_code
+        if cfg.logger2skill_episode:
+            self._task_prompt = (self._task_prompt or "") + "\nGenerate one complete Python program. No later coding request will occur. Use only the documented public API and numpy/math/time/cv2/collections; do not access the environment, hidden checks or internal modules. An empty skill block means no experience is available yet."
         self._system_prompt = (
             "You are a helpful assistant that generates Python code to directly solve the task."
         )
@@ -209,7 +214,7 @@ class CodeExecutionEnvBase(Env):
         apis = getattr(self, "_apis", None)
         if not apis:
             return True
-        return any("get_tactile_data" in api.functions() for api in apis.values())
+        return any({"get_tactile_data", "get_index_tactile_rgb"} & api.functions().keys() for api in apis.values())
 
     def _tactile_skill_block(self) -> str:
         """The tactile-skill block this task's prompt ends with.
@@ -230,6 +235,12 @@ class CodeExecutionEnvBase(Env):
         for each skill's whole body.  Naming skills directly skips the tactile
         check: an explicit list is a deliberate choice.
         """
+        if getattr(self.cfg, "tactile_skill_root", None) is not None:
+            from pathlib import Path
+            from capx.logger2skill.storage import render_memory
+            return render_memory(Path(self.cfg.tactile_skill_root), self._task_name(),
+                                 self.cfg.tactile_skill_max_chars)
+
         from capx.tactile_skills import default_library
 
         verbose = bool(getattr(self, "tactile_skills_verbose", False))
@@ -275,6 +286,11 @@ class CodeExecutionEnvBase(Env):
             for fn_name, fn in api.functions().items():
                 self._exec_globals[fn_name] = fn
 
+        if self.cfg.logger2skill_episode:
+            hidden = set().union(*(api._prompt_hidden for api in self._apis.values()))
+            for name in hidden | {"env", "APIS"}:
+                self._exec_globals.pop(name, None)
+
         stdout_buffer = io.StringIO()
         tee_out = Tee(sys.stdout, stdout_buffer)
         stderr_buffer = io.StringIO()
@@ -285,6 +301,9 @@ class CodeExecutionEnvBase(Env):
                 contextlib.redirect_stdout(tee_out),
                 contextlib.redirect_stderr(tee_err),
             ):
+                if self.cfg.logger2skill_episode:
+                    from capx.logger2skill.evidence import validate_public_program
+                    validate_public_program(code, hidden)
                 exec(code, self._exec_globals, self._exec_globals)
         except BaseException:  # defensive; propagate minimal info
             ok = False

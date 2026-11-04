@@ -34,7 +34,7 @@ class UniVTACStubEnv(BaseEnv):
             "UNIVTAC_SERVER_URL", _DEFAULT_SERVER
         )
         self._obs: dict[str, Any] = {}
-        self._last_success: bool = False
+        self._last_success: bool | None = None
         self._harness_announced: bool = False
 
         # Minimal observation/action spaces
@@ -75,7 +75,7 @@ class UniVTACStubEnv(BaseEnv):
             timeout=660,
         )
         r.raise_for_status()
-        self._last_success = False
+        self._last_success = None
         return {
             "task_prompt": f"UniVTAC {self.task_name}",
         }, {}
@@ -112,12 +112,14 @@ class UniVTACStubEnv(BaseEnv):
             )
             r.raise_for_status()
             data = r.json()
-            self._last_success = data.get("completed", False)
+            verdict = data.get("completed")
+            self._last_success = verdict if data.get("verified", True) and type(verdict) is bool else None
             return 1.0 if self._last_success else 0.0
         except Exception:
+            self._last_success = None
             return 0.0
 
-    def task_completed(self) -> bool:
+    def task_completed(self) -> bool | None:
         """Return whether the last server check indicated success."""
         return self._last_success
 

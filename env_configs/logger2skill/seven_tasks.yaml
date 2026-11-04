@@ -1,0 +1,50 @@
+base_commit: e1703a7e396caa9654fa68b692999b530d32ad99
+backend: cc
+output_root: /mnt/data/ljz/opentacbench/logger2skill-runs/auto-cc
+budget:
+  rounds: 10
+  seconds: null
+seeds: [44000, 44001, 44002, 44003, 44004, 44005, 44006, 44007, 44008, 44009]
+memory_max_chars: 12000
+opentac_root: /mnt/a/ljz/cap/OpenTacBench
+skillopt_source: /mnt/data/ljz/opentacbench/references/SkillOpt
+execution:
+  client_python: /mnt/data/ljz/opentacbench/cap-agent0-baselines/client-env/bin/python
+  sim_python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  model: gpt-6.1-sol
+  api_url_env: CAPX_API_BASE_URL
+  api_key_env: CAPX_API_KEY
+  max_output_tokens: 8192
+  temperature: 1.0
+  reasoning_effort: medium
+  timeout_s: 4200
+  startup_timeout_s: 900
+  port: 8120
+curator:
+  command: /mnt/a/ljz/.npm-global/bin/claude
+  model: claude-sonnet-4-6
+  credential_settings: /mnt/a/ljz/.claude/settings.json
+  timeout_s: 300
+  max_output_tokens: 8192
+tasks:
+  weight_classify:
+    config: env_configs/univtac/weight_classify/univtac_weight_classify.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench
+  grasp_classify:
+    config: env_configs/univtac/grasp_classify/univtac_grasp_classify.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench
+  hardness_classify:
+    config: env_configs/univtac/hardness_classify/univtac_hardness_classify.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench
+  tactile_memory_match:
+    config: env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
+    environment_root: /mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots
+  tension_strap:
+    config: env_configs/univtac/tension_strap/univtac_tension_strap.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench
+  bulb_tightening:
+    config: env_configs/univtac/bulb_tightening/univtac_bulb_tightening.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench
+  blind_pick_balls:
+    config: env_configs/univtac/blind_pick_balls/univtac_blind_pick_balls.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench

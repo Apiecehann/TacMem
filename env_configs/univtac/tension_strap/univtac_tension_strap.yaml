@@ -1,0 +1,12 @@
+env:
+  _target_: capx.envs.tasks.tactile.univtac_tension_strap.UniVTACTensionStrapCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/tension_strap/low_level_tension_strap.yaml
+    privileged: false
+    apis: [UniVTACTensionApi]
+    append_final_check: ""
+api_servers: []
+record_video: false
+trials: 1
+num_workers: 1
