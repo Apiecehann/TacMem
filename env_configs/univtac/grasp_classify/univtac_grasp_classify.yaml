@@ -1,6 +1,3 @@
-# UniVTAC: grasp_classify
-# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/grasp_classify/univtac_grasp_classify.yaml
-
 env:
   _target_: capx.envs.tasks.tactile.univtac_grasp_classify.UniVTACGraspClassifyCodeEnv
   cfg:
@@ -8,16 +5,111 @@ env:
     low_level: env_configs/univtac/grasp_classify/low_level_grasp_classify.yaml
     privileged: false
     apis:
-      - UniVTACTactileApi
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+    prompt: |
 
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Goal: Grasp the prism, use tactile sensing to determine whether its surface
+      texture is rough or smooth, and gently place it on the matching pad:
+        - Rough texture → orange pad
+        - Smooth texture → green pad
+
+      Key rules:
+      - Compare raw fingertip observations at two position-commanded openings
+        under comparable contact conditions when tactile observations are
+        available; no precomputed texture metric or calibrated class threshold
+        is supplied.
+      - Place the prism with the placement recipe in those same skills: the task is
+        scored on where it ends up, upright and on the right pad.
+      - Final placement: within 2 cm horizontally and 1 cm vertically, upright
+        within 15°.
+
+      Classification fallback for this evaluation:
+      Use only the documented APIs and observations actually available. If the
+      available observations cannot identify the class or matching candidate,
+      choose uniformly at random between the two valid alternatives:
+        rough -> orange_pad or smooth -> green_pad.
+      Make that fallback choice once and keep it through the placement attempt.
+      Physically attempt the corresponding grasp, transport and placement;
+      do not return without acting solely because identification is uncertain.
+      This fallback overrides the touch-only and valid-reading requirements
+      above when the required observations are unavailable or inconclusive.
+      Do not invent observations, labels or calibration values. Respect native
+      termination, motion limits and the existing execution budget.
+
+      No-tactile experimental condition:
+      This run intentionally provides no tactile interfaces or observations.
+      Their absence is not a setup error and does not need to be fixed.
+      For this condition, the tactile-reading prerequisites and touch-only
+      sensing instructions above do not apply. Do not wait for tactile
+      verification before attempting the task.
+      Write one complete executable program that physically attempts the
+      original task using only the listed APIs, available scene images,
+      permitted pose information and the provided non-tactile skills.
+      Do not request additional sensors or interfaces, raise an exception,
+      or return without attempting actions solely because tactile feedback
+      is unavailable or task success cannot be guaranteed.
+      When a classification fallback is specified above, follow that rule.
+      Otherwise choose a best-effort action plan from the available information.
+      Do not invent sensor readings, calibration values, hidden object positions
+      or property labels. Keep the original task goal, native termination,
+      motion limits and execution budget; the environment judges the outcome.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+    observation_mode: none
+    tactile_skills:
+    - public-pose-queries
+    - one-call-approach
+    - lift-before-lateral
+    - world-frame-transport
+    - seat-height-from-plate
+    - settle-after-release
+    - keep-closed-if-task-allows
+    - finger-position-grip
+    multi_turn_prompt: ''
+agent0_mode: none
+task_name: grasp_classify
+seed_manifest: env_configs/ablations/seeds30.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 api_servers:
-  - _target_: capx.serving.launch_univtac_server.main
-    task: grasp_classify
-    port: 8120
-    host: 127.0.0.1
-
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: grasp_classify
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: none
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
 record_video: true
-output_dir: ./outputs/univtac_grasp_classify
-
-trials: 100
-num_workers: 1  # Isaac Sim is not parallel-safe
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 1200
+trial_timeout_seconds: 1800
+process_timeout_seconds: 2400
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/no_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

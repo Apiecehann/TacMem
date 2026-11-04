@@ -1,123 +1,113 @@
-# ViTaForge: bulb_tightening
-# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/bulb_tightening/univtac_bulb_tightening.yaml
-#
-# The server must be started BEFORE this, on the same port, AND WITH THE SEED
-# THAT MATCHES THE TRIAL:
-#   bash scripts/launch_univtac_server.sh bulb_tightening 8120 <gpu> <seed>
-#                                                                     ^ seed = trial id
-#
-# ONE PROCESS SERVES EXACTLY ONE SEED, so five trials are five rounds of
-# (start the server on that seed, run this config, kill the server).  The task
-# raises on any other combination:
-#   bulb_tightening.py:1458  "Create one force-task process per seed so physical
-#                             rest geometry/materials are sampled before UIPC
-#                             initialization"
-# physics_seed is baked in when the server process starts, and trial id IS the
-# seed, so a second trial on a different seed would raise on reset.
-#
-# Trial id IS the seed, and runner.py:143-145 runs range(resume_idx,
-# total_trials + 1) - so trials == resume_idx is how a single seed is selected,
-# and the two lines must agree with the server's --seed argument.  Mind the
-# constraint they have to satisfy: trials must be >= resume_idx, or that range
-# is empty and the run silently does nothing.
-#
-# --- What one trial costs, per seed -------------------------------------------
-#
-# The thread lead is drawn per seed: lead = 0.0123 / nominal_turns with
-# nominal_turns ~ U(1.12, 2.88) from default_rng(seed + 71823), so nominal_turns
-# IS the number of turns the insertion takes.  Turning is therefore fixed by the
-# seed and cannot be optimised away; the oracle turns 30 deg per block at
-# 120 deg per grasp, with a 30 deg over-feed probe in front.  Fitted to the
-# seed-3 run (570 deg, 19 blocks, 5 grasps, 465 servo iterations, 3216.62 s
-# measured):
-#
-#     T ~= 2.06 s x iterations + 493 s x (grasps - 1) + 286 s
-#
-# which reproduces seed 3 to 1.3%.  Across 1..20 it gives 3134 s (seed 9, the
-# shortest insertion) to 6464 s (seed 1, the longest), i.e. 52 to 108 minutes:
-#
-#     seed   1     2     3     4     5     6     7     8     9    10
-#     lead   4.36  5.19  9.43  4.69  9.91  4.48  5.17  6.04 10.95  6.56
-#     min   108    87    54    97    54   107    87    76    52    75
-#
-#     seed  11    12    13    14    15    16    17    18    19    20
-#     lead   4.48  7.65  7.17  6.00  7.51  4.58  5.15  9.69  7.37  9.33
-#     min   107    65    65    76    65    98    96    54    65    54
-#
-# The short-lead seeds are the expensive ones and the risky ones at once: more
-# blocks, more grasps, and a probe slide closest to the marker-lattice budget.
-#
-# --- Budget -------------------------------------------------------------------
-#
-# 12000 s, not the 2400 s default (trial.py:67), not the 5400 s this file used to
-# carry, and not the 9000 s it carried until 2026-10-02.  TRIAL_EXEC_ALARM_SECONDS
-# is the wall clock for everything after reset and it REPLACES the runner's
-# TRIAL_TIMEOUT_SECONDS rather than stacking with it, so it is the only bound -
-# and a whole oracle is a single env.step().  5400 s killed six of the twenty
-# seeds outright (1, 4, 6, 11, 16, 17 - all short-lead), including two of seeds
-# 1..5: seed 1 at ~6464 s and seed 4 at ~5847 s.  9000 s cleared the worst of
-# those but not a loaded machine: 2026-10-02 seed 1 reached the seat at 11.908 mm
-# of 11.91 and was cut 15 s later with ~7-14 min of torque-and-hold still to run
-# (sim ran 2.4 s/step at load 250 vs 1.25 s/step at load 21), so that run needed
-# ~9500-9850 s.  14000 s carried it with room to spare.
-#
-# 2026-10-07: lowered to 12000 s.  The floor is the ~9850 s just measured - an
-# alarm below that turns a run that would have finished into a failure, which is
-# the expensive direction.  12000 s keeps ~2150 s over it and still cuts 33
-# minutes off the other direction, a trial that is not going anywhere: nothing
-# else bounds executed code, so a hung helper runs until this fires.  One did
-# that same day - 8207 s alternating ±2 mm inside its own alignment loop, ended
-# by hand rather than by the alarm.  Below ~10500 s the two margins cross.
-#
-# 2026-10-09: lowered to 10500 s, the smallest cut the floor above allows.  That
-# floor is the ORACLE's need on a loaded machine, and skill wording cannot move
-# it, so below ~10500 s the two margins cross (the sentence the line above was
-# already carrying).  What forced the question is the other line: an LLM trial
-# ran 13026 s (3 h 37 min) and was stopped by hand at the wall, with the bulb at
-# 2.79 turns and 12.23 mm in, the torque still at 0.006 of its 0.12 target and
-# fifty release-and-re-grasp cycles behind it — one per block, because the
-# library's wind-back line could be read as "wind back between blocks".  The
-# same round's skill change (three or four blocks per grasp) targets exactly
-# that; when an eval shows a finishing LLM trial under ~6000 s, this can come
-# down further.  Until then 10500 caps a runaway half an hour earlier without
-# touching the runs that were going to finish.
-#
-# The key is whitelisted per task in launch_utils.py (merged_config) - without
-# that line it is silently dropped.  Only this config sets it; the 2400 s
-# default is unchanged for the other 33.
-exec_alarm_seconds: 10500
-
 env:
   _target_: capx.envs.tasks.tactile.univtac_bulb_tightening.UniVTACBulbTighteningCodeEnv
   cfg:
     _target_: capx.envs.tasks.base.CodeExecEnvConfig
     low_level: env_configs/univtac/bulb_tightening/low_level_bulb_tightening.yaml
-    # Inert for UniVTAC: base.py:248 only consults this when low_level is a
-    # gym-registry string, not a YAML path.  Every other univtac config sets
-    # false for the same reason.  What makes this task privileged is the API
-    # class below - UniVTACTactileApi reads /object_pose, the simulator's
-    # ground truth, whereas UniVTACPerceptionApi would segment the head camera
-    # with SAM3 instead.
     privileged: false
     apis:
-      - UniVTACTactileApi
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+    prompt: |
 
-# Informational only: UniVTACStubEnv defaults to 127.0.0.1:8120 (override with
-# UNIVTAC_SERVER_URL), and the server must already be listening (a free port
-# here would spawn a child that fails instantly and stall the run for 120 s).
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Goal: screw the light_bulb into its socket until it is all the way in. In the
+      scene the bulb is named "light_bulb" - use that exact name with the pose and
+      grasp helpers.
+
+      The bulb starts already threaded into its socket, and it is a thread: turning
+      is the only thing that takes it deeper. Pushing it down does not move it - the
+      push is taken by the glass and the pads instead, and it stays there.
+
+      The fingertips are the instrument, not a safety net. The bulb is smooth glass
+      and the pads are the only thing that touches it, so every question this task
+      asks is answerable from them, and that is where the answers should come from:
+
+      - Which way is in. Compare the available observations from separate
+        rotation attempts to judge the tightening direction.
+      - How fast to descend. The lead is not given and varies with the bulb;
+        attempt to infer it from the available observations.
+      - Whether it is in. Judge seating from available evidence rather than
+        assuming that a fixed number of turns proves completion.
+
+      The wrist runs out of range soon after a third of a turn, so a full insertion
+      is several segments with the hand re-set in between. Going past that range is
+      refused outright and is not recoverable within the episode, so keep the
+      segments well short of it; the skills below give the reset sequence and say
+      when to stop re-setting.
+
+      The job is done the moment the bulb is all the way in: there is nothing to
+      submit and nothing to hold at the end, so stop turning there and let the
+      episode be scored on the bulb.
+
+      No-tactile experimental condition:
+      This run intentionally provides no tactile interfaces or observations.
+      Their absence is not a setup error and does not need to be fixed.
+      For this condition, the tactile-reading prerequisites and touch-only
+      sensing instructions above do not apply. Do not wait for tactile
+      verification before attempting the task.
+      Write one complete executable program that physically attempts the
+      original task using only the listed APIs, available scene images,
+      permitted pose information and the provided non-tactile skills.
+      Do not request additional sensors or interfaces, raise an exception,
+      or return without attempting actions solely because tactile feedback
+      is unavailable or task success cannot be guaranteed.
+      When a classification fallback is specified above, follow that rule.
+      Otherwise choose a best-effort action plan from the available information.
+      Do not invent sensor readings, calibration values, hidden object positions
+      or property labels. Keep the original task goal, native termination,
+      motion limits and execution budget; the environment judges the outcome.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+    observation_mode: none
+    tactile_skills:
+    - public-pose-queries
+    - bulb-grasp-pose
+    - feed-must-match-lead
+    - wrist-limit-segmentation
+    - preserve-existing-grasp
+    multi_turn_prompt: ''
+agent0_mode: none
+task_name: bulb_tightening
+seed_manifest: env_configs/ablations/seeds30.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 api_servers:
-  - _target_: capx.serving.launch_univtac_server.main
-    task: bulb_tightening
-    port: 8120
-    host: 127.0.0.1
-
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: bulb_tightening
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: none
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
 record_video: true
-output_dir: ./outputs/univtac_bulb_tightening
-
-# One trial: range(1, 2) -> seed 1 only.  The thread lead is drawn per seed, so
-# a run here says nothing about any seed but this one - and the server serving
-# it cannot reset to another.  Move both numbers together AND restart the server
-# on the same seed for each of the five rounds.
-trials: 19
-resume_idx: 19
-num_workers: 1  # Isaac Sim is not parallel-safe
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 3600
+trial_timeout_seconds: 4200
+process_timeout_seconds: 4800
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/no_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

@@ -1,0 +1,90 @@
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+      task_name: tension_strap
+    privileged: false
+    apis:
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - submit_episode
+    append_final_check: submit_episode
+    multi_turn_prompt: ''
+    prompt: |
+
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Goal: pull the elastic strap to 12 newtons and hold it there for three
+      seconds, then pull it to 18 newtons and hold that for three seconds. A hold
+      counts only if it stays within half a newton of its target. The strap is the
+      only thing in the scene, and it is called "elastic_strap".
+
+      The simulation advances only while the hand is being commanded; waiting passes
+      no time at all, so a hold is made of commands.
+
+      The arm's own travel is not a measure of the load. How far this strap
+      stretches for a given force is a property of the strap, and it is different
+      every episode, so a plan made of distances cannot be this task. What does not
+      change is that the load passes through the fingers: the pads carry it, and the
+      gel is therefore the only thing here that can say how hard the strap is being
+      pulled.
+
+      The strap is elastic, so the load is set by where the hand is and by nothing
+      else - the pull raises it and backing off lowers it by as much. There is no
+      second lever and nothing to press against, and nothing is scored on arriving:
+      the score is the two holds.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+    observation_mode: none
+    tactile_skills:
+    - one-call-approach
+    - world-frame-transport
+    - preserve-existing-grasp
+    - finger-position-grip
+agent0_mode: none
+task_name: tension_strap
+seed_manifest: env_configs/ablations/seeds40.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: tension_strap
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: none
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+record_video: true
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 1200
+trial_timeout_seconds: 1800
+process_timeout_seconds: 2400
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/no_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

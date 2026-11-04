@@ -14,6 +14,7 @@ import random
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -40,6 +41,8 @@ RESPONSES_MODELS = [
     "gpt-6-astra",
 ]
 VLM_MODELS = [
+    "gpt-6-astra",
+    "gpt-6.1-sol",
     "google/gemini-3.1-pro-preview",
     "google/gemini-2.5-flash-lite",
     "anthropic/claude-opus-4-5",
@@ -151,6 +154,95 @@ def _responses_content(body: dict) -> str | None:
         if part.get("type") == "output_text"
     ]
     return "".join(parts) or None
+
+
+def _read_responses_stream(response, folder: Path | None, deadline: float):
+    if "text/event-stream" not in response.headers.get("Content-Type", "").lower():
+        if folder is not None:
+            (folder / "response.json").write_text(response.text, encoding="utf-8")
+        raise RuntimeError("Responses requires SSE; non-streaming response rejected")
+    response.encoding = "utf-8"
+    stream_log = (folder / "response.events.sse").open("w", encoding="utf-8") if folder else None
+    deltas = {}
+    finalized = {}
+    final_response = None
+
+    def finish_part(key, text):
+        if not isinstance(text, str):
+            raise RuntimeError("Responses stream contains invalid text")
+        if key in deltas and "".join(deltas[key]) != text:
+            raise RuntimeError("Responses stream text does not match its final text")
+        if key in finalized and finalized[key] != text:
+            raise RuntimeError("Responses stream contains conflicting final text")
+        finalized[key] = text
+
+    def consume(data):
+        nonlocal final_response
+        if data == "[DONE]":
+            return True
+        event = json.loads(data)
+        kind = event.get("type")
+        key = (event.get("output_index", 0), event.get("content_index", 0))
+        if kind == "response.output_text.delta":
+            deltas.setdefault(key, []).append(event["delta"])
+        elif kind == "response.output_text.done":
+            finish_part(key, event["text"])
+        elif kind == "response.output_item.done":
+            item = event.get("item", {})
+            if item.get("type") == "message" and item.get("status") == "completed":
+                for index, part in enumerate(item.get("content") or []):
+                    if part.get("type") == "output_text":
+                        finish_part((key[0], index), part["text"])
+        elif kind in {"response.completed", "response.failed", "response.incomplete"}:
+            final_response = event.get("response", {})
+            if folder is not None:
+                (folder / "response.json").write_text(json.dumps(final_response, ensure_ascii=False), encoding="utf-8")
+            if kind != "response.completed" or final_response.get("status") != "completed" or final_response.get("error"):
+                raise RuntimeError(f"Responses stream ended with {kind}")
+            return True
+        elif kind == "error":
+            raise RuntimeError("Responses stream reported an error")
+        return False
+
+    data_lines = []
+    try:
+        for line in response.iter_lines(decode_unicode=True):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Responses stream exceeded the model request deadline")
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
+            if stream_log is not None:
+                stream_log.write(line + "\n")
+                stream_log.flush()
+            if not line:
+                if data_lines:
+                    data = "\n".join(data_lines)
+                    data_lines = []
+                    if consume(data):
+                        break
+            elif line.startswith("data:"):
+                data_lines.append(line[5:].lstrip(" "))
+        else:
+            if data_lines:
+                consume("\n".join(data_lines))
+        if final_response is None:
+            raise RuntimeError("Responses stream ended without response.completed")
+        body_text = _responses_content(final_response)
+        text = "".join(finalized[key] for key in sorted(finalized)) if finalized else body_text
+        if deltas and not set(deltas).issubset(finalized):
+            delta_text = "".join("".join(deltas[key]) for key in sorted(deltas))
+            if not body_text or delta_text != body_text:
+                raise RuntimeError("Responses stream ended with unfinished text")
+        if body_text and text != body_text:
+            raise RuntimeError("Responses final response disagrees with streamed text")
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("Responses stream completed without output text")
+        if folder is not None:
+            (folder / "response_text.txt").write_text(text, encoding="utf-8")
+        return final_response, text
+    finally:
+        if stream_log is not None:
+            stream_log.close()
 
 
 def is_vlm_model(model: str) -> bool:
@@ -273,14 +365,14 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         prompt = _completions_to_responses_convert_prompt(prompt)
         payload = {
             "model": args.model,
+            "max_output_tokens": args.max_tokens,
             "input": prompt,
+            "stream": True,
             # Same knob as the chat path, under the Responses API's own name.
             # Left unset the provider picks its default, which for reasoning
             # models is the slow-and-expensive direction.
             "reasoning": {"effort": args.reasoning_effort},
         }
-        if getattr(args, 'single_request', False):
-            payload['max_output_tokens'] = args.max_tokens
     elif args.model in GPT_MODELS:
         payload = {
             "model": args.model,
@@ -324,40 +416,86 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
             "messages": prompt,
         }
     headers = {"Content-Type": "application/json"}
+    if is_responses_model(args.model):
+        headers["Accept"] = "text/event-stream"
     if args.api_key:
         headers["Authorization"] = f"Bearer {args.api_key}"
     elif os.getenv("OPENAI_API_KEY") is not None and args.model in GPT_MODELS:
         headers["Authorization"] = f"Bearer {os.getenv('OPENAI_API_KEY')}"
     start_time = time.time()
 
-    # keep calling until it works
-    if getattr(args, 'single_request', False):
-        session = requests.Session()
+    log_dir = getattr(args, "request_log_dir", None)
+    if getattr(args, "single_program", False):
+        count = getattr(args, "_code_request_count", 0)
+        if count:
+            raise RuntimeError("The single-program request budget is exhausted")
+        args._code_request_count = count + 1
+    folder = Path(log_dir) if log_dir else None
+    if folder is not None:
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "request.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    timeout = getattr(args, "model_timeout_seconds", 600)
+    deadline = time.monotonic() + timeout
+    retry_limit = getattr(args, "max_query_retries", None)
+    session = requests.Session()
+    if getattr(args, "disable_proxy", False):
         session.trust_env = False
-        response = session.post(server_url, headers=headers, data=json.dumps(payload),
-                                timeout=getattr(args, 'request_timeout', 300))
-    else:
-        response = requests.post(server_url, headers=headers, data=json.dumps(payload), timeout=600)
-    retry = 1
-    while not getattr(args, 'single_request', False) and response.status_code in [404, 500, 502, 503, 504]:
-        sleep_time = 240 + random.uniform(-90, 90)
-        print(f"Retry {retry}. Model query failed with status code {response.status_code}. Error: {response.text}. Retrying in {sleep_time} seconds...")
-        time.sleep(sleep_time)
-        response = requests.post(
-            server_url, headers=headers, data=json.dumps(payload), timeout=600
-        )
-        retry += 1
-
-    end_time = time.time()
-    print(f"Time taken to query model: {end_time - start_time:.2f} seconds")
-    response.raise_for_status()
-    body = response.json()
-    out = {"usage": body.get("usage"), "response_id": body.get("id")}
+    response = None
+    body = None
+    streamed_content = None
+    try:
+        retry = 0
+        while True:
+            response = session.post(server_url, headers=headers, json=payload, timeout=timeout,
+                                    stream=is_responses_model(args.model))
+            if folder is not None and (not is_responses_model(args.model) or response.status_code != 200):
+                (folder / "response.json").write_text(response.text, encoding="utf-8")
+            if response.status_code not in [404, 500, 502, 503, 504]:
+                break
+            if retry_limit is not None and retry >= retry_limit:
+                break
+            retry += 1
+            response.close()
+            sleep_time = 240 + random.uniform(-90, 90)
+            print(f"Retry {retry}: status {response.status_code}; waiting {sleep_time:.0f}s")
+            time.sleep(sleep_time)
+        response.raise_for_status()
+        if is_responses_model(args.model):
+            body, streamed_content = _read_responses_stream(response, folder, deadline)
+        else:
+            body = response.json()
+    except BaseException as exc:
+        if folder is not None:
+            if body is None and (folder / "response.json").exists():
+                try:
+                    body = json.loads((folder / "response.json").read_text(encoding="utf-8"))
+                except (ValueError, OSError):
+                    pass
+            (folder / "request_status.json").write_text(json.dumps({
+                "completed": False, "error_type": type(exc).__name__,
+                "http_status": response.status_code if response is not None else None,
+                "elapsed_seconds": time.time() - start_time, "stream": is_responses_model(args.model),
+                "usage": body.get("usage") if isinstance(body, dict) else None,
+            }), encoding="utf-8")
+        raise
+    finally:
+        if response is not None:
+            response.close()
+        session.close()
+    if folder is not None:
+        (folder / "request_status.json").write_text(json.dumps({
+            "completed": True, "http_status": response.status_code,
+            "elapsed_seconds": time.time() - start_time, "usage": body.get("usage"),
+            "stream": is_responses_model(args.model),
+            "content_chars": len(streamed_content) if streamed_content is not None else None,
+        }), encoding="utf-8")
+    print(f"Time taken to query model: {time.time() - start_time:.2f} seconds")
+    out = {"usage": body.get("usage")}
     if args.debug:
         print(json.dumps(body, indent=2))
     try:
         if is_responses_model(args.model):
-            out["content"] = _responses_content(body)
+            out["content"] = streamed_content
         else:
             out["content"] = body["choices"][0]["message"]["content"]
         if out["content"] is None:
@@ -392,6 +530,12 @@ def query_model_streaming(
     Yields:
         Partial response chunks as they arrive
     """
+    if is_responses_model(args.model):
+        result = query_model(args, prompt)
+        yield {"type": "content_delta", "content": result["content"]}
+        yield {"type": "done", **result}
+        return
+
     if args.model in GPT_MODELS:
         payload = {
             "model": args.model,

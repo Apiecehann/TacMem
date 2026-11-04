@@ -1,10 +1,3 @@
-# UniVTAC: tactile_memory_match (privileged)
-# Tactile memory matching: probe the reference can, probe both identical
-# candidates, place the twin (closest tactile + weight feel) on the pad.
-# Object poses come from the simulator's ground-truth /object_pose.
-#
-# Usage: uv run capx/envs/launch.py --config-path env_configs/univtac/tactile_memory_match/univtac_tactile_memory_match.yaml
-
 env:
   _target_: capx.envs.tasks.tactile.univtac_tactile_memory_match.UniVTACTactileMemoryMatchCodeEnv
   cfg:
@@ -12,27 +5,156 @@ env:
     low_level: env_configs/univtac/tactile_memory_match/low_level_tactile_memory_match.yaml
     privileged: false
     apis:
-      - UniVTACTactileApi
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+    prompt: |
 
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+      on both fingertips. The API is described below.
+
+      Task: tactile memory matching.  Three identical orange cans (lying flat on 
+      the table) sit in a line: one REFERENCE can at the back, two CANDIDATE cans 
+      in front of it (candidate_left on the left, candidate_right on the right).  
+      A green MATCH SLOT lies beside the row. Public pose names (get_object_pose; 
+      returns position, quaternion_wxyz, bbox_extent): reference_object, 
+      candidate_left, candidate_right and match_slot.
+
+      Position GT and grasp coordinates for this task:
+      get_object_pose(name, return_bbox_extent=True) returns the simulator
+      actor's world position in metres, quaternion_wxyz, and full bounding-box
+      dimensions. It is ground-truth geometry, not an image estimate or an
+      attribute/class label. For these lying cans the actor origin is at the
+      can centre; do not assume the generic bottom-origin description applies.
+      get_ee_pose() returns the robot wrist-flange world pose. goto_pose takes
+      this wrist pose, not an object centre or a fingertip contact point.
+
+      Before issuing any robot motion, query the reference_object pose and call
+      sample_grasp_pose("reference_object") once. Save its grasp quaternion and
+      grasp_offset = reference_grasp_position - reference_object_position.
+      The reset pre-move anchors this helper to the reference only. Do NOT call
+      sample_grasp_pose for candidate_left, candidate_right or match_slot:
+      without a task-specific rule its first call returns the current wrist
+      pose, which is not a valid grasp target for a new object.
+      For each initially aligned candidate, query its live get_object_pose
+      position and use candidate_position + grasp_offset as the wrist grasp
+      target, with the saved reference grasp quaternion. Re-query object poses
+      after motion rather than reusing stale positions. Retain this offset
+      instead of recalibrating it after the arm has left the reset pose.
+
+      The cans look exactly the same but differ physically in three independent
+      ways: 2 surface textures x 2 weights x 2 hardnesses (one rigid, one
+      compliant).  One candidate is the reference's "twin" (identical in all
+      three); the other differs in at least one of them.  Your job:
+
+        1. Measure all three properties of the reference from one progressive
+           position-commanded grasp, following the one-grasp protocol in the
+           tactile skills at the end of this prompt.
+        2. Probe both candidates with the exact same one-grasp protocol.
+        3. Place on the MATCH SLOT the candidate whose feel is closest to the
+           reference.  Vision cannot tell them apart — decide ONLY from tactile
+           data.
+
+      Key rules:
+      - Every call can fail, time out, or be rejected.  Wrap each in try/except and
+        treat a failure as "this attempt missed", never as the end of your program:
+        a crashed trial scores 0 exactly like a wrong answer.
+      - Budget the episode, not the attempt: the whole run has to fit in roughly
+        250 API calls, at most 3 grips per can plus one re-grasp.  Every call costs
+        about the same ~10 s whether it moves 2 mm or 50 mm, so the count is what
+        costs, not the distance.  Once a can's budget is spent, decide with the
+        readings you have — two cans fully read beats three cans half-read.
+      - Obtain valid protocol readings for the reference and both candidates before
+        deciding.  The skills below say what makes a reading valid, what a missed
+        approach costs, and which candidate the readings do and do not identify.
+
+      Classification fallback for this evaluation:
+      Use only the documented APIs and observations actually available. If the
+      available observations cannot identify the class or matching candidate,
+      choose uniformly at random between the two valid alternatives:
+        candidate_left or candidate_right, to be placed on match_slot.
+      Make that fallback choice once and keep it through the placement attempt.
+      Physically attempt the corresponding grasp, transport and placement;
+      do not return without acting solely because identification is uncertain.
+      This fallback overrides the touch-only and valid-reading requirements
+      above when the required observations are unavailable or inconclusive.
+      Do not invent observations, labels or calibration values. Respect native
+      termination, motion limits and the existing execution budget.
+
+      No-tactile experimental condition:
+      This run intentionally provides no tactile interfaces or observations.
+      Their absence is not a setup error and does not need to be fixed.
+      For this condition, the tactile-reading prerequisites and touch-only
+      sensing instructions above do not apply. Do not wait for tactile
+      verification before attempting the task.
+      Write one complete executable program that physically attempts the
+      original task using only the listed APIs, available scene images,
+      permitted pose information and the provided non-tactile skills.
+      Do not request additional sensors or interfaces, raise an exception,
+      or return without attempting actions solely because tactile feedback
+      is unavailable or task success cannot be guaranteed.
+      When a classification fallback is specified above, follow that rule.
+      Otherwise choose a best-effort action plan from the available information.
+      Do not invent sensor readings, calibration values, hidden object positions
+      or property labels. Keep the original task goal, native termination,
+      motion limits and execution budget; the environment judges the outcome.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+    observation_mode: none
+    tactile_skills:
+    - public-pose-queries
+    - one-call-approach
+    - lift-before-lateral
+    - world-frame-transport
+    - seat-height-from-plate
+    - settle-after-release
+    - keep-closed-if-task-allows
+    - finger-position-grip
+    - cruise-height
+    - preserve-existing-grasp
+    - orientation-fix-high
+    - descend-until-supported
+    multi_turn_prompt: ''
+agent0_mode: none
+task_name: tactile_memory_match
+seed_manifest: env_configs/ablations/seeds30.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 api_servers:
-  - _target_: capx.serving.launch_univtac_server.main
-    task: tactile_memory_match
-    port: 8120
-    host: 127.0.0.1
-
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: tactile_memory_match
+  cfg_override: compact_fixed_pair_scene=true
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: none
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
 record_video: true
-output_dir: ./outputs/univtac_tactile_memory_match
-
-trials: 22
-num_workers: 1  # Isaac Sim is not parallel-safe
-# seed = trial id, and the balanced schedule maps it through
-# ORDERED_CLASS_PAIRS[seed % 56], so trial 7 is a HARDNESS-ONLY pair
-# (light_smooth_soft vs light_smooth_rigid) -- the dimension Phase C added
-# an axis for.  runner.py runs range(resume_idx, total_trials + 1), so
-# trials == resume_idx is how a single seed is selected.
-#
-# These two lines are per-seed scratch state: scripts/run_mm_oracle_seeds.sh
-# rewrites them before each launch (launch.py has no CLI flag for resume_idx)
-# and leaves them pointing at whichever seed ran last.  Edit them by hand only
-# to run one seed on its own.
-resume_idx: 17
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 3600
+trial_timeout_seconds: 4200
+process_timeout_seconds: 4800
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/no_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1
