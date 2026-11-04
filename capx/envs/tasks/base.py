@@ -214,7 +214,7 @@ class CodeExecutionEnvBase(Env):
         apis = getattr(self, "_apis", None)
         if not apis:
             return True
-        return any("get_tactile_data" in api.functions() for api in apis.values())
+        return any({"get_tactile_data", "get_index_tactile_rgb"} & api.functions().keys() for api in apis.values())
 
     def _tactile_skill_block(self) -> str:
         """The tactile-skill block this task's prompt ends with.

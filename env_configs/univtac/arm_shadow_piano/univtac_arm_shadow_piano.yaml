@@ -1,0 +1,123 @@
+env:
+  _target_: capx.envs.tasks.tactile.univtac_shadow_piano.UniVTACShadowPianoCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/arm_shadow_piano/low_level_arm_shadow_piano.yaml
+    privileged: false
+    apis: [UniVTACShadowPianoApi]
+    append_final_check: ""
+    prompt: |
+      Play the requested sequence on the piano with the index finger of the
+      Franka-mounted Shadow Hand. Use the supplied current HEAD image, public
+      geometry, measured hand state and single-index DIGIT force estimate.
+      This episode's public request is: {piano_request}
+
+      Return exactly one complete Python program, optionally in one Python
+      fence. Execute the entire sequence in that program, using loops and
+      feedback. There is no next code block, code regeneration or external
+      planner. Use only the documented API, numpy, math and ordinary Python.
+      No file access, introspection, direct HTTP, simulator internals or native
+      scores. Do not call demonstration policies. Print compact PIANO_NOTE
+      records with index, note, dynamic, stage and the reason for stopping.
+
+      The HEAD image is already mirrored to piano orientation, 960x662 with
+      a 22-pixel top strip. get_keyboard_endpoints() supplies public A0/C8
+      world and projected image coordinates. Check these against the image,
+      convert displayed pixels with u=x/960, v=(y-22)/640, then call
+      locate_visual_keys once with both white endpoints. There are 52 white
+      keys separated by 0.0235 m. Its returned map covers every requested
+      note. Reuse the map when the hand later occludes keys; do not relocate
+      before each note. It does not certify contact or the sounded note.
+
+      move_shadow_index takes absolute [X offset, Y, Z lift, index flexion]
+      targets in metres and radians. Native bounds are X[-.01,.09],
+      Y[-.32,.26], Z[-.006,.05], index[0,.50]. An action advances 1/60 s.
+      Hover at the mapped XY, Z=.04 and extended finger=0 before descending.
+      Check measured XY error <=.002 m and absolute Y velocity <=.015 m/s;
+      wait with bounded motion loops until arrived. A target is not arrival.
+
+      A nominal probe, not a success guarantee, resembles the expert's
+      movement: descend with extended finger over about .5 seconds and curl
+      progressively toward .50 rad over about .45 seconds. Smoothstep
+      .50*(3*u*u-2*u*u*u) with u in [0,1] stays inside the flexion bound.
+      The map gives each key's nominal press and hover heights. Start near
+      its press height; adjust height in small increments from measured
+      feedback rather than assuming flexion directly determines force.
+      Positive Z raises the hand and negative Z presses further.
+      The expert's median wrist-height trims relative to that nominal
+      height were white/light -0.00069 m, white/heavy -0.00286 m,
+      black/light -0.00090 m and black/heavy -0.00209 m across 50 successful
+      episodes. These are bounded probe references, not contact proof,
+      runtime force labels or per-note positions. Keep native action bounds.
+
+      estimate_key_force(note) returns an estimate and quality, not a score.
+      It uses the existing fixed 5D DIGIT calibration: mean deformation,
+      three pixel-area fractions and the 0.05 mm area change rate over
+      8 physics ticks (1/30 s), with separate black/white regressions.
+      Use only finite fresh quality='ok' estimates for feedback. no_contact
+      is expected during approach and returns None, not measured zero.
+      Invalid/OOD/old readings cannot justify further downward pressure.
+      The black/white calibration is selected by your intended note and
+      cannot tell you whether you hit another note. Read it after EVERY
+      press/hold action with steps=1; do not clip estimates or access true
+      force, key angles, score or hidden note-progress fields.
+
+      After measured XY arrival and near-full flexion, hold Z fixed until
+      successive fresh contact estimates stop rising; two contact samples
+      alone do not establish stability. Then use the requested target force
+      as the control setpoint, NOT the offline median below. Define z_probe
+      once from the bounded expert-like probe and retain commanded z.
+      For each fresh valid stable reading set error_N=estimated_key_force_N
+      minus target_force_N, and update z by clip(0.012*error_N,-0.003,0.003)
+      times (4/240) metres. Clamp z to z_probe +/- 0.0010 m and native bounds.
+      This allows at most 0.00005 m per action. Positive error raises the
+      wrist, negative error lowers it. Use the updated z in the NEXT action.
+      Print PIANO_FORCE_TRIM with note, sample_step, estimated force, target,
+      previous Z and next Z. No corrections from no_contact, stale, OOD,
+      nonfinite or early transient readings. On OOD, invalid/stale readings,
+      estimated force >= target+tolerance, or inability to maintain contact
+      within the bounded correction range, safely release and report the
+      attempt as uncertain; do not push further to manufacture valid data.
+
+      Start the musical hold clock only after stable public contact at
+      fixed Z, near-full flexion, and a fresh force estimate STRICTLY ABOVE
+      the corresponding offline median of measured forces in scored hold
+      windows of 50 expert episodes: white/light 0.311 N, white/heavy 0.473 N,
+      black/light 0.615 N, black/heavy 1.040 N. These are public calibration
+      aggregates, never runtime true-force labels. Being merely within
+      target +/- tolerance is NOT sufficient to start or keep this clock.
+      A qualifying sample must be finite, quality='ok', age_steps=0,
+      force > median, force < target+tolerance and sample_step exactly one
+      action after the previous qualifying sample. Reset the current streak,
+      its first sample_step and hold_confidence=False on any lower, missing,
+      stale, no_contact, OOD, nonfinite or nonconsecutive reading.
+      Recompute hold_confidence after every action: current streak >= 9 AND
+      (latest sample_step-first sample_step)*(4/240) >= the requested hold
+      duration (0.12 s in this smoke). Never retain a past True through a
+      later bad reading. The median is only the HOLD COUNTER GATE; retain
+      the requested target as the bounded Z-feedback setpoint.
+      Release with provisional hold confidence only after at least 60 press
+      actions (1.0 s) since press start AND the current streak still qualifies.
+      Continue bounded feedback up to 90 press actions (1.5 s) while safe.
+      Otherwise release and report uncertain hold. At 60 Hz nine samples
+      span eight intervals; do not use wall time. These public samples cannot
+      certify every 240-Hz physics tick or the native note verdict.
+      With continue_on_note_failure=false, an uncertain/aborted press must
+      not be treated as permission to advance to the next note: safely
+      release, record the attempt if allowed, and finish_episode.
+
+      After each press, extend the finger and lift to Z=.04. Verify actual
+      flexion <=.02 rad and abs(actual Z-.04)<=.002 m; maintain that measured
+      release pose for at least .12 physical seconds AFTER arrival before
+      finish_piano_note_attempt(index). At 60 Hz seven intervals are only
+      .1167 s; use step differences, allowing at least eight intervals.
+      This records your progress only. The native task judges pitch, force,
+      hold and release, and advances its own sequence. Wrong notes can end
+      it immediately. If any API returns native_done, stop all movement.
+      Call finish_episode once on completion or when unable to continue,
+      including native termination. Do not equate a completed attempt or
+      an estimated force with official success.
+api_servers: []
+record_video: false
+trials: 1
+num_workers: 1

@@ -139,3 +139,5 @@ if _libero_available:
     register_api("FrankaLiberoApiReducedSkillLibrary", FrankaLiberoApiReducedSkillLibrary)
 from .tactile.univtac_tension_api import UniVTACTensionApi
 register_api("UniVTACTensionApi", UniVTACTensionApi)
+from .tactile.univtac_shadow_piano_api import UniVTACShadowPianoApi
+register_api("UniVTACShadowPianoApi", UniVTACShadowPianoApi)

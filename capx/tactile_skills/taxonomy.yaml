@@ -25,6 +25,8 @@
 # glass holds, ending the episode.  Readdition needs a run that says otherwise.
 
 task_types:
+  piano:
+    - arm_shadow_piano
   classify:
     # Tactile is the answer itself: the reading is the classification.
     - weight_classify

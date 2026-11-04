@@ -22,7 +22,7 @@ from .storage import MARKDOWN_FORMAT, LibraryStore, pack_library, read_json, wri
 
 REPO = Path(__file__).resolve().parents[2]
 TASKS = {"weight_classify", "grasp_classify", "hardness_classify", "tactile_memory_match",
-         "tension_strap", "bulb_tightening", "blind_pick_balls"}
+         "tension_strap", "bulb_tightening", "blind_pick_balls", "arm_shadow_piano"}
 STATE_SCHEMA = "logger2skill.per_episode.v1"
 
 
@@ -30,8 +30,12 @@ def load_suite(path: Path) -> dict:
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     if config.get("base_commit") != BASE_COMMIT or config.get("backend") not in {"cc", "skillopt"}:
         raise ValueError("Wrong base commit or curator backend")
-    if set(config["tasks"]) != TASKS:
-        raise ValueError("This suite requires the agreed seven tasks")
+    selected = set(config["tasks"])
+    if config.get("smoke") is True:
+        if not selected or not selected <= TASKS:
+            raise ValueError("A smoke must explicitly select known tasks")
+    elif selected not in (TASKS, TASKS - {"arm_shadow_piano"}):
+        raise ValueError("Use the eight-task suite or the existing seven-task suite")
     budget = config["budget"]
     if (budget.get("rounds") is None) == (budget.get("seconds") is None):
         raise ValueError("Choose one budget: rounds or seconds")
@@ -93,6 +97,10 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
     gpu = os.environ.get("GPU", "")
     if not gpu.isdecimal():
         raise ValueError("Set GPU explicitly to one physical GPU index")
+    gpu_uuid = subprocess.check_output(
+        ["nvidia-smi", "-i", gpu, "--query-gpu=uuid", "--format=csv,noheader"], text=True).strip()
+    if not gpu_uuid.startswith("GPU-") or "\n" in gpu_uuid:
+        raise ValueError("GPU must resolve to exactly one NVIDIA device UUID")
     execution = suite["execution"]
     port = int(execution.get("port", 8120))
     with socket.socket() as check:
@@ -103,11 +111,20 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
     url = f"http://127.0.0.1:{port}"
     item = suite["tasks"][task]
     env = without_proxy()
-    env.update(CUDA_VISIBLE_DEVICES=gpu, CAPX_RENDER_GPU=gpu, CAPX_LOGGER2SKILL="1",
+    sim_prefix = Path(execution['sim_python']).resolve().parents[1]
+    env.update(CUDA_VISIBLE_DEVICES=gpu_uuid, CAPX_RENDER_GPU=gpu, CAPX_GPU=gpu,
+               EGL_DEVICE_ID=gpu, CAPX_LOGGER2SKILL="1",
                UNIVTAC_ROOT=item["environment_root"], VITAFORGE_ROOT=suite["opentac_root"],
                UNIVTAC_SERVER_URL=url, UNIVTAC_ACTION_LOG=str(output / "private_actions.jsonl"),
                UNIVTAC_CALIBRATION_LOG=str(output / "private_calibration.log"),
                PYTHONPATH=str(REPO), TMPDIR=str(output / "tmp"))
+    env.update(CUDA_HOME=str(sim_prefix), PYTHONUNBUFFERED='1', HEADLESS='1',
+               LD_LIBRARY_PATH=str(sim_prefix / 'lib') + os.pathsep + env.get('LD_LIBRARY_PATH', ''))
+    server_deps = execution.get('server_dependency_path')
+    if server_deps:
+        if not Path(server_deps).is_dir():
+            raise ValueError(f'Missing isolated server dependencies: {server_deps}')
+        env['PYTHONPATH'] += os.pathsep + server_deps
     (output / "tmp").mkdir()
     for name in ("XDG_CACHE_HOME", "CUDA_CACHE_PATH", "OMNI_USER_CACHE_PATH", "OMNI_USER_DATA_PATH", "OMNI_USER_LOG_PATH"):
         path = output / "runtime" / name.lower()
@@ -132,6 +149,8 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
             if not base_url.endswith(("/responses", "/chat/completions")):
                 base_url += "/responses"
             client_env = dict(env)
+            client_env['PYTHONPATH'] = str(REPO)
+            client_env['CAPX_LLM_RESPONSE_PATH'] = str(output / 'client/raw_model_response.json')
             client_env["CAPX_CODING_API_KEY"] = os.environ.get(execution["api_key_env"], "")
             client = [execution["client_python"], "-m", "capx.envs.launch", "--config-path", str(cfg_file),
                       "--model", execution["model"], "--server-url", base_url,
@@ -148,11 +167,15 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
     case_path = output / "client" / "public_case.json"
     if case_path.is_file():
         case = read_json(case_path)
-        result["public_case_exported"] = True
+        result['public_case_exported'] = True
     else:
         case = make_case(f"{task}_{seed}", task, seed, "", "", "", "No completed public case was exported.", None, None)
         result.setdefault("infrastructure_error", "No completed public case; inspect local logs")
-        result["public_case_exported"] = False
+        result['public_case_exported'] = False
+    usage_path = output / 'client/coding_usage.json'
+    raw_path = output / 'client/raw_model_response.json'
+    if not usage_path.exists() and raw_path.exists():
+        write_json(usage_path, read_json(raw_path).get('usage') or {})
     result.update(case=case, elapsed_s=time.monotonic() - started,
                   coding_usage=coding_usage(output / "client" / "coding_usage.json"),
                   **action_counts(output / "private_actions.jsonl"))

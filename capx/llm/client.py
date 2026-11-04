@@ -135,6 +135,56 @@ def _responses_server_url(server_url: str) -> str:
     return server_url
 
 
+def _completed_responses_stream(lines: Iterable, timeout: float) -> dict[str, Any]:
+    """Accept a complete SSE response only; never execute an interrupted delta."""
+    started = time.monotonic()
+    data: list[str] = []
+    total_bytes = 0
+    completed_items: dict[int, dict[str, Any]] = {}
+    for line in lines:
+        if time.monotonic() - started > timeout:
+            raise TimeoutError("Responses SSE exceeded its request deadline")
+        line = line.decode("utf-8", errors="strict") if isinstance(line, bytes) else line
+        line = line.rstrip("\r\n")
+        total_bytes += len(line.encode("utf-8"))
+        if total_bytes > 64 * 1024 * 1024:
+            raise RuntimeError("Responses SSE exceeds 64 MiB")
+        if line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+        elif not line and data:
+            value = "\n".join(data)
+            data = []
+            if value == "[DONE]":
+                break
+            event = json.loads(value)
+            if not isinstance(event, dict):
+                raise RuntimeError("Invalid Responses SSE event")
+            kind = event.get("type")
+            if kind == "response.output_item.done":
+                index, item = event.get("output_index"), event.get("item")
+                if not isinstance(index, int) or index < 0 or not isinstance(item, dict):
+                    raise RuntimeError("Invalid Responses SSE completed output item")
+                if index in completed_items and completed_items[index] != item:
+                    raise RuntimeError("Conflicting Responses SSE completed output item")
+                completed_items[index] = item
+            if kind == "response.completed":
+                body = event.get("response")
+                if not isinstance(body, dict) or body.get("status") != "completed":
+                    raise RuntimeError("Responses SSE terminal body is not completed")
+                # Some compatible endpoints omit output from the terminal
+                # envelope even though output_item.done carries the full item.
+                # Recover only completed items after a completed request; never
+                # execute accumulated deltas or an interrupted response.
+                if not body.get("output") and completed_items:
+                    if sorted(completed_items) != list(range(len(completed_items))):
+                        raise RuntimeError("Responses SSE completed output items have gaps")
+                    body = {**body, "output": [completed_items[i] for i in sorted(completed_items)]}
+                return body
+            if kind in {"error", "response.failed", "response.incomplete", "response.cancelled"}:
+                raise RuntimeError("Responses SSE failed: " + json.dumps(event, ensure_ascii=False)[:1500])
+    raise RuntimeError("Responses SSE ended without response.completed; partial output rejected")
+
+
 def _responses_content(body: dict) -> str | None:
     """Extract the text of a Responses API body.
 
@@ -155,7 +205,7 @@ def _responses_content(body: dict) -> str | None:
 
 def is_vlm_model(model: str) -> bool:
     """Return True if the model is a vision-language model (VLM)."""
-    return _strip_openrouter_prefix(model) in VLM_MODELS
+    return _strip_openrouter_prefix(model) in VLM_MODELS or _strip_openrouter_prefix(model) == "gpt-6.1-sol"
 
 
 @dataclass
@@ -270,10 +320,24 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         server_url = args.server_url
 
     if is_responses_model(args.model):
-        prompt = _completions_to_responses_convert_prompt(prompt)
+        prompt = _completions_to_responses_convert_prompt(copy.deepcopy(prompt))
+        instructions = []
+        inputs = []
+        for message in prompt:
+            if message.get('role') == 'system':
+                content = message['content']
+                instructions.append(content if isinstance(content, str) else
+                                    '\n'.join(part['text'] for part in content))
+            else:
+                inputs.append(message)
         payload = {
             "model": args.model,
-            "input": prompt,
+            "input": inputs,
+            "instructions": '\n\n'.join(instructions),
+            "tools": [],
+            "tool_choice": "none",
+            "store": False,
+            "stream": True,
             "max_output_tokens": args.max_tokens,
             # Same knob as the chat path, under the Responses API's own name.
             # Left unset the provider picks its default, which for reasoning
@@ -331,7 +395,8 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
 
     # keep calling until it works
     response = requests.post(
-        server_url, headers=headers, data=json.dumps(payload), timeout=600
+        server_url, headers=headers, data=json.dumps(payload), timeout=600,
+        stream=is_responses_model(args.model),
     )
     retry = 1
     retry_limit = getattr(args, "max_query_retries", None)
@@ -340,14 +405,26 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         print(f"Retry {retry}. Model query failed with status code {response.status_code}. Error: {response.text}. Retrying in {sleep_time} seconds...")
         time.sleep(sleep_time)
         response = requests.post(
-            server_url, headers=headers, data=json.dumps(payload), timeout=600
+            server_url, headers=headers, data=json.dumps(payload), timeout=600,
+            stream=is_responses_model(args.model),
         )
         retry += 1
 
-    end_time = time.time()
-    print(f"Time taken to query model: {end_time - start_time:.2f} seconds")
     response.raise_for_status()
-    body = response.json()
+    try:
+        if 'text/event-stream' in response.headers.get('content-type', '').lower():
+            body = _completed_responses_stream(response.iter_lines(chunk_size=1), 600)
+        else:
+            body = response.json()
+    finally:
+        response.close()
+    print(f"Time taken to query model: {time.time() - start_time:.2f} seconds")
+    response_path = os.environ.get('CAPX_LLM_RESPONSE_PATH')
+    if response_path:
+        from pathlib import Path
+        destination = Path(response_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding='utf-8')
     out = {"usage": body.get("usage")}
     if args.debug:
         print(json.dumps(body, indent=2))
@@ -358,8 +435,9 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
             out["content"] = body["choices"][0]["message"]["content"]
         if out["content"] is None:
             raise RuntimeError(
-                f"Model returned None content. "
-                f"Raw response: {json.dumps(body, indent=2)[:500]}"
+                f"Model returned no text; status={body.get('status')!r}, "
+                f"output_types={[item.get('type') for item in body.get('output', [])]}, "
+                f"usage={body.get('usage')}; full response={response_path}"
             )
     except (KeyError, IndexError) as exc:
         raise RuntimeError(f"Unexpected response format: {body}") from exc

@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def suite():
-    return load_suite(REPO / "env_configs/logger2skill/seven_tasks.yaml")
+    return load_suite(REPO / "env_configs/logger2skill/eight_tasks.yaml")
 
 
 @pytest.fixture
@@ -58,11 +58,19 @@ def case(seed=44000, outcome=False):
                      "wait completed", "", outcome, True)
 
 
-def test_clean_suite_is_seven_tasks_with_explicit_budget(suite):
+def test_clean_suite_is_eight_tasks_with_explicit_budget(suite):
     assert suite["base_commit"] == BASE_COMMIT
     assert set(suite["tasks"]) == TASKS
+    assert len(TASKS) == 8 and "arm_shadow_piano" in TASKS
+    assert suite["backend"] == "skillopt"
     assert suite["budget"] == {"rounds": 10, "seconds": None}
     assert len(suite["seeds"]) == len(set(suite["seeds"])) == 10
+
+
+def test_seven_task_configuration_remains_supported():
+    config = load_suite(REPO / "env_configs/logger2skill/seven_tasks.yaml")
+    assert set(config["tasks"]) == TASKS - {"arm_shadow_piano"}
+    assert config["backend"] == "skillopt"
 
 
 def test_cold_start_is_empty_and_does_not_fall_back(store):
@@ -538,7 +546,7 @@ def test_skillopt_single_case_worker_uses_native_edits_and_next_task_loads_resul
     from capx.logger2skill import experiment, worker
     suite = copy.deepcopy(suite)
     suite["budget"]["rounds"] = 2
-    suite["tasks"] = {task: suite["tasks"][task] for task in ("tension_strap", "bulb_tightening")}
+    suite["tasks"] = {task: suite["tasks"][task] for task in ("tension_strap", "arm_shadow_piano")}
     calls = []
     loaded = []
     events = []

@@ -123,6 +123,7 @@ AVAILABLE_TASKS = [
     "wipe_vase",
     "blind_pick",
     "blind_pick_balls",
+    "arm_shadow_piano",
 ]
 
 
@@ -353,6 +354,7 @@ app = FastAPI(title="UniVTAC Tactile API Server")
 
 # Global state (initialized after Isaac Sim app starts)
 _TASK: Any = None
+_SHADOW_RUNTIME: Any = None
 _TASK_NAME: str = ""
 # Marker positions at reset time (gripper open, no contact), used as the
 # zero-displacement reference for marker flow.  The sim-internal "initial"
@@ -818,6 +820,8 @@ def _capture_frame() -> str:
     rendering for performance).
     """
     global _TASK
+    if _SHADOW_RUNTIME is not None:
+        return _SHADOW_RUNTIME.encode_image(_SHADOW_RUNTIME.frame())
     _TASK._update_render()
     obs = _TASK._get_observations()
     img = _TASK.get_frame_shot(obs)
@@ -867,6 +871,11 @@ def _sim_reset(seed: int, *, log: bool = True) -> dict:
             before the eval harness has a chance to announce harness mode.
     """
     global _TASK, _MARKER_REFERENCE, _LAST_RECORDED_STEP
+    if _SHADOW_RUNTIME is not None:
+        result = _SHADOW_RUNTIME.reset(seed)
+        if log:
+            action_log.log_episode_reset(_TASK_NAME, seed, f"seed_{seed}")
+        return result
     _RECORDER.finalize()  # assemble previous episode's video (no-op if none)
     _GRASP_OFFSET.clear()
     _TASK.reset(seed=seed)
@@ -1896,6 +1905,8 @@ def _uninstall_reflex(ctx: ReflexContext) -> None:
 def _sim_get_observation() -> dict:
     """Get full observation including cameras and tactile."""
     global _TASK
+    if _SHADOW_RUNTIME is not None:
+        return {"head_rgb_base64": _SHADOW_RUNTIME.encode_image(_SHADOW_RUNTIME.frame()), "tactile": None}
 
     try:
         obs = _TASK._get_observations()
@@ -1965,6 +1976,8 @@ def _sim_get_observation() -> dict:
 
 def _sim_check_success() -> dict:
     """Check if the current task is completed."""
+    if _SHADOW_RUNTIME is not None:
+        return _SHADOW_RUNTIME.verdict()
     global _TASK
     try:
         completed = _TASK.check_success()
@@ -2062,6 +2075,8 @@ def _sim_submit_episode() -> dict:
     before the review motions disturb it.
     """
     global _TASK
+    if _SHADOW_RUNTIME is not None:
+        return _SHADOW_RUNTIME.submit()
     if _TASK_NAME == "tension_strap":
         _TASK.finish_episode()
         return {"success": True, "message": "END submitted"}
@@ -2960,6 +2975,69 @@ class WaitRequest(BaseModel):
     seconds: float
 
 
+class ShadowMotionRequest(BaseModel):
+    action: list[float] | None = None
+    steps: int = 1
+
+
+class ShadowAttemptRequest(BaseModel):
+    index: int
+
+
+def _require_shadow():
+    if _SHADOW_RUNTIME is None:
+        raise HTTPException(status_code=404, detail="Shadow piano is not active")
+    return _SHADOW_RUNTIME
+
+
+@app.get("/shadow/request")
+def shadow_request():
+    return _run_on_main(_require_shadow().request)
+
+
+@app.get("/shadow/hand_state")
+def shadow_hand_state():
+    return _run_on_main(_require_shadow().hand_state)
+
+
+@app.get("/shadow/endpoints")
+def shadow_endpoints():
+    return _run_on_main(_require_shadow().endpoints)
+
+
+@app.post("/shadow/locate")
+def shadow_locate(pixels: dict):
+    return _run_on_main(_require_shadow().locate, pixels)
+
+
+@app.get("/shadow/force")
+def shadow_force(note: str):
+    return _run_on_main(_require_shadow().estimate, note)
+
+
+@app.get("/shadow/rgb")
+def shadow_rgb():
+    runtime = _require_shadow()
+    return {"rgb": _run_on_main(lambda: runtime.encode_image(runtime.digit_rgb()))}
+
+
+@app.post("/shadow/move")
+def shadow_move(req: ShadowMotionRequest):
+    return _run_action("shadow_move", req.model_dump(), _MOTION_TIMEOUT,
+                       _require_shadow().move, req.action, req.steps, detail_prefix="Shadow motion failed")
+
+
+@app.post("/shadow/attempt")
+def shadow_attempt(req: ShadowAttemptRequest):
+    return _run_on_main(_require_shadow().finish_attempt, req.index)
+
+
+@app.post("/shadow/submit")
+def shadow_submit():
+    return _run_action("submit_episode", {}, _MOTION_TIMEOUT,
+                       _require_shadow().submit, detail_prefix="Shadow END failed")
+
+
 def _sim_wait(seconds: float) -> dict:
     import math
     if not math.isfinite(seconds) or not 0 < seconds <= 10:
@@ -2995,7 +3073,7 @@ def health():
         "status": "ok",
         "task": _TASK_NAME,
         "step": _TASK.step_count if _TASK else 0,
-        "plan_success": _TASK.plan_success if _TASK else True,
+        "plan_success": getattr(_TASK, 'plan_success', True),
     }
 
 
@@ -3370,7 +3448,7 @@ def _build_ball_task(task_config: dict, device: str, seed: int,
 def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
               seed: int = 0, cfg_overrides: list[str] | None = None) -> None:
     """Initialize the UniVTAC task. Must be called after Isaac Sim app is ready."""
-    global _TASK, _TASK_NAME
+    global _TASK, _TASK_NAME, _SHADOW_RUNTIME
 
     import importlib
 
@@ -3380,6 +3458,17 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # Defensive: the authoritative call is in main(), before AppLauncher.  This
     # one covers any other entry point into init_task.
     _activate_backing_root(backing.root)
+
+    if task_name == "arm_shadow_piano":
+        from capx.serving.shadow_piano_runtime import ShadowPianoRuntime
+        if cfg_overrides:
+            raise ValueError("Shadow smoke does not accept native task overrides")
+        output = Path(os.environ["UNIVTAC_ACTION_LOG"]).parent
+        _SHADOW_RUNTIME = ShadowPianoRuntime(backing.root, output, device, seed)
+        _TASK, _TASK_NAME = _SHADOW_RUNTIME.task, task_name
+        _sim_reset(seed=seed, log=False)
+        logger.info("Shadow piano ready with native dynamics and strict termination")
+        return
 
     # Load task config
     config_path = backing.root / "task_config" / backing.config_file
@@ -3553,6 +3642,9 @@ def main() -> None:
 
     # Parse combined args
     cli = parser.parse_args()
+    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level='warning',
+                            loop='asyncio', http='h11', ws='none')
+    config.load()
 
     # Claim the port before the expensive Isaac Sim startup. Passing this
     # socket to Uvicorn below keeps the check race-free: no other server can
@@ -3576,6 +3668,8 @@ def main() -> None:
     cli.enable_cameras = True
     cli.num_envs = 1
     cli.livestream = 2  # headless rendering mode (required for GelSight to init)
+    if cli.task == 'arm_shadow_piano':
+        cli.livestream = 0
 
     # NOTE: GPU selection must happen via CUDA_VISIBLE_DEVICES (set by
     # scripts/launch_univtac_server.sh), NOT via --device cuda:N.  Isaac
@@ -3593,8 +3687,23 @@ def main() -> None:
         cli.kit_args = (getattr(cli, "kit_args", "") +
                         f" --/renderer/activeGpu={cli.active_gpu} --/renderer/multiGpu/enabled=false"
                         " --/rtx/multiGpu/enabled=false")
-    app_launcher = AppLauncher(cli)
+    if os.environ.get("CAPX_LOGGER2SKILL"):
+        class PinnedAppLauncher(AppLauncher):
+            def _resolve_device_settings(self, args):
+                super()._resolve_device_settings(args)
+                args['active_gpu'] = int(os.environ['CAPX_RENDER_GPU'])
+                args['physics_gpu'] = 0
+                args['multi_gpu'] = False
+        cli.kit_args += " --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false"
+        app_launcher = PinnedAppLauncher(cli)
+    else:
+        app_launcher = AppLauncher(cli)
     simulation_app = app_launcher.app
+    if os.environ.get("CAPX_LOGGER2SKILL"):
+        if torch.cuda.device_count() != 1:
+            raise RuntimeError("Logger2Skill requires exactly one visible CUDA GPU")
+        torch.cuda.set_device(0)
+        logger.info("Single GPU: visible=%s renderer=%s cuda_count=1", os.environ.get('CUDA_VISIBLE_DEVICES'), os.environ['CAPX_RENDER_GPU'])
 
     # ---- re-register signal handlers -------------------------------------------
     # Isaac Sim's AppLauncher installs its own SIGINT handler that swallows
@@ -3635,7 +3744,6 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Start uvicorn in daemon thread; keep main thread for Isaac Sim.
     # -------------------------------------------------------------------
-    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning")
     server = uvicorn.Server(config)
 
     def _run_uvicorn() -> None:
@@ -3750,7 +3858,10 @@ def main() -> None:
     uvicorn_thread.join(timeout=5.0)
     listener_socket.close()
     _RECORDER.finalize()  # assemble the final episode's video
-    _TASK.close()
+    if _SHADOW_RUNTIME is not None:
+        _SHADOW_RUNTIME.close()
+    else:
+        _TASK.close()
     simulation_app.close()
 
 

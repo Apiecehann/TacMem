@@ -27,7 +27,11 @@ def validate_public_program(code: str, hidden: set[str]) -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id in forbidden:
             raise ValueError(f"Only the documented public API is allowed: {node.id}")
-        if isinstance(node, ast.Attribute) and (node.attr.startswith("_") or node.attr in forbidden):
+        type_name = (isinstance(node, ast.Attribute) and node.attr == '__name__'
+                     and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
+                     and node.value.func.id == 'type' and len(node.value.args) == 1
+                     and not node.value.keywords)
+        if isinstance(node, ast.Attribute) and not type_name and (node.attr.startswith("_") or node.attr in forbidden):
             raise ValueError(f"Private/reflection access is not allowed: {node.attr}")
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             modules = [node.module] if isinstance(node, ast.ImportFrom) else [n.name for n in node.names]

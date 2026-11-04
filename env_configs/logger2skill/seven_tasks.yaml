@@ -20,6 +20,7 @@ execution:
   timeout_s: 4200
   startup_timeout_s: 900
   port: 8120
+  server_dependency_path: /mnt/data/ljz/opentacbench/logger2skill-server-http
 curator:
   command: /mnt/a/ljz/.npm-global/bin/claude
   model: claude-sonnet-4-6

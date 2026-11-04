@@ -82,7 +82,7 @@ def test_every_task_in_the_configs_is_in_the_taxonomy(library) -> None:
 
 
 def test_taxonomy_covers_every_task_type(library) -> None:
-    assert set(library.task_types) == {"classify", "insert", "manipulate", "screw", "wipe"}
+    assert set(library.task_types) == {"classify", "insert", "manipulate", "screw", "wipe", "piano"}
 
 
 def test_no_task_is_in_two_types(library) -> None:
@@ -423,7 +423,7 @@ def test_compact_block_is_one_line_per_skill_and_within_budget(library) -> None:
             # it (three blocks when the lead rides the grasp, four when it does
             # not), and the evidence carries the datum.
             # bulb_tightening 663 words over 25 skills, 12 inside the bound.
-            assert len(block.split()) < 27 * len(skills), (task, len(block.split()))
+            assert not block if not skills else len(block.split()) < 27 * len(skills), (task, len(block.split()))
             assert len(block.split()) < 800, (task, len(block.split()))
 
 
