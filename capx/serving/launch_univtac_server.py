@@ -21,6 +21,7 @@ import argparse
 import base64
 import builtins
 import io
+import json
 import logging
 import os
 import signal
@@ -36,6 +37,7 @@ import numpy as np
 import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from PIL import Image
 from pydantic import BaseModel
 
@@ -122,6 +124,8 @@ AVAILABLE_TASKS = [
     "wipe_vase",
     "blind_pick",
     "blind_pick_balls",
+    "tension_strap",
+    "arm_shadow_piano",
 ]
 
 
@@ -146,7 +150,7 @@ class TaskBacking:
     """
 
     root: Path
-    config_file: str
+    config_file: str | None
     cfg_overrides: tuple[tuple[str, Any], ...] = ()
     vitforge_tacex: bool = False
 
@@ -156,6 +160,14 @@ DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
 # the task, not of the invocation, so it lives here rather than in a CLI flag —
 # an unsupported task/root combination is then unrepresentable.
 TASK_BACKING: dict[str, TaskBacking] = {
+    "tension_strap": TaskBacking(VITAFORGE_ROOT, "tension_strap.yml"),
+    "arm_shadow_piano": TaskBacking(UNIVTAC_ROOT, None),
+    "grasp_classify": TaskBacking(UNIVTAC_ROOT, "gelsight.yml"),
+    "tactile_memory_match": TaskBacking(
+        Path("/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots"),
+        "tactile_memory_match_smoke.yml",
+        (("record_tactile_timeline", False),),
+    ),
     "weight_classify": TaskBacking(
         VITAFORGE_ROOT,
         "gelsight.yml",
@@ -314,7 +326,7 @@ TASK_BACKING: dict[str, TaskBacking] = {
     #    adapter republishes as ``cfg.step_lim`` for /reset to report.
     "blind_pick_balls": TaskBacking(
         VITAFORGE_ROOT,
-        "blind_pick_balls.yml",
+        None,
         (),
         vitforge_tacex=True,
     ),
@@ -352,6 +364,9 @@ app = FastAPI(title="UniVTAC Tactile API Server")
 # Global state (initialized after Isaac Sim app starts)
 _TASK: Any = None
 _TASK_NAME: str = ""
+_OBSERVATION_MODE = "native"
+_EPISODE_REQUEST_FILE: str | None = None
+_ACTION_SEQUENCE = 0
 # Marker positions at reset time (gripper open, no contact), used as the
 # zero-displacement reference for marker flow.  The sim-internal "initial"
 # frame is captured once at startup and carries a constant per-finger offset,
@@ -417,14 +432,32 @@ _cmd_queue: _queue.Queue = _queue.Queue()
 _MOTION_TIMEOUT = 1500.0  # goto_pose / move_delta / rotate_gripper
 _QUERY_TIMEOUT  = 10.0   # get_ee_pose, get_object_pose, etc.
 
+def _physics_sample():
+    task = getattr(_TASK, "task", _TASK)
+    sim = getattr(task, "sim", None)
+    step = getattr(sim, "current_time_step_index", None)
+    stamp = getattr(sim, "current_time", None)
+    return {"physics_step": int(step) if step is not None else None,
+            "time_seconds": float(stamp) if stamp is not None else None}
+
+
 def _exec_wrapper(fn, args, kwargs, out: dict) -> None:
     """Execute *fn* and store result/exception in *out* (thread-safe)."""
+    before = _physics_sample() if _OBSERVATION_MODE != "native" else {}
     try:
         out["result"] = fn(*args, **kwargs)
         out["error"] = None
     except Exception as exc:
         out["result"] = None
         out["error"] = exc
+    finally:
+        if _OBSERVATION_MODE != "native" and getattr(fn, "__name__", "") != "measured":
+            after = _physics_sample()
+            action_log.log_event("query_span", query=getattr(fn, "__name__", "unknown"),
+                                 physics_start=before.get("physics_step"),
+                                 physics_end=after.get("physics_step"),
+                                 category="end" if getattr(fn, "__name__", "") == "_sim_submit_episode" else "query",
+                                 ok=out.get("error") is None)
 
 
 def _run_on_main(fn, *args, timeout: float = _QUERY_TIMEOUT, **kwargs):
@@ -461,6 +494,80 @@ def _run_on_main(fn, *args, timeout: float = _QUERY_TIMEOUT, **kwargs):
     return result_holder["result"]
 
 
+def _public_response(model, data: dict):
+    if _OBSERVATION_MODE == "native":
+        return model(**data)
+    return JSONResponse(content=data)
+
+
+def _agent0_action(name, args, timeout, fn, fargs, detail_prefix):
+    global _ACTION_SEQUENCE
+    _ACTION_SEQUENCE += 1
+    action_id = _ACTION_SEQUENCE
+    span = {}
+    started = _time.perf_counter()
+    action_log.log_event("action_begin", action_id=action_id, a=name, args=args)
+    def measured():
+        span["step_start"] = int(_TASK.step_count)
+        span["physics_start"] = _physics_sample()["physics_step"]
+        try:
+            return fn(*fargs)
+        finally:
+            span["step_end"] = int(_TASK.step_count)
+            span["physics_end"] = _physics_sample()["physics_step"]
+    try:
+        result = _run_on_main(measured, timeout=timeout)
+    except Exception as exc:
+        action_log.log_action(name, args, ok=False, msg=f"{detail_prefix}: {type(exc).__name__}",
+                              dur_s=_time.perf_counter()-started,
+                              extra={"action_id": action_id, **span})
+        raise HTTPException(status_code=500, detail=f"{detail_prefix}: native action did not complete") from None
+    clean = {key: result[key] for key in ("success", "seed", "step_limit", "completed", "requested", "feed_lead_m", "grip_released", "native_done") if key in result}
+    clean["step"] = span.get("physics_end")
+    clean["message"] = "OK" if result.get("success", True) else "Native action failed"
+    action_log.log_action(name, args, ok=bool(result.get("success", True)), msg=clean["message"],
+                          dur_s=_time.perf_counter()-started, step=clean["step"],
+                          extra={"action_id": action_id, **span})
+    return clean
+
+
+def _raw_tactile_snapshot() -> dict:
+    if _OBSERVATION_MODE != "raw":
+        raise RuntimeError("Raw observations are disabled")
+    task = getattr(_TASK, "task", _TASK)
+    if _TASK_NAME == "blind_pick_balls":
+        task.physics.observation()
+        sensors = {f"{sensor.name}_tactile": sensor for sensor in task.physics.sensors}
+    else:
+        sensors = task._tactile_manager.tactiles
+    observations = {}
+    for name, sensor in sensors.items():
+        observations[name] = {}
+        for channel in ("rgb", "rgb_marker", "depth"):
+            try:
+                observations[name].update(sensor.get_observations([channel]))
+            except (KeyError, AttributeError):
+                observations[name][channel] = None
+    sample = _physics_sample()
+    result = {"observation_mode": "raw", "step": sample["physics_step"],
+              "control_step": int(_TASK.step_count), "time_seconds": sample["time_seconds"], "sensors": {}}
+    for side in ("left", "right"):
+        source = observations.get(f"{side}_tactile", {})
+        sensor = {"rgb": None, "rgb_marker": None, "depth": None}
+        for channel in ("rgb", "rgb_marker"):
+            value = source.get(channel)
+            if value is not None:
+                sensor[channel] = _rgb_tensor_to_base64(value)
+        value = source.get("depth")
+        if value is not None:
+            array = value.detach().cpu().numpy().astype("<f4", copy=False)
+            if array.ndim != 2:
+                raise ValueError("Expected a two-dimensional native depth map")
+            sensor["depth"] = {"shape": list(array.shape), "dtype": "float32", "unit": "mm", "data": base64.b64encode(array.tobytes()).decode("ascii")}
+        result["sensors"][side] = sensor
+    return result
+
+
 def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
                 detail_prefix: str) -> dict:
     """Run an action endpoint's sim call, logging one trajectory line.
@@ -473,6 +580,8 @@ def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
     HTTPException(500, f"{detail_prefix}: {e}") on error — the same
     response text the handlers produced before.
     """
+    if _OBSERVATION_MODE != "native":
+        return _agent0_action(name, args, timeout, fn, fargs, detail_prefix)
     t0 = _time.perf_counter()
     try:
         result = _run_on_main(fn, *fargs, timeout=timeout)
@@ -561,6 +670,10 @@ def _rgb_tensor_anisotropy(tensor: torch.Tensor | None) -> float | None:
 def _depth_tensor_to_base64(tensor: torch.Tensor) -> str:
     """Convert depth tensor (H, W) to base64 PNG (16-bit grayscale)."""
     arr = tensor.cpu().numpy()
+    if arr.ndim == 3 and arr.shape[-1] == 1:
+        arr = arr[..., 0]
+    if arr.ndim != 2:
+        raise ValueError("Expected a single-channel depth image")
     # Normalize to 0-65535 for 16-bit
     if arr.max() > arr.min():
         arr = ((arr - arr.min()) / (arr.max() - arr.min()) * 65535).astype(np.uint16)
@@ -815,9 +928,24 @@ def _capture_frame() -> str:
     rendering for performance).
     """
     global _TASK
+    if _TASK_NAME == "arm_shadow_piano":
+        buf = io.BytesIO()
+        _TASK.sim.render()
+        Image.fromarray(_TASK.render()).save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii")
     _TASK._update_render()
     obs = _TASK._get_observations()
-    img = _TASK.get_frame_shot(obs)
+    if _OBSERVATION_MODE != "native":
+        cameras = obs.get("observation", {})
+        img = cameras.get("head", {}).get("rgb")
+        if img is None:
+            img = cameras.get("wrist", {}).get("rgb")
+        if img is None and _TASK_NAME == "blind_pick_balls":
+            img = getattr(_TASK, "_last_frame", None)
+        if img is None:
+            img = torch.zeros((240, 320, 3), dtype=torch.uint8)
+    else:
+        img = _TASK.get_frame_shot(obs)
     buf = io.BytesIO()
     # Convert torch tensor (H,W,3) to PIL and save as PNG
     pil_img = Image.fromarray(img.cpu().numpy().astype(np.uint8))
@@ -853,6 +981,86 @@ def _record_frame(label: str) -> str:
     return b64
 
 
+def _configure_compact_match(task_module, cfg, seed):
+    import copy
+    from types import SimpleNamespace
+
+    if cfg.random_texture:
+        raise ValueError("Compact seed resolution requires random_texture=False")
+    selection_cfg = copy.copy(cfg)
+    selection_cfg.compact_fixed_pair_scene = False
+    selection_cfg.seed = int(seed)
+    selector = SimpleNamespace(cfg=selection_cfg, rng=np.random.default_rng(seed))
+    pair = task_module.Task._choose_identity_pair(selector)
+    cfg.reference_class_key, cfg.distractor_class_key = pair
+    return {"seed": int(seed), "pair": pair,
+            "rng_state": copy.deepcopy(selector.rng.bit_generator.state)}
+
+
+def _bind_compact_match(task, selection):
+    import copy
+
+    native_choose = task._choose_identity_pair
+
+    def choose():
+        if int(task.cfg.seed) != selection["seed"]:
+            raise RuntimeError("A different compact-scene seed requires a fresh process")
+        pair = native_choose()
+        if tuple(pair) != tuple(selection["pair"]):
+            raise RuntimeError("Compact scene does not match the seed's selected objects")
+        task.rng.bit_generator.state = copy.deepcopy(selection["rng_state"])
+        return pair
+
+    task._choose_identity_pair = choose
+
+
+def _run_native_reset(task, seed):
+    if os.environ.get("UNIVTAC_DEBUG_RESET") != "1":
+        return task.reset(seed=seed)
+    import time
+
+    saved = {}
+    for name in ("_step", "_reset_actors", "pre_move"):
+        original = getattr(task, name, None)
+        if not callable(original):
+            continue
+        saved[name] = (name in vars(task), vars(task).get(name))
+
+        def traced(*args, _original=original, _name=name, **kwargs):
+            started = time.perf_counter()
+            logger.info("reset %s begin step=%s", _name, getattr(task, "step_count", None))
+            try:
+                result = _original(*args, **kwargs)
+            except BaseException:
+                logger.exception("reset %s raised step=%s elapsed=%.3fs", _name,
+                                 getattr(task, "step_count", None), time.perf_counter() - started)
+                raise
+            logger.info("reset %s returned step=%s elapsed=%.3fs", _name,
+                        getattr(task, "step_count", None), time.perf_counter() - started)
+            return result
+
+        setattr(task, name, traced)
+    started = time.perf_counter()
+    logger.info("reset native begin seed=%s limit=%s task_source=%s uipc_source=%s", seed,
+                getattr(task.cfg, "reset_time_limit", None),
+                getattr(sys.modules.get(type(task).__module__), "__file__", None),
+                getattr(sys.modules.get(type(getattr(task, "uipc_sim", None)).__module__), "__file__", None))
+    try:
+        result = task.reset(seed=seed)
+    except BaseException:
+        logger.exception("reset native raised elapsed=%.3fs", time.perf_counter() - started)
+        raise
+    else:
+        logger.info("reset native returned elapsed=%.3fs", time.perf_counter() - started)
+        return result
+    finally:
+        for name, (existed, original) in saved.items():
+            if existed:
+                setattr(task, name, original)
+            else:
+                delattr(task, name)
+
+
 def _sim_reset(seed: int, *, log: bool = True) -> dict:
     """Reset the task environment.
 
@@ -864,9 +1072,11 @@ def _sim_reset(seed: int, *, log: bool = True) -> dict:
             before the eval harness has a chance to announce harness mode.
     """
     global _TASK, _MARKER_REFERENCE, _LAST_RECORDED_STEP
+    if _TASK_NAME == "arm_shadow_piano":
+        return _sim_reset_shadow(seed, log)
     _RECORDER.finalize()  # assemble previous episode's video (no-op if none)
     _GRASP_OFFSET.clear()
-    _TASK.reset(seed=seed)
+    _run_native_reset(_TASK, seed)
     # The new episode counts its steps from zero again; forget where the last
     # one stopped so its first frame is never mistaken for a repeat.
     _LAST_RECORDED_STEP = None
@@ -887,12 +1097,13 @@ def _sim_reset(seed: int, *, log: bool = True) -> dict:
             _MARKER_REFERENCE["right"] = _MARKER_REFERENCE["right"][1].clone()
     except Exception:
         _MARKER_REFERENCE = None
-    try:
-        truth = getattr(_TASK, "choice", None)
-        with open(TACTILE_CALIBRATION_LOG, "a") as _f:
-            _f.write(f"--- reset task={_TASK_NAME} seed={seed} truth={truth} ---\n")
-    except Exception:
-        pass
+    if _OBSERVATION_MODE == "native":
+        try:
+            truth = getattr(_TASK, "choice", None)
+            with open(TACTILE_CALIBRATION_LOG, "a") as _f:
+                _f.write(f"--- reset task={_TASK_NAME} seed={seed} truth={truth} ---\n")
+        except Exception:
+            pass
     return {"success": _TASK.plan_success, "seed": seed, "step_limit": _TASK.cfg.step_lim}
 
 
@@ -1455,6 +1666,10 @@ def _sim_gripper(action: str, force_threshold: float | None,
         dict with the action result, final gripper state and tactile data.
     """
     global _TASK
+    if _OBSERVATION_MODE != "native":
+        if force_threshold is not None or use_adaptive_grasp is True:
+            raise ValueError("Only native position control is enabled")
+        use_adaptive_grasp = False
 
     from envs.utils.atom import Action
 
@@ -1482,6 +1697,8 @@ def _sim_gripper(action: str, force_threshold: float | None,
             else None
         )
 
+    if _OBSERVATION_MODE != "native":
+        adaptive_for_action = False
     # Capture frame before the gripper action
     _record_frame(f"gripper:{'open' if action == 'open' else 'close'}:before")
 
@@ -1532,7 +1749,7 @@ def _sim_gripper(action: str, force_threshold: float | None,
         reached = final_qpos >= 0.95 * target_qpos
         detail = f"qpos={final_qpos:.4f} target={target_qpos:.4f}"
     else:
-        depth = float(_TASK._tactile_manager.get_min_depth().min())
+        depth = float(_TASK._tactile_manager.get_min_depth().min()) if _OBSERVATION_MODE == "native" else None
         if adaptive_for_action and depth_threshold is not None:
             # Tactile-stopped close ends at the contact qpos, not zero:
             # accept if the gel deformation reached the depth threshold.
@@ -1555,8 +1772,9 @@ def _sim_gripper(action: str, force_threshold: float | None,
             reached = (
                 final_qpos <= max(target_qpos, halfway) + _POSITION_CLOSE_TOL_M
             )
-            detail = (f"qpos={final_qpos:.4f} target={target_qpos:.4f} "
-                      f"depth={depth:.2f}mm")
+            detail = f"qpos={final_qpos:.4f} target={target_qpos:.4f}"
+            if depth is not None:
+                detail += f" depth={depth:.2f}mm"
     if not reached:
         logger.warning(
             "Gripper %s did not reach its target state (%s) — "
@@ -1580,9 +1798,12 @@ def _sim_gripper(action: str, force_threshold: float | None,
     }
 
 
-def _sim_get_tactile_data() -> dict:
+def _sim_get_tactile_data(*, raw_read: bool = False) -> dict:
     """Get current tactile sensor readings."""
     global _TASK
+
+    if _OBSERVATION_MODE != "native":
+        return _raw_tactile_snapshot() if raw_read and _OBSERVATION_MODE == "raw" else {}
 
     try:
         obs = _TASK._get_observations()
@@ -1893,6 +2114,8 @@ def _uninstall_reflex(ctx: ReflexContext) -> None:
 def _sim_get_observation() -> dict:
     """Get full observation including cameras and tactile."""
     global _TASK
+    if _TASK_NAME == "arm_shadow_piano":
+        return {"head_rgb_base64": _capture_frame(), "wrist_rgb_base64": ""}
 
     try:
         obs = _TASK._get_observations()
@@ -1963,6 +2186,10 @@ def _sim_get_observation() -> dict:
 def _sim_check_success() -> dict:
     """Check if the current task is completed."""
     global _TASK
+    if _TASK_NAME == "arm_shadow_piano":
+        return {"completed": bool(_TASK._info()["success"]),
+                "check_early_stop": bool(_TASK._done or _SHADOW_SUBMITTED),
+                "detail": _TASK._info()}
     try:
         completed = _TASK.check_success()
         early_stop = _TASK.check_early_stop()
@@ -2058,7 +2285,19 @@ def _sim_submit_episode() -> dict:
     This endpoint is kept for the terminal review and for freezing a state
     before the review motions disturb it.
     """
-    global _TASK
+    global _TASK, _SHADOW_SUBMITTED
+    if _TASK_NAME == "arm_shadow_piano":
+        _SHADOW_SUBMITTED = True
+        action_log.log_event("END", **_physics_sample())
+        return _sim_check_success()
+    if _TASK_NAME == "tension_strap":
+        try:
+            _TASK.finish_episode()
+            return _sim_check_success()
+        except Exception as exc:
+            logger.warning("submit_episode failed: %s", traceback.format_exc())
+            return {"success": False, "completed": False, "check_early_stop": False,
+                    "detail": None, "message": f"submit_episode failed: {exc}"}
     if not hasattr(_TASK, "_finish_bulb_episode"):
         return {"completed": False, "check_early_stop": False, "detail": None,
                 "message": f"task '{_TASK_NAME}' has no force-task submission"}
@@ -2271,6 +2510,8 @@ def _sim_gripper_feed(object_name: str, total_angle_rad: float, steps: int,
             # in a hold: a frame costs a forced render, and a constant pose
             # is not worth one.
             _record_frame("rotate:feed")
+        if _OBSERVATION_MODE != "native":
+            continue
         if seating or index % _FEED_SAMPLE_EVERY == 0 or index == steps - 1:
             row = _TASK._measure()
             seat_n = float(row.get("seat_force_N", 0.0))
@@ -2418,6 +2659,27 @@ def _sim_rotate_gripper(object_name: str, total_angle_rad: float,
             "tactile": _sim_get_tactile_data()}
 
 
+
+def _sim_geometric_grasp_pose(object_name: str):
+    from envs.utils.transforms import Pose, construct_grasp_pose
+    data = _sim_get_object_pose("free_handle" if _TASK_NAME == "tension_strap" else object_name, return_bbox_extent=True)
+    if not data["found"]:
+        raise ValueError("Requested object geometry is unavailable")
+    if _TASK_NAME == "tension_strap":
+        centre = Pose(np.asarray(data["position"]), _TASK._robot_manager.get_gripper_center_pose().q)
+    else:
+        extent = np.asarray(data.get("bbox_extent"), dtype=float)
+        if extent.shape != (3,) or not np.isfinite(extent).all() or np.any(extent <= 0):
+            raise ValueError("Grasp requires a valid public object bounding box")
+        pose = Pose(np.asarray(data["position"]), np.asarray(data["quaternion_wxyz"]))
+        axes = pose.to_transformation_matrix()[:3, :3]
+        centre = construct_grasp_pose(pose.add_bias([0., 0., float(extent[2] / 2)]).p,
+                                      axes[:, 2], axes[:, 0])
+    wrist = _TASK._robot_manager.gripper_center_to_ee(centre)
+    return {"position": np.asarray(wrist.p).tolist(), "quaternion_wxyz": np.asarray(wrist.q).tolist()}
+
+
+
 def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> dict:
     """Return a grasp pose (position + quaternion WXYZ) for an object on the table.
 
@@ -2451,6 +2713,12 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
         return {"position": None, "quaternion_wxyz": None}
 
     object_pos = np.asarray(obj_data["position"], dtype=np.float64)
+
+    if allow_ground_truth and (
+            (_TASK_NAME in {"weight_classify", "hardness_classify"} and object_name == "block")
+            or (_TASK_NAME == "grasp_classify" and object_name == "prism")
+            or (_TASK_NAME == "tension_strap" and object_name in {"handle", "free_handle", "strap_handle", "elastic_strap"})):
+        return _sim_geometric_grasp_pose(object_name)
 
     if allow_ground_truth:
         # The task's own module — the one its class was defined in, so the
@@ -2581,6 +2849,11 @@ def _sim_get_object_pose(object_name: str, return_bbox_extent: bool = False) -> 
     """
     global _TASK
     try:
+        if _TASK_NAME == "tension_strap" and object_name in {"handle", "free_handle", "strap_handle"}:
+            points = np.asarray(_TASK.strap.vertex_positions)[_TASK.tab_mask]
+            return {"found": True, "position": points.mean(axis=0).tolist(),
+                    "quaternion_wxyz": [1., 0., 0., 0.],
+                    "bbox_extent": np.ptp(points, axis=0).tolist() if return_bbox_extent else None}
         actor = _find_actor(object_name)
         if actor is None:
             return {"found": False, "position": None, "quaternion_wxyz": None, "bbox_extent": None}
@@ -2725,7 +2998,7 @@ def reset(req: ResetRequest):
     # is this task's normal failure mode.
     result = _run_action("reset", {"seed": req.seed}, 600.0, _sim_reset,
                          req.seed, detail_prefix="Reset failed")
-    return ResetResponse(**result)
+    return _public_response(ResetResponse, result)
 
 
 @app.get("/ee_pose", response_model=PoseResponse)
@@ -2768,7 +3041,7 @@ def move(req: MoveRequest):
         req.gripper_action, req.gripper_pos, req.tag,
         detail_prefix="Move failed",
     )
-    return ActionResponse(**result)
+    return _public_response(ActionResponse, result)
 
 
 @app.post("/move_delta", response_model=ActionResponse)
@@ -2784,7 +3057,7 @@ def move_delta(req: MoveDeltaRequest):
         req.coord, req.tag,
         detail_prefix="Move delta failed",
     )
-    return ActionResponse(**result)
+    return _public_response(ActionResponse, result)
 
 
 @app.post("/move_reflexive", response_model=MoveReflexiveResponse)
@@ -2797,6 +3070,8 @@ def move_reflexive(req: MoveReflexiveRequest):
     arm and the response carries the event digest.  ``stop_on=None`` runs
     the motion to completion and reports the digest only.
     """
+    if _OBSERVATION_MODE != "native":
+        raise HTTPException(status_code=403, detail="Reflex control is disabled")
     if _TASK is None:
         action_log.log_action("move_reflexive", req.model_dump(), ok=False,
                               msg="Task not initialized")
@@ -2824,18 +3099,20 @@ def gripper(req: GripperRequest):
         req.position,
         detail_prefix="Gripper action failed",
     )
-    return ActionResponse(**result)
+    return _public_response(ActionResponse, result)
 
 
 @app.get("/tactile", response_model=TactileResponse)
 def get_tactile():
     """Get current tactile sensor readings from both fingertips."""
+    if _OBSERVATION_MODE == "none":
+        raise HTTPException(status_code=403, detail="Sensor observations are disabled")
     if _TASK is None:
         action_log.log_query_failure("tactile", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
-        result = _run_on_main(_sim_get_tactile_data, timeout=30.0)
-        return TactileResponse(**result)
+        result = _run_on_main(_sim_get_tactile_data, timeout=30.0, raw_read=True)
+        return _public_response(TactileResponse, result)
     except TimeoutError:
         action_log.log_query_failure("tactile", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
@@ -2849,7 +3126,9 @@ def get_observation():
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_get_observation, timeout=30.0)
-        return ObservationResponse(**result)
+        if _OBSERVATION_MODE != "native":
+            result.pop("tactile", None)
+        return _public_response(ObservationResponse, result)
     except TimeoutError:
         action_log.log_query_failure("observation", "Simulation busy — retry in a few seconds")
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
@@ -2863,6 +3142,13 @@ def check_success():
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_check_success, timeout=30.0)
+        if _OBSERVATION_MODE != "native":
+            root = os.environ.get("UNIVTAC_ACTION_LOG")
+            if root:
+                path = Path(root).parent / "private" / "native_result.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(_jsonable(result)), encoding="utf-8")
+            result = {"completed": result["completed"], "check_early_stop": result.get("check_early_stop", False)}
         return SuccessResponse(**result)
     except TimeoutError:
         # Main thread is busy (e.g. long-running motion).  Report as
@@ -2885,6 +3171,8 @@ def check_success():
 @app.get("/force_state")
 def force_state():
     """Force-task acceptance state (see _sim_force_state)."""
+    if _OBSERVATION_MODE != "native":
+        raise HTTPException(status_code=403, detail="Private evaluation endpoint")
     if _TASK is None:
         action_log.log_query_failure("force_state", "Task not initialized")
         raise HTTPException(status_code=503, detail="Task not initialized")
@@ -2918,7 +3206,10 @@ def submit_episode():
         # retry after the review lands returns the verdict immediately.  That
         # early return is read from source, not measured: the one submission run
         # so far answered 200 on its first attempt and never exercised the retry.
-        return _run_on_main(_sim_submit_episode, timeout=_MOTION_TIMEOUT)
+        result = _run_on_main(_sim_submit_episode, timeout=_MOTION_TIMEOUT)
+        if _OBSERVATION_MODE != "native":
+            return {"submitted": True}
+        return result
     except TimeoutError:
         action_log.log_action("submit_episode", {}, ok=False,
                               msg="Simulation busy — retry in a few seconds")
@@ -2957,7 +3248,7 @@ def health():
         "status": "ok",
         "task": _TASK_NAME,
         "step": _TASK.step_count if _TASK else 0,
-        "plan_success": _TASK.plan_success if _TASK else True,
+        "plan_success": getattr(_TASK, "plan_success", None) if _TASK is not None else True,
     }
 
 
@@ -3008,7 +3299,7 @@ def rotate_gripper(req: RotateGripperRequest):
         req.feed_lead_m,
         detail_prefix="Rotate failed",
     )
-    return RotateGripperResponse(**result)
+    return _public_response(RotateGripperResponse, result)
 
 
 @app.get("/episode_video")
@@ -3082,7 +3373,8 @@ def set_recording_mode(req: RecordingModeRequest):
     """
     if req.mode == "harness":
         _RECORDER.set_harness_mode()
-        action_log.set_harness_mode()
+        if _OBSERVATION_MODE == "native":
+            action_log.set_harness_mode()
     return {"mode": req.mode, "harness_mode": _RECORDER.harness_mode}
 
 
@@ -3260,6 +3552,252 @@ def _log_actor_densities() -> None:
         logger.warning("Could not read actor densities: %s", exc)
 
 
+
+_SHADOW_ACTION = None
+_SHADOW_RGB = None
+_SHADOW_SUBMITTED = False
+
+
+def _build_shadow_task(request, device, seed, cfg_overrides):
+    import importlib
+    import importlib.util
+    import hashlib
+    task_module = importlib.import_module("env.tasks.arm_shadow_piano")
+    digit_module = importlib.import_module("env.tasks._digit_tactile")
+    bridge_path = Path("/mnt/a/ljz/cap/t-cap/cap-x/scripts/opentac/shadow_digit_bridge.py")
+    config_path = Path("/mnt/a/ljz/cap/t-cap/cap-x/env_configs/opentac/config_digit_piano_0_2.v1.yml")
+    output = Path(os.environ["UNIVTAC_ACTION_LOG"]).parent
+    (output / "private").mkdir(parents=True, exist_ok=True)
+    spec = importlib.util.spec_from_file_location("capx_table2_digit_bridge", bridge_path)
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    cfg = task_module.TaskCfg(
+        device=device, tactile=True, tactile_sensor="digit", tactile_image_width=320,
+        record_video=True, action_repeat=4, piano_seed=seed,
+        piano_notes=request["notes"], piano_dynamics=request["dynamics"],
+        piano_hold_seconds=request["hold_seconds"], piano_require_dynamics=True,
+        piano_continue_on_note_failure=False)
+    cfg.tactile_workspace = str(output / "private" / "digit_world")
+    for item in cfg_overrides or ():
+        _apply_cfg_override(cfg, item)
+    if not cfg.tactile or cfg.piano_continue_on_note_failure or not cfg.piano_require_dynamics:
+        raise ValueError("Shadow Table 2 requires identical native DIGIT physics and strict scoring")
+    native_cls = digit_module.DigitTactile
+    digit_module.DigitTactile = bridge.make_digit_bridge_class(
+        native_cls, opentac_root=UNIVTAC_ROOT, piano_config=config_path, episode_dir=output / "private")
+    try:
+        task = task_module.Task(cfg, render_mode="rgb_array")
+    finally:
+        digit_module.DigitTactile = native_cls
+    task.camera.set_world_poses_from_view(
+        torch.tensor([[.44, -.03, .95]], dtype=torch.float32, device=device),
+        torch.tensor([[.44, -.03, .07]], dtype=torch.float32, device=device))
+    metadata = {
+        "task_source": task_module.__file__, "task_sha256": hashlib.sha256(Path(task_module.__file__).read_bytes()).hexdigest(),
+        "renderer_bridge": str(bridge_path), "bridge_sha256": hashlib.sha256(bridge_path.read_bytes()).hexdigest(),
+        "sensor_config": str(config_path), "sensor_config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+        "request": request, "action_repeat": cfg.action_repeat, "physics_dt": cfg.physics_dt,
+        "tactile_physics_enabled": cfg.tactile, "require_dynamics": cfg.piano_require_dynamics,
+        "continue_on_note_failure": cfg.piano_continue_on_note_failure}
+    (output / "private" / "shadow_runtime.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    return task
+
+
+def _sim_reset_shadow(seed, log):
+    global _SHADOW_ACTION, _SHADOW_RGB, _SHADOW_SUBMITTED, _LAST_RECORDED_STEP
+    _RECORDER.finalize()
+    obs, _ = _TASK.reset(seed=seed)
+    _SHADOW_RGB = obs.get("tactile", {}).get("index", {}).get("rgb")
+    _SHADOW_ACTION = np.clip(_TASK._action_state(), _TASK.action_space.low, _TASK.action_space.high)
+    _SHADOW_SUBMITTED = False
+    _LAST_RECORDED_STEP = None
+    info = _RECORDER.start(_TASK_NAME, seed)
+    if log:
+        action_log.log_episode_reset(_TASK_NAME, seed, info.get("started") or "")
+    _record_frame("reset:initial")
+    return {"success": True, "seed": seed, "step_limit": int(_TASK.cfg.episode_seconds / _TASK.cfg.physics_dt)}
+
+
+def _shadow_hand_state():
+    hand = _TASK.hand
+    palm = _TASK._palm
+    values = _TASK._action_state()
+    sample = _physics_sample()
+    return {
+        "wrist_x_offset_m": float(values[0]), "wrist_y_m": float(values[1]),
+        "wrist_z_m": float(values[2]), "index_flexion_rad": float(values[3]),
+        "palm_position_m": hand.data.body_pos_w[0, palm].cpu().tolist(),
+        "palm_quaternion_wxyz": hand.data.body_quat_w[0, palm].cpu().tolist(),
+        "palm_velocity_m_s": hand.data.body_lin_vel_w[0, palm].cpu().tolist(),
+        "index_velocity_rad_s": float(hand.data.joint_vel[0, _TASK._index]),
+        "arm_joint_position_rad": hand.data.joint_pos[0, _TASK._arm_ids].cpu().tolist(),
+        "arm_joint_velocity_rad_s": hand.data.joint_vel[0, _TASK._arm_ids].cpu().tolist(),
+        "step": sample["physics_step"], "time_seconds": sample["time_seconds"],
+        "control_dt_seconds": _TASK.cfg.physics_dt * _TASK.cfg.action_repeat,
+        "native_done": bool(_TASK._done or _SHADOW_SUBMITTED)}
+
+
+def _shadow_note_target(note):
+    from envs._piano_sequence import parse_notes, note_name
+    midi = parse_notes([int(note) if str(note).isdigit() else note])[0]
+    key = _TASK.layout[midi - 21]
+    y = float(key.position[1] - .033)
+    if not _TASK.action_space.low[1] <= y <= _TASK.action_space.high[1]:
+        raise ValueError("Note is outside the native hand workspace")
+    return {"note": note_name(midi), "midi": midi, "black": bool(key.black),
+            "key_position_m": list(key.position), "key_size_m": list(key.size),
+            "wrist_x_offset_m": .07 if key.black else 0., "wrist_y_m": y,
+            "press_lift_z_m": .0155 if key.black else 0., "hover_lift_z_m": .04}
+
+
+def _shadow_tactile():
+    if _OBSERVATION_MODE != "raw":
+        raise RuntimeError("Sensor observations are disabled")
+    sample = _physics_sample()
+    result = {"sensor": "index", "step": sample["physics_step"],
+              "time_seconds": sample["time_seconds"], "rgb": None, "depth": None}
+    if _SHADOW_RGB is not None:
+        buf = io.BytesIO()
+        Image.fromarray(np.asarray(_SHADOW_RGB, dtype=np.uint8)).save(buf, format="PNG")
+        result["rgb"] = base64.b64encode(buf.getvalue()).decode("ascii")
+    depth = getattr(_TASK.tactile, "depth_m", None)
+    if depth is not None:
+        depth = np.asarray(depth, dtype="<f4")
+        if depth.ndim != 2:
+            raise ValueError("Expected a two-dimensional DIGIT depth map")
+        result["depth"] = {"shape": list(depth.shape), "dtype": "float32", "unit": "m",
+                           "data": base64.b64encode(depth.tobytes()).decode("ascii")}
+    return result
+
+
+def _shadow_move(action, steps):
+    global _SHADOW_ACTION, _SHADOW_RGB
+    if _TASK._done or _SHADOW_SUBMITTED:
+        raise RuntimeError("Native episode has ended; further actions are refused")
+    if type(steps) is not int or not 1 <= steps <= 600:
+        raise ValueError("steps must be an integer in [1,600]")
+    target = np.asarray(_SHADOW_ACTION if action is None else action, dtype=np.float32)
+    if (target.shape != (4,) or not np.isfinite(target).all()
+            or np.any(target < _TASK.action_space.low) or np.any(target > _TASK.action_space.high)):
+        raise ValueError("Shadow action is outside the native four-dimensional bounds")
+    _SHADOW_ACTION = target.copy()
+    for _ in range(steps):
+        obs, _, terminated, truncated, _ = _TASK.step(target)
+        _SHADOW_RGB = obs.get("tactile", {}).get("index", {}).get("rgb")
+        _record_frame("shadow:move")
+        if terminated or truncated:
+            break
+    return {"success": True, "native_done": bool(_TASK._done)}
+
+
+class ShadowMoveRequest(BaseModel):
+    action: list[float]
+    steps: int = 1
+
+
+class ShadowWaitRequest(BaseModel):
+    steps: int = 1
+
+
+def _require_shadow():
+    if _TASK_NAME != "arm_shadow_piano" or _TASK is None:
+        raise HTTPException(status_code=404, detail="Shadow piano is not active")
+
+
+@app.get("/shadow/hand_state")
+def shadow_hand_state():
+    _require_shadow()
+    return _run_on_main(_shadow_hand_state)
+
+
+@app.get("/shadow/note_target")
+def shadow_note_target(note: str):
+    _require_shadow()
+    return _run_on_main(_shadow_note_target, note)
+
+
+@app.get("/shadow/tactile")
+def shadow_tactile():
+    _require_shadow()
+    if _OBSERVATION_MODE != "raw":
+        raise HTTPException(status_code=403, detail="Sensor observations are disabled")
+    return _run_on_main(_shadow_tactile)
+
+
+@app.post("/shadow/move")
+def shadow_move(req: ShadowMoveRequest):
+    _require_shadow()
+    return _agent0_action("shadow_move", {"action": req.action, "steps": req.steps},
+                          _MOTION_TIMEOUT, _shadow_move, (req.action, req.steps), "Shadow motion failed")
+
+
+@app.post("/shadow/wait")
+def shadow_wait(req: ShadowWaitRequest):
+    _require_shadow()
+    return _agent0_action("shadow_wait", {"steps": req.steps},
+                          _MOTION_TIMEOUT, _shadow_move, (None, req.steps), "Shadow wait failed")
+
+
+
+class _BlindLegacyWrenchComposer:
+    def __init__(self, robot):
+        self._robot = robot
+        self._zeros = None
+
+    def reset(self):
+        if self._zeros is None:
+            self._zeros = torch.zeros_like(self._robot._external_force_b)
+        self._robot.set_external_force_and_torque(
+            forces=self._zeros, torques=self._zeros, is_global=True)
+
+    def set_forces_and_torques(self, *, forces, torques, is_global):
+        expected = self._robot._external_force_b.shape
+        if not is_global or forces.shape != expected or torques.shape != expected:
+            raise ValueError("Blind legacy wrench requires full-body world-frame forces and COM torques")
+        self._robot.set_external_force_and_torque(
+            forces=forces, torques=torques, is_global=True)
+
+
+def _construct_blind_task(task_module, cfg):
+    import inspect
+    from types import SimpleNamespace
+
+    native_sim_utils = task_module.sim_utils
+    native_physx_cfg = native_sim_utils.PhysxCfg
+    parameter = "enable_external_forces_every_iteration"
+    if os.environ.get("UNIVTAC_BLIND_LEGACY_PHYSX") != "1":
+        return task_module.Task(cfg, render_mode="rgb_array")
+
+    native_articulation = task_module.Articulation
+
+    def compatible_articulation(*args, **kwargs):
+        robot = native_articulation(*args, **kwargs)
+        if not hasattr(robot, "permanent_wrench_composer"):
+            if not callable(getattr(robot, "set_external_force_and_torque", None)):
+                raise RuntimeError("Blind task requires an external wrench implementation")
+            robot.permanent_wrench_composer = _BlindLegacyWrenchComposer(robot)
+            logger.warning("Blind-ball compatibility: permanent wrench uses native set_external_force_and_torque")
+        return robot
+
+    def compatible_physx_cfg(*args, **kwargs):
+        if parameter in kwargs:
+            value = kwargs.pop(parameter)
+            logger.warning("Blind-ball compatibility: omitted unsupported %s=%r; using installed PhysX defaults",
+                           parameter, value)
+        return native_physx_cfg(*args, **kwargs)
+
+    local_sim_utils = SimpleNamespace(**vars(native_sim_utils))
+    if parameter not in inspect.signature(native_physx_cfg).parameters:
+        local_sim_utils.PhysxCfg = compatible_physx_cfg
+    task_module.sim_utils = local_sim_utils
+    task_module.Articulation = compatible_articulation
+    try:
+        return task_module.Task(cfg, render_mode="rgb_array")
+    finally:
+        task_module.sim_utils = native_sim_utils
+        task_module.Articulation = native_articulation
+
+
 def _build_ball_task(task_config: dict, device: str, seed: int,
                      cfg_overrides: list[str] | None):
     """Construct the standalone touch-only ball task (``blind_pick_balls``).
@@ -3322,11 +3860,14 @@ def _build_ball_task(task_config: dict, device: str, seed: int,
         _apply_cfg_override(cfg, spec)
 
     logger.info("Blind-ball workspace: %s", cfg.workspace)
-    task = task_module.Task(cfg, render_mode="rgb_array")
+    task = _construct_blind_task(task_module, cfg)
 
     from capx.serving.univtac_ball_adapter import BallTaskAdapter
 
-    return BallTaskAdapter(task)
+    adapter = BallTaskAdapter(task)
+    if _OBSERVATION_MODE != "native":
+        adapter._close_trace()
+    return adapter
 
 
 def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
@@ -3344,9 +3885,21 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     _activate_backing_root(backing.root)
 
     # Load task config
-    config_path = backing.root / "task_config" / backing.config_file
-    with open(config_path) as f:
-        task_config = yaml.safe_load(f)
+    task_config = {}
+    if backing.config_file is not None:
+        config_path = backing.root / "task_config" / backing.config_file
+        with open(config_path) as f:
+            task_config = yaml.safe_load(f)
+    request = None
+    if _EPISODE_REQUEST_FILE:
+        manifest = json.loads(Path(_EPISODE_REQUEST_FILE).read_text(encoding="utf-8"))
+        request_key = "shadow_piano" if task_name == "arm_shadow_piano" else task_name
+        request = (manifest["requests"].get(request_key, {}).get(str(seed))
+                   or manifest.get("smoke_requests", {}).get(request_key, {}).get(str(seed)))
+        if task_name == "tension_strap" and request is not None:
+            task_config["task_parameters"] = {**task_config.get("task_parameters", {}),
+                                              "force_time_sequence": request["force_time_sequence"],
+                                              "tolerance_N": request["tolerance_N"]}
 
     # Must happen before ``import envs.*`` — once envs.utils.actor is bound, its
     # UipcObject base class is fixed for the life of the process.  Two ways in:
@@ -3364,6 +3917,15 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # the force-task binder -- assumes a contract it does not implement (see
     # _build_ball_task and the TASK_BACKING entry).  Branch before any of it
     # and leave through the same startup sequence as the generic path.
+    if task_name == "arm_shadow_piano":
+        if request is None:
+            raise ValueError("Missing frozen piano sequence")
+        _TASK = _build_shadow_task(request, device, seed, cfg_overrides)
+        _TASK_NAME = task_name
+        _sim_reset(seed=seed, log=False)
+        logger.info("Startup reset complete (seed=%s).", seed)
+        return
+
     if task_name == "blind_pick_balls":
         _TASK = _build_ball_task(task_config, device, seed, cfg_overrides)
         _TASK_NAME = task_name
@@ -3449,11 +4011,22 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     for spec in cfg_overrides or ():
         _apply_cfg_override(env_cfg, spec)
 
+    compact_selection = None
+    if task_name == "tactile_memory_match" and env_cfg.compact_fixed_pair_scene:
+        compact_selection = _configure_compact_match(task_module, env_cfg, seed)
+
     logger.info("Creating task '%s' (sensor=%s, device=%s)...", task_name, sensor_type, device)
     # Use "collect" mode — avoids per-step _update_render() overhead
     # that makes "eval" mode unusably slow (~2 FPS vs ~25 FPS).
     _TASK = task_module.Task(env_cfg, mode="collect")
     _TASK_NAME = task_name
+    if compact_selection is not None:
+        _bind_compact_match(_TASK, compact_selection)
+        private_dir = Path(os.environ["UNIVTAC_ACTION_LOG"]).parent / "private"
+        private_dir.mkdir(parents=True, exist_ok=True)
+        (private_dir / "compact_scene.json").write_text(
+            json.dumps(compact_selection, indent=2), encoding="utf-8")
+        logger.info("Compact scene enabled: three task objects; native seed RNG state preserved")
     logger.info("Task '%s' initialized successfully.", task_name)
 
     # Startup reset.  Agents have no reset() (see robo.py), so the scene must
@@ -3487,8 +4060,6 @@ def main() -> None:
     from isaaclab.app import AppLauncher
 
     parser = argparse.ArgumentParser(description="UniVTAC Tactile API Server")
-    parser.add_argument('--ablation-config', default=None,
-                        help='Strict paired-baseline YAML; readiness checked before Kit startup')
     parser.add_argument("--task", type=str, default="insert_hole",
                         choices=AVAILABLE_TASKS,
                         help="Task name to serve")
@@ -3509,6 +4080,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0,
                         help="Scene-randomization seed for the startup reset "
                              "(drives pre_move noise, e.g. grasp offset)")
+    parser.add_argument("--observation-mode", choices=["native", "raw", "none"], default="native")
+    parser.add_argument("--run-dir", default=None)
+    parser.add_argument("--episode-request-file", default=None)
     parser.add_argument("--cfg-override", action="append", default=[], metavar="KEY=VALUE",
                         help="override a TaskCfg field for this run (repeatable; "
                              "VALUE is parsed as YAML).  Unknown keys abort startup.")
@@ -3517,39 +4091,17 @@ def main() -> None:
 
     # Parse combined args
     cli = parser.parse_args()
-    baseline = None
-    if cli.ablation_config:
-        from capx.ablation.protocol import load_spec, require_ready, read_json, resolve
-        from capx.ablation.server import BaselineServer, mount
-        spec = load_spec(cli.ablation_config)
-        require_ready(spec)
-        if not os.environ.get('CAPX_ABLATION_RUN_ID'):
-            raise ValueError('CAPX_ABLATION_RUN_ID is required')
-        selected = os.environ.get('GPU', '')
-        if not selected.isdigit():
-            raise ValueError('Set GPU to exactly one physical GPU index')
-        import subprocess
-        gpu_uuid = subprocess.check_output(['nvidia-smi', '-i', selected, '--query-gpu=uuid',
-            '--format=csv,noheader'], text=True, timeout=10).strip()
-        if not gpu_uuid.startswith('GPU-') or '\n' in gpu_uuid:
-            raise ValueError('GPU did not resolve to a single device')
-        if os.environ.get('CUDA_VISIBLE_DEVICES') not in (None, selected, gpu_uuid):
-            raise ValueError('GPU conflicts with CUDA_VISIBLE_DEVICES')
-        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_uuid
-        os.environ['EGL_DEVICE_ID'] = selected
-        cli.device = 'cuda:0'
-        cli.multi_gpu = False
-        cli.kit_args = '--/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1'
-        class SingleGpuAppLauncher(AppLauncher):
-            def _resolve_device_settings(self, launcher_args):
-                super()._resolve_device_settings(launcher_args)
-                launcher_args.update(active_gpu=int(selected), physics_gpu=0, multi_gpu=False)
-        AppLauncher = SingleGpuAppLauncher
-        if cli.seed != int(os.environ['CAPX_ABLATION_SEED']):
-            raise ValueError('Server --seed must match CAPX_ABLATION_SEED')
-        baseline = BaselineServer(sys.modules[__name__], spec, cli.seed,
-                                 Path(spec['output_root']) / 'server')
-        mount(sys.modules[__name__], baseline)
+    global _OBSERVATION_MODE, _EPISODE_REQUEST_FILE, _RECORDER
+    _OBSERVATION_MODE = cli.observation_mode
+    _EPISODE_REQUEST_FILE = cli.episode_request_file
+    if cli.run_dir:
+        output = Path(cli.run_dir).resolve()
+        output.mkdir(parents=True, exist_ok=True)
+        os.environ["UNIVTAC_ACTION_LOG"] = str(output / "univtac_actions.jsonl")
+        os.environ["UNIVTAC_RECORD_DIR"] = str(output / "recording")
+        os.environ["UNIVTAC_FRAMES_DIR"] = str(output / "recording_frames")
+        _RECORDER = EpisodeRecorder(recording_root(), frames_root=frames_root())
+        action_log.log_episode_reset(cli.task, cli.seed, output.name)
 
     # Claim the port before the expensive Isaac Sim startup. Passing this
     # socket to Uvicorn below keeps the check race-free: no other server can
@@ -3565,15 +4117,17 @@ def main() -> None:
         )
         sys.exit(1)
 
+    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning")
+    config.load()
+
     # Pin the task's backing repo before anything imports envs.*: AppLauncher
     # below pulls in isaaclab, and init_task imports the task module.
-    _activate_backing_root(Path(baseline.asset['environment_root']) if baseline else _backing_for(cli.task).root)
+    _activate_backing_root(_backing_for(cli.task).root)
 
     # Set defaults that UniVTAC tasks expect — must match scripts/eval_policy.py
     cli.enable_cameras = True
     cli.num_envs = 1
-    # Baselines use local HTTP and camera render products, not a streaming client.
-    cli.livestream = 0 if baseline else 2
+    cli.livestream = 2  # headless rendering mode (required for GelSight to init)
 
     # NOTE: GPU selection must happen via CUDA_VISIBLE_DEVICES (set by
     # scripts/launch_univtac_server.sh), NOT via --device cuda:N.  Isaac
@@ -3584,10 +4138,18 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Step 2: Launch Isaac Sim app (must happen before isaaclab imports)
     # -------------------------------------------------------------------
-    if baseline:
-        import faulthandler
-        faulthandler.dump_traceback_later(60, repeat=True)
-    app_launcher = AppLauncher(cli)
+    class SingleGpuAppLauncher(AppLauncher):
+        def _resolve_device_settings(self, launcher_args):
+            super()._resolve_device_settings(launcher_args)
+            if _OBSERVATION_MODE != "native":
+                physical_gpu = os.environ.get("GPU")
+                if physical_gpu is None or not physical_gpu.isdecimal():
+                    raise ValueError("Set GPU to one physical GPU index")
+                launcher_args["active_gpu"] = int(physical_gpu)
+                launcher_args["physics_gpu"] = 0
+                launcher_args["multi_gpu"] = False
+
+    app_launcher = SingleGpuAppLauncher(cli)
     simulation_app = app_launcher.app
 
     # ---- re-register signal handlers -------------------------------------------
@@ -3608,23 +4170,20 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Step 3: Initialize the UniVTAC task
     # -------------------------------------------------------------------
+    import faulthandler
+    faulthandler.dump_traceback_later(60, repeat=True)
     try:
         # Use AppLauncher's --device for GPU selection (already parsed as cli.device)
         device = getattr(cli, "device", "cuda:0")
-        if baseline:
-            if cli.cfg_override:
-                raise ValueError('Baseline task overrides must be frozen in the protocol')
-            if torch.cuda.device_count() != 1:
-                raise RuntimeError('Baseline requires exactly one visible CUDA GPU')
-            baseline.initialize(device)
-        else:
-            init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
-                      cfg_overrides=cli.cfg_override)
+        init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
+                  cfg_overrides=cli.cfg_override)
     except Exception:
         logger.error("Failed to initialize task: %s", traceback.format_exc())
         listener_socket.close()
         simulation_app.close()
         sys.exit(1)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
 
     # -------------------------------------------------------------------
     # Step 4: Start FastAPI server
@@ -3636,8 +4195,6 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Start uvicorn in daemon thread; keep main thread for Isaac Sim.
     # -------------------------------------------------------------------
-    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning",
-                            ws="none" if baseline else "auto")
     server = uvicorn.Server(config)
 
     def _run_uvicorn() -> None:
@@ -3664,15 +4221,13 @@ def main() -> None:
         sys.exit(1)
 
     logger.info("UniVTAC API server ready on %s:%d", cli.host, cli.port)
-    if baseline:
-        faulthandler.cancel_dump_traceback_later()
 
     # Spawn an external freeze watchdog (a separate stdlib-only process).  A
     # cuRobo hang can hold the GIL inside C++/CUDA so that no Python thread —
     # not even /health — can run, which makes an in-process watchdog useless.
     # The watchdog polls /health and SIGKILLs this process if it stops
     # answering, so scripts/launch_univtac_server.sh can respawn it.
-    if baseline or not getattr(cli, "no_watchdog", False):
+    if not getattr(cli, "no_watchdog", False):
         import subprocess as _subprocess
 
         watchdog_path = Path(__file__).with_name("univtac_watchdog.py")
@@ -3684,7 +4239,7 @@ def main() -> None:
                 "--host", str(cli.host),
                 "--port", str(cli.port),
                 "--grace", str(getattr(cli, "watchdog_grace", 120.0)),
-            ] + (['--max-lifetime', str(baseline.spec['process_timeout_s'])] if baseline else [])
+            ]
         )
         logger.info("Freeze watchdog spawned (pid=%d, grace=%.0fs)",
                     watchdog_proc.pid, getattr(cli, "watchdog_grace", 120.0))

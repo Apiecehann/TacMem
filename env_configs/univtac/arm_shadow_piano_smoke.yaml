@@ -1,0 +1,109 @@
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level:
+      _target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+      task_name: arm_shadow_piano
+    privileged: false
+    apis:
+    - UniVTACShadowPianoApi
+    api_functions:
+      UniVTACShadowPianoApi:
+      - get_note_target
+      - get_hand_state
+      - move_shadow_index
+      - wait_steps
+      - submit_episode
+      - get_digit_tactile
+    append_final_check: submit_episode
+    multi_turn_prompt: ''
+    prompt: 'Control the Franka-mounted Shadow Hand index finger through the documented native API. Use the ordinary
+      scene image and allowed key geometry/robot pose queries. Do not access task internals, files, private evaluation
+      endpoints, measured key angles, true contact forces, reward or score. Write one complete Python program, with
+      an entry function that you call, without Markdown fences or prose. There is one code generation only: implement
+      loops and recoverable error handling inside that program. Never call an expert policy.
+
+
+      Play and release the requested notes in order: {piano_request}. The input specifies note names, light/heavy
+      dynamics and hold durations. Native pitch, dynamics, hold, release and safety conditions remain enabled. A
+      wrong note or other native failure may end the episode immediately. Read native_done after every motion; once
+      true, stop physical actions and return. When the program returns, the host submits END and records the native
+      verdict. Do not set capx_stop, request regeneration, or finalize/skip a failed note with a private helper.
+
+
+      Use get_note_target(note) once per needed note to obtain key geometry and geometric wrist targets. These positions
+      are GT and can be checked against the initial scene image; no pixel-to-key calibration is needed. get_hand_state()
+      reports actual measured robot state. wrist_x_offset_m, wrist_y_m and wrist_z_m are native command coordinates;
+      wrist_z_m is lift Z, not absolute world height. A command is not an achieved pose. Before each descent, hold
+      the finger extended and travel to the returned X/Y at hover_lift_z_m. Advance a few control steps and verify
+      actual X/Y errors <=0.002 m plus small palm X/Y velocity for three successive checks. Bound this arrival loop
+      to 360 control steps; if it fails, return without pressing.
+
+
+      Each control step is four 240 Hz physical ticks, 1/60 second. Native bounds: X [-0.01,0.09] m, Y [-0.32,0.26]
+      m, lift Z [-0.006,0.05] m, index flexion [0,0.50] rad. Interpolate target motions smoothly; never command
+      a value outside these bounds. After arrival, descend with the finger extended toward the returned geometric
+      press_lift_z_m over about 0.5 seconds. A starting motion prior is to curl progressively toward 0.50 rad over
+      about 0.45 seconds, hold, extend, and lift before the next lateral travel. These are motion priors, not force
+      calibration or a guarantee of a scored press; you may adjust bounded motion using the observations available
+      in this condition.
+
+
+      Task force goals for white keys are light 0.35 N and heavy 0.50 N, tolerance +/-0.07 N; black-key goals and
+      tolerance are twice these. These are requested task values, not measured forces or a sensor conversion. Honour
+      each requested hold duration after the press and allow at least the requested release duration with the index
+      extended and hand lifted. Integer control-step counts must cover the full duration: ceil(seconds*60), not
+      truncation. Native judging occurs at 240 Hz. Do not claim a successful note merely because a motion loop returned.
+      Print a short PIANO_NOTE action record for each attempted note; stop on native_done. Do not read or infer
+      an official score from unavailable fields.
+
+
+      Available public sensor channels are single-index DIGIT uint8 RGB and the complete TACTO simulated float32
+      depth map in metres, with sensor identity, physical step and simulation time. Use get_digit_tactile(); a missing
+      channel is None. No force estimator, feature converter, marker coordinates, calibration weights or force-conversion
+      recipe is supplied. You may write numpy/cv2 analysis of these raw arrays inside the program. Do not treat
+      pixel values or depth as measured Newtons. For this wiring smoke, read both available channels before the
+      first manipulation and after at least one completed motion while the episode is active. Keep further sampling
+      and interpretation inside this one program.'
+    observation_mode: raw
+    tactile_skills:
+    - cruise-height
+    - lift-before-lateral
+    - differential-across-states
+    - no-absolute-without-reference
+    - no-calibration-transfer
+agent0_mode: raw
+task_name: arm_shadow_piano
+seed_manifest: env_configs/ablations/seeds40.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  task: arm_shadow_piano
+  port: 8120
+  host: 127.0.0.1
+  observation_mode: raw
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+record_video: true
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 1200
+trial_timeout_seconds: 1800
+process_timeout_seconds: 2400
+output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/raw_tactile
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

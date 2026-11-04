@@ -25,7 +25,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from capx.envs.tasks.base import CodeExecutionEnvBase
+from capx.envs.tasks.base import CodeExecEnvConfig, CodeExecutionEnvBase
+from capx.integrations.base_api import ApiBase
 from capx.tactile_skills import (
     FAMILIES,
     SkillError,
@@ -525,7 +526,7 @@ def test_an_empty_tuple_turns_the_block_off() -> None:
     assert _StubTask("weight_classify", tactile_skills=())._tactile_skill_block() == ""
 
 
-class _API:
+class _API(ApiBase):
     """Enough of an API object to answer what the hook asks it."""
 
     def __init__(self, names: tuple[str, ...]) -> None:
@@ -713,3 +714,1136 @@ def test_the_shipped_library_is_the_one_under_test(library) -> None:
     """Guard against the tests passing on a stale copy elsewhere on the path."""
     assert library.root == LIBRARY_ROOT
     assert len(library) >= 52
+
+
+@pytest.mark.parametrize("names", ["get_ee_pose", [1], ["move_delta", "move_delta"], ["_get"], ["not_a_tool"]])
+def test_invalid_native_function_selection_is_rejected(names) -> None:
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+
+    api = UniVTACTactileApi(None)
+    before = api.selected_functions()
+    with pytest.raises((TypeError, ValueError)):
+        api.configure_functions(names)
+    assert api.selected_functions() == before
+
+
+def test_function_selection_defaults_and_documentation() -> None:
+    from omegaconf import OmegaConf
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+
+    api = UniVTACTactileApi(None)
+    assert api.selected_functions() == api.functions()
+    assert "submit_episode" not in api.selected_functions()
+    api.configure_functions(OmegaConf.create(["get_tactile_image", "get_ee_pose", "move_delta"]))
+    selected = api.selected_functions()
+    assert set(selected) == {"get_tactile_image", "get_ee_pose", "move_delta", "check_success"}
+    for name, fn in selected.items():
+        assert fn == getattr(api, name)
+    assert set(re.findall(r"^([a-z_]+)\(", api.combined_doc(), re.M)) == set(selected) - api._prompt_hidden
+    api.configure_functions([])
+    assert set(api.selected_functions()) == {"check_success"}
+    assert api.combined_doc() == ""
+
+
+@pytest.mark.parametrize("name", ["get_object_pose", "sample_grasp_pose", "rotate_gripper"])
+def test_ball_function_selection_cannot_restore_withdrawn_tools(name) -> None:
+    from capx.integrations.tactile.univtac_ball_api import UniVTACBallApi
+
+    api = UniVTACBallApi(None)
+    with pytest.raises(ValueError, match="Unknown functions"):
+        api.configure_functions([name])
+    api.configure_functions(["get_ee_pose", "get_tactile_image"])
+    assert api.selected_functions()["get_ee_pose"] == api.get_ee_pose
+
+
+@pytest.mark.parametrize("selection", [[], {"OtherApi": ["get_ee_pose"]}])
+def test_api_function_configuration_rejects_wrong_api_mapping(selection) -> None:
+    with pytest.raises((TypeError, ValueError), match="api_functions"):
+        CodeExecutionEnvBase(CodeExecEnvConfig(low_level=SimpleNamespace(), apis=[], api_functions=selection))
+
+
+@pytest.mark.parametrize("task", ["weight_classify", "grasp_classify", "hardness_classify", "tactile_memory_match", "bulb_tightening", "blind_pick_balls", "tension_strap"])
+def test_seven_native_yamls_bind_the_documented_functions(task, monkeypatch) -> None:
+    from capx.envs.configs.instantiate import instantiate
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    from capx.integrations.tactile.univtac_ball_api import UniVTACBallApi
+
+    monkeypatch.chdir(REPO_ROOT)
+    factories = {"UniVTACTactileApi": UniVTACTactileApi, "UniVTACBallApi": UniVTACBallApi}
+    monkeypatch.setattr("capx.envs.tasks.base.get_api", factories.__getitem__)
+    path = CONFIG_ROOT / ("tension_strap_smoke.yaml" if task == "tension_strap" else f"{task}/univtac_{task}.yaml")
+    config = yaml.safe_load(path.read_text())
+    env = instantiate(config["env"])
+    name = "UniVTACBallApi" if task == "blind_pick_balls" else "UniVTACTactileApi"
+    assert env.cfg.apis == [name]
+    assert env.low_level_env.task_name == task
+    api = env._apis[name]
+    selected = api.selected_functions()
+    assert set(selected) == set(config["env"]["cfg"]["api_functions"][name]) | {"check_success"}
+    assert set(re.findall(r"^([a-z_]+)\(", api.combined_doc(), re.M)) == set(selected) - api._prompt_hidden
+    for fn_name, fn in selected.items():
+        expected = api.close_gripper_position if fn_name == "close_gripper" else getattr(api, fn_name)
+        assert env._exec_globals[fn_name] == fn == expected
+    assert "get_ee_pose" in selected
+    raw = config["agent0_mode"] == "raw"
+    assert ("get_tactile_data" in selected) is raw
+    assert ("get_tactile_image" in selected) is raw
+    assert ("get_tactile_depth" in selected) is raw
+    assert "detect_slip" not in selected
+    block = env._tactile_skill_block()
+    for name in config["env"]["cfg"]["tactile_skills"]:
+        assert default_library().get(name).summary in block
+    assert env._task_prompt == config["env"]["cfg"]["prompt"]
+    if task == "blind_pick_balls":
+        assert not {"get_object_pose", "sample_grasp_pose", "rotate_gripper"} & selected.keys()
+    if task == "tension_strap":
+        assert env.cfg.append_final_check == "submit_episode"
+        assert "submit_episode(" not in api.combined_doc()
+        assert config["api_servers"][0]["task"] == task
+        assert config["api_servers"][0]["seed"] == config["trials"] == config["resume_idx"]
+    else:
+        assert env.final_check_name() == "check_success"
+    env._init_exec_globals()
+    result = env._exec_user_code("print('native print preserved')")
+    assert result["ok"] and "native print preserved" in result["stdout"]
+    for fn_name, fn in selected.items():
+        assert env._exec_globals[fn_name] == fn
+
+
+def test_selected_native_reads_and_motion_keep_http_contract(monkeypatch) -> None:
+    import base64
+    import io
+    import numpy as np
+    from PIL import Image
+    from capx.integrations.tactile import univtac_api
+
+    api = univtac_api.UniVTACTactileApi(None, server_url="http://native.test")
+    api.configure_functions(["get_tactile_image", "get_ee_pose", "get_tactile_data", "move_delta"])
+    rgb = np.arange(18, dtype=np.uint8).reshape(2, 3, 3)
+    buf = io.BytesIO()
+    Image.fromarray(rgb).save(buf, format="PNG")
+    payload = {f"{side}_{key}": value for side in ("left", "right") for key, value in {
+        "contact": True, "depth_mm": 27.5, "marker_displacement_px": 0.2,
+        "marker_coherence": 0.6, "marker_anisotropy": 1.1, "height_roughness_mm": 0.03,
+        "rgb_base64": base64.b64encode(buf.getvalue()).decode("ascii")}.items()}
+    pose = {"position": [0.4, 0.1, 0.3], "quaternion_wxyz": [1, 0, 0, 0]}
+    calls = []
+    def get(url, **kwargs):
+        calls.append((url, kwargs))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: dict(pose if url.endswith("/ee_pose") else payload))
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"success": True, "tactile": payload})
+    monkeypatch.setattr(univtac_api.requests, "get", get)
+    monkeypatch.setattr(univtac_api.requests, "post", post)
+    selected = api.selected_functions()
+    for side in ("left", "right"):
+        np.testing.assert_array_equal(selected["get_tactile_image"](side), rgb)
+    assert selected["get_ee_pose"]() == pose
+    native_data = selected["get_tactile_data"]()
+    assert native_data["left_depth_mm"] == 27.5
+    assert native_data["right_height_roughness_mm"] == 0.03
+    assert selected["move_delta"](dx=0.01) == univtac_api._trim_motion_tactile(payload)
+    assert calls[-1][0] == "http://native.test/move_delta"
+    assert calls[-1][1]["json"] == {"dx": 0.01, "dy": 0.0, "dz": 0.0, "drx": 0.0, "dry": 0.0, "drz": 0.0, "coord": "world", "tag": "move_delta"}
+    payload.pop("left_rgb_base64")
+    assert selected["get_tactile_image"]("left") is None
+
+
+def _native_submission_namespace():
+    import ast
+    import logging
+    import traceback
+    from dataclasses import dataclass
+    from typing import Any
+
+    path = REPO_ROOT / "capx" / "serving" / "launch_univtac_server.py"
+    names = {"TaskBacking", "AVAILABLE_TASKS", "TASK_BACKING", "DEFAULT_BACKING", "_backing_for", "_sim_submit_episode"}
+    nodes = []
+    for node in ast.parse(path.read_text()).body:
+        bound = {node.name} if isinstance(node, (ast.ClassDef, ast.FunctionDef)) else set()
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            bound.add(node.target.id)
+        if isinstance(node, ast.Assign):
+            bound.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        if bound & names:
+            nodes.append(node)
+    ns = {"__name__": __name__, "dataclass": dataclass, "Path": Path, "Any": Any,
+          "VITAFORGE_ROOT": Path("/native/opentac"), "UNIVTAC_ROOT": Path("/native/univtac"),
+          "logger": logging.getLogger(__name__), "traceback": traceback}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec", dont_inherit=True), ns)
+    return ns
+
+
+def test_tension_native_registration_selects_task_profile() -> None:
+    ns = _native_submission_namespace()
+    assert "tension_strap" in ns["AVAILABLE_TASKS"]
+    backing = ns["_backing_for"]("tension_strap")
+    assert backing.root == ns["VITAFORGE_ROOT"]
+    assert backing.config_file == "tension_strap.yml"
+    assert backing.cfg_overrides == ()
+
+
+@pytest.mark.parametrize("task, method", [("tension_strap", "finish_episode"), ("bulb_tightening", "_finish_bulb_episode")])
+def test_native_end_calls_only_the_tasks_own_finalizer(task, method) -> None:
+    from unittest.mock import Mock
+
+    ns = _native_submission_namespace()
+    finish = Mock()
+    verdict = {"completed": False, "check_early_stop": True, "detail": "native verdict"}
+    ns.update(_TASK_NAME=task, _TASK=SimpleNamespace(**{method: finish}), _sim_check_success=Mock(return_value=verdict))
+    assert ns["_sim_submit_episode"]() == verdict
+    finish.assert_called_once_with()
+    ns["_sim_check_success"].assert_called_once_with()
+    finish.side_effect = RuntimeError("native finalizer failed")
+    failure = ns["_sim_submit_episode"]()
+    assert failure["completed"] is False
+    if task == "tension_strap":
+        assert failure["success"] is False
+    ns["_sim_check_success"].assert_called_once_with()
+
+
+def test_hidden_end_submission_does_not_return_the_verdict(monkeypatch, capsys) -> None:
+    from capx.integrations.tactile import univtac_api
+
+    api = univtac_api.UniVTACTactileApi(None, server_url="http://native.test")
+    api.configure_functions(["submit_episode"])
+    response = {"completed": True, "detail": {"private": "not returned"}}
+    calls = []
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: response)
+    monkeypatch.setattr(univtac_api.requests, "post", post)
+    assert api.selected_functions()["submit_episode"]() is None
+    assert calls[0][0] == "http://native.test/submit_episode"
+    assert calls[0][1]["json"] == {}
+    assert api.combined_doc() == ""
+    assert capsys.readouterr().out == ""
+    response.update(success=False, message="native finalizer failed")
+    with pytest.raises(RuntimeError, match="native finalizer failed"):
+        api.selected_functions()["submit_episode"]()
+
+
+def test_agent0_three_raw_channels_round_trip_and_no_substitution(tmp_path, monkeypatch):
+    import json
+    import numpy as np
+    import torch
+    from capx.serving import launch_univtac_server as server
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+
+    depth = np.array([[24.125, 31.333334, 34.0], [26.765432, np.nan, 28.000002]], dtype=np.float32)
+    rgb = np.arange(18, dtype=np.uint8).reshape(2, 3, 3)
+    marker = 255 - rgb
+    class Sensor:
+        def __init__(self, missing=False):
+            self.values = {"rgb": None if missing else torch.from_numpy(rgb),
+                           "rgb_marker": torch.from_numpy(marker), "depth": torch.from_numpy(depth)}
+        def get_observations(self, channels):
+            assert set(channels) <= {"rgb", "rgb_marker", "depth"}
+            return {key: self.values[key] for key in channels}
+    task = SimpleNamespace(step_count=3, sim=SimpleNamespace(current_time_step_index=12, current_time=0.05),
+                           _tactile_manager=SimpleNamespace(tactiles={"left_tactile": Sensor(), "right_tactile": Sensor(True)}))
+    monkeypatch.setattr(server, "_TASK", task)
+    monkeypatch.setattr(server, "_TASK_NAME", "weight_classify")
+    monkeypatch.setattr(server, "_OBSERVATION_MODE", "raw")
+    payload = server._raw_tactile_snapshot()
+    assert payload["step"] == 12 and payload["time_seconds"] == 0.05
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode("raw", str(tmp_path))
+    monkeypatch.setattr(api, "_get", lambda path: payload)
+    raw = api.get_tactile_data()
+    np.testing.assert_array_equal(raw["sensors"]["left"]["depth"], depth)
+    np.testing.assert_array_equal(api.get_tactile_image("left", "rgb"), rgb)
+    np.testing.assert_array_equal(api.get_tactile_image("left", "rgb_marker"), marker)
+    assert api.get_tactile_image("right", "rgb") is None
+    assert raw["sensors"]["right"]["depth_unit"] == "mm"
+    api.get_tactile_data()
+    records = [json.loads(line) for line in (tmp_path / "index.jsonl").read_text().splitlines()]
+    assert len(records) == 2
+    for row in records:
+        value = np.load(tmp_path / row["files"]["depth"]["path"])
+        np.testing.assert_array_equal(value, depth)
+    assert not {"marker", "force", "contact", "left_depth_mm"} & set(raw)
+
+
+@pytest.mark.parametrize("mode", ["raw", "none"])
+def test_agent0_motion_position_control_and_status_only(mode, monkeypatch):
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode(mode)
+    calls = []
+    def post(path, body=None):
+        calls.append((path, body))
+        return {"success": True, "step": 10, "tactile": {"left_depth_mm": 22, "force_N": 9}}
+    monkeypatch.setattr(api, "_post", post)
+    result = api.functions()["close_gripper"](position=0.3)
+    assert calls[-1] == ("/gripper", {"action": "close", "use_adaptive_grasp": False, "position": 0.3})
+    assert result == {"ok": True, "step": 10}
+    assert "detect_slip" not in api.functions()
+    if mode == "none":
+        assert "get_tactile_data" not in api.functions()
+        with pytest.raises(RuntimeError):
+            api.get_tactile_data()
+    with pytest.raises(ValueError):
+        api.close_gripper(force_threshold=27.0)
+
+
+def test_agent0_public_server_responses_and_logs_exclude_processed_fields(monkeypatch):
+    import json
+    from capx.serving import launch_univtac_server as server
+    records = []
+    monkeypatch.setattr(server, "_OBSERVATION_MODE", "none")
+    monkeypatch.setattr(server, "_TASK", SimpleNamespace(step_count=1, sim=SimpleNamespace(current_time_step_index=4, current_time=0.01)))
+    monkeypatch.setattr(server.action_log, "log_event", lambda evt, **fields: records.append({"evt": evt, **fields}))
+    monkeypatch.setattr(server.action_log, "log_action", lambda a, args, **fields: records.append({"a": a, **fields}))
+    monkeypatch.setattr(server, "_run_on_main", lambda fn, *args, **kw: fn(*args))
+    def move():
+        server._TASK.step_count = 3
+        server._TASK.sim.current_time_step_index = 12
+        return {"success": False, "message": "left_depth_mm=22 ground_truth=heavy", "tactile": {"force": 2}}
+    result = server._run_action("move", {}, 1, move, detail_prefix="Move failed")
+    text = json.dumps([result, records])
+    assert "depth" not in text and "ground_truth" not in text and '"force"' not in text
+    assert records[-1]["extra"]["physics_start"] == 4
+    assert records[-1]["extra"]["physics_end"] == 12
+    with pytest.raises(server.HTTPException) as error:
+        server.get_tactile()
+    assert error.value.status_code == 403
+    with pytest.raises(server.HTTPException) as error:
+        server.force_state()
+    assert error.value.status_code == 403
+    monkeypatch.setattr(server, "_run_on_main", lambda *a, **kw: {"head_rgb_base64": "ordinary", "tactile": {"contact": True}})
+    assert json.loads(server.get_observation().body) == {"head_rgb_base64": "ordinary"}
+    monkeypatch.setattr(server.action_log, "set_harness_mode", lambda: pytest.fail("Experiment action logging disabled"))
+    monkeypatch.setattr(server, "_RECORDER", SimpleNamespace(set_harness_mode=lambda: None, harness_mode=True))
+    server.set_recording_mode(server.RecordingModeRequest(mode="harness"))
+
+
+@pytest.mark.parametrize("mode", ["raw", "none"])
+def test_agent0_video_records_scene_without_sensor_panels(mode, monkeypatch):
+    import base64
+    import io
+    import numpy as np
+    import torch
+    from PIL import Image
+    from capx.serving import launch_univtac_server as server
+    rgb = np.full((3, 4, 3), 82, dtype=np.uint8)
+    task = SimpleNamespace(_update_render=lambda: None,
+        _get_observations=lambda: {"observation": {"head": {"rgb": torch.from_numpy(rgb)}}},
+        get_frame_shot=lambda obs: pytest.fail("Composite frame used"))
+    monkeypatch.setattr(server, "_OBSERVATION_MODE", mode)
+    monkeypatch.setattr(server, "_TASK", task)
+    image = np.asarray(Image.open(io.BytesIO(base64.b64decode(server._capture_frame()))))
+    np.testing.assert_array_equal(image, rgb)
+
+
+def test_agent0_single_responses_request_has_image_usage_and_output_budget(tmp_path, monkeypatch):
+    import json
+    from capx.llm import client
+    sent = []
+    response = {"status": "completed", "output": [],
+                "usage": {"input_tokens": 1234, "output_tokens": 83}}
+    events = [
+        {"type": "response.output_text.delta", "delta": "print(1)"},
+        {"type": "response.output_text.done", "text": "print(1)"},
+        {"type": "response.output_item.done", "output_index": 0,
+         "item": {"type": "message", "status": "completed", "content": [{"type": "output_text", "text": "print(1)"}]}},
+        {"type": "response.completed", "response": response},
+    ]
+    class Session:
+        trust_env = True
+        def post(self, url, **kwargs):
+            assert self.trust_env is False
+            sent.append(kwargs)
+            return SimpleNamespace(status_code=200, headers={"Content-Type": "text/event-stream"},
+                iter_lines=lambda **kw: iter(line for event in events for line in ["data: " + json.dumps(event), ""]),
+                raise_for_status=lambda: None, close=lambda: None)
+        def close(self):
+            pass
+    monkeypatch.setattr(client.requests, "Session", Session)
+    args = client.ModelQueryArgs(model="gpt-6-astra", server_url="https://example.invalid/v1", max_tokens=8192, reasoning_effort="high")
+    args.single_program = True
+    args.disable_proxy = True
+    args.max_query_retries = 0
+    args.model_timeout_seconds = 300
+    args.request_log_dir = str(tmp_path)
+    prompt = [{"role": "user", "content": [{"type": "text", "text": "Code"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,TEST"}}]}]
+    out = client.query_model(args, prompt)
+    assert out["content"] == "print(1)"
+    assert out["usage"] == response["usage"]
+    assert sent[0]["timeout"] == 300
+    assert sent[0]["json"]["max_output_tokens"] == 8192
+    assert sent[0]["json"]["stream"] is True and sent[0]["stream"] is True
+    assert sent[0]["json"]["model"] == "gpt-6-astra"
+    assert sent[0]["json"]["reasoning"] == {"effort": "high"}
+    assert sent[0]["json"]["input"][0]["content"][1]["type"] == "input_image"
+    assert client.is_vlm_model("gpt-6-astra")
+    with pytest.raises(RuntimeError, match="budget"):
+        client.query_model(args, prompt)
+    assert len(sent) == 1
+    assert json.loads((tmp_path / "response.json").read_text())["usage"] == response["usage"]
+    assert json.loads((tmp_path / "response.json").read_text())["output"] == []
+    assert (tmp_path / "response_text.txt").read_text() == "print(1)"
+    assert (tmp_path / "response.events.sse").exists()
+
+
+def test_agent0_failed_model_call_is_not_retried(tmp_path, monkeypatch):
+    import requests
+    from capx.llm import client
+    calls = []
+    class Session:
+        def post(self, url, **kwargs):
+            calls.append(url)
+            def fail():
+                raise requests.HTTPError("503")
+            return SimpleNamespace(status_code=503, text='{"error":"busy"}', raise_for_status=fail, close=lambda: None)
+        def close(self):
+            pass
+    monkeypatch.setattr(client.requests, "Session", Session)
+    args = client.ModelQueryArgs(model="gpt-6-astra", server_url="https://example.invalid/v1")
+    args.single_program = True
+    args.max_query_retries = 0
+    args.request_log_dir = str(tmp_path)
+    with pytest.raises(requests.HTTPError):
+        client.query_model(args, [{"role": "user", "content": [{"type": "text", "text": "code"}]}])
+    assert len(calls) == 1 and (tmp_path / "request_status.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["nonstream", "truncated", "failed", "incomplete", "empty", "unfinished", "conflict", "disconnect"])
+def test_agent0_stream_failure_never_returns_partial_code_or_retries(tmp_path, monkeypatch, failure):
+    import json
+    import requests
+    from capx.llm import client
+
+    calls = []
+    body = {"status": "completed", "output": [], "usage": {"input_tokens": 12, "output_tokens": 5}}
+    events = [{"type": "response.output_text.delta", "delta": "print(1)"}]
+    if failure == "empty":
+        events = []
+    elif failure not in {"unfinished", "disconnect"}:
+        events.append({"type": "response.output_text.done", "text": "print(2)" if failure == "conflict" else "print(1)"})
+    if failure not in {"truncated", "disconnect"}:
+        terminal = failure if failure in {"failed", "incomplete"} else "completed"
+        events.append({"type": "response." + terminal, "response": dict(body, status=terminal)})
+
+    def lines(**kwargs):
+        for event in events:
+            yield "data: " + json.dumps(event)
+            yield ""
+        if failure == "disconnect":
+            raise requests.ConnectionError("stream interrupted")
+
+    response = SimpleNamespace(status_code=200,
+        headers={"Content-Type": "application/json" if failure == "nonstream" else "text/event-stream"},
+        text=json.dumps(body), iter_lines=lines, raise_for_status=lambda: None, close=lambda: None)
+    class Session:
+        def post(self, url, **kwargs):
+            calls.append(kwargs)
+            return response
+        def close(self):
+            pass
+    monkeypatch.setattr(client.requests, "Session", Session)
+    args = client.ModelQueryArgs(model="gpt-6-astra", server_url="https://example.invalid/responses")
+    args.single_program = True
+    args.max_query_retries = 0
+    args.request_log_dir = str(tmp_path)
+    prompt = [{"role": "user", "content": [{"type": "text", "text": "code"}]}]
+    with pytest.raises((RuntimeError, requests.ConnectionError)):
+        client.query_model(args, prompt)
+    assert len(calls) == 1 and calls[0]["json"]["stream"] is True
+    assert json.loads((tmp_path / "request_status.json").read_text())["completed"] is False
+    assert not (tmp_path / "response_text.txt").exists()
+    with pytest.raises(RuntimeError, match="budget"):
+        client.query_model(args, prompt)
+    assert len(calls) == 1
+
+
+def test_responses_stream_unicode_parts_order_missing_usage_and_deadline(tmp_path):
+    import json
+    import time
+    from capx.llm import client
+
+    events = [
+        {"type": "response.output_text.done", "output_index": 1, "content_index": 1, "text": "完成')"},
+        {"type": "response.output_text.done", "output_index": 1, "content_index": 0, "text": "print('"},
+        {"type": "response.completed", "response": {"status": "completed", "output": []}},
+    ]
+    def lines(**kwargs):
+        yield b": heartbeat"
+        yield b""
+        for event in events:
+            text = json.dumps(event, ensure_ascii=False, indent=2)
+            for line in text.splitlines():
+                yield ("data: " + line).encode("utf-8")
+            yield b""
+    response = SimpleNamespace(headers={"Content-Type": "text/event-stream"}, iter_lines=lines)
+    body, text = client._read_responses_stream(response, tmp_path, time.monotonic() + 30)
+    assert text == "print('完成')" and body.get("usage") is None
+    with pytest.raises(TimeoutError, match="deadline"):
+        client._read_responses_stream(response, None, time.monotonic() - 1)
+
+
+def test_responses_streaming_entry_uses_same_single_request_path(monkeypatch):
+    from capx.llm import client
+    calls = []
+    def query(args, prompt):
+        calls.append((args, prompt))
+        return {"content": "print(1)", "usage": {"input_tokens": 3, "output_tokens": 4}}
+    monkeypatch.setattr(client, "query_model", query)
+    args = client.ModelQueryArgs(model="gpt-6-astra", server_url="https://example.invalid/responses")
+    events = list(client.query_model_streaming(args, []))
+    assert len(calls) == 1
+    assert events[0] == {"type": "content_delta", "content": "print(1)"}
+    assert events[-1]["type"] == "done" and events[-1]["usage"]["output_tokens"] == 4
+
+
+def test_agent0_one_program_and_exception_does_not_regenerate(tmp_path, monkeypatch):
+    from capx.utils.launch_utils import _single_program
+    from capx.envs import runner
+    assert _single_program("```python\nprint(1)\n```") == "print(1)"
+    for invalid in ("", "```python\nprint(1)\n```\n```python\nprint(2)\n```", "not python prose"):
+        with pytest.raises((ValueError, SyntaxError)):
+            _single_program(invalid)
+    calls = []
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise ValueError("generation failed")
+    monkeypatch.setattr(runner, "_wait_for_server_healthy", lambda env: None)
+    monkeypatch.setattr(runner, "_run_single_trial", fail)
+    cfg = {"agent0_mode": "none", "max_trial_attempts": 1, "output_dir": str(tmp_path)}
+    summary = runner._run_trial_with_retries(None, 42000, SimpleNamespace(trial_timeout=3), cfg, "must not retry")
+    assert len(calls) == 1 and not summary.success and summary.task_completed is None
+
+
+def test_agent0_metrics_count_actual_requests_and_missing_usage(tmp_path):
+    import json
+    from capx.utils.launch_utils import TrialSummary, _agent0_metrics
+    (tmp_path / "actions_sent.jsonl").write_text('\n'.join(json.dumps({"endpoint": "/move"}) for _ in range(3))+'\n')
+    events = [
+        {"evt": "action_begin", "a": "move", "action_id": 1},
+        {"kind": "action", "a": "move", "action_id": 1, "physics_start": 5, "physics_end": 12, "ok": False},
+        {"evt": "action_begin", "a": "reset", "action_id": 2},
+        {"kind": "action", "a": "reset", "action_id": 2, "physics_start": 12, "physics_end": 3},
+        {"evt": "query_span", "physics_start": 12, "physics_end": 14},
+    ]
+    (tmp_path / "univtac_actions.jsonl").write_text('\n'.join(map(json.dumps, events)))
+    cfg = {"output_dir": str(tmp_path), "task_name": "weight_classify", "agent0_mode": "raw", "test_seeds": list(range(41000,41040)), "skills_sha256": "test", "seed_manifest_sha256": "test"}
+    summary = TrialSummary(trial=41000, success=True, reward=0, terminated=False, truncated=False,
+        sandbox_rc=0, log="", task_completed=False, num_code_blocks=1)
+    metrics = _agent0_metrics(summary, cfg, 2.0)
+    assert metrics["Execute_steps"] == 3 and metrics["physics_steps"] is None
+    assert metrics["measured_physics_steps"] == 7 and not metrics["physics_steps_complete"]
+    assert metrics["query_physics_steps"] == 2 and metrics["reset_physics_steps"] is None
+    assert metrics["input_tokens"] is None and metrics["output_tokens"] is None
+    assert metrics["task_completed"] is False and metrics["code_success"] is True
+    (tmp_path / "actions_sent.jsonl").write_text(json.dumps({"endpoint": "/move"}) + '\n')
+    assert _agent0_metrics(summary, cfg, 2.0)["physics_steps"] == 7
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model/response.json").write_text(json.dumps({"usage":{"input_tokens":105,"output_tokens":44}}))
+    events.append({"evt":"action_begin", "a":"gripper", "action_id":3})
+    (tmp_path / "univtac_actions.jsonl").write_text('\n'.join(map(json.dumps, events)))
+    metrics = _agent0_metrics(summary, cfg, 3.0)
+    assert metrics["physics_steps"] is None and metrics["input_tokens"] == 105 and metrics["output_tokens"] == 44
+    summary.success = False
+    summary.num_code_blocks = 0
+    summary.failure_phase = "generation"
+    (tmp_path / "model/request_status.json").write_text(json.dumps({"completed": False, "error_type": "ConnectionError"}))
+    assert _agent0_metrics(summary, cfg, 3.0)["failure_type"] == "infrastructure"
+    (tmp_path / "model/request_status.json").write_text(json.dumps({"completed": True}))
+    assert _agent0_metrics(summary, cfg, 3.0)["failure_type"] == "generation"
+
+
+def test_agent0_sanitized_skill_selection_and_native_config_loading(tmp_path, monkeypatch):
+    from capx.envs.launch import LaunchArgs
+    from capx.utils.launch_utils import _load_config
+    from capx.envs.configs.instantiate import instantiate
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setenv("CAPX_TASK_SEED", "41000")
+    forbidden = re.compile(r"left_depth_mm|right_depth_mm|marker_|detect_slip|force_threshold|anisotrop|coherence|contact.flag|estimated_.*force", re.I)
+    paths = [CONFIG_ROOT / f"{task}/univtac_{task}.yaml" for task in ("weight_classify","grasp_classify","hardness_classify","tactile_memory_match","bulb_tightening","blind_pick_balls")]
+    paths.append(CONFIG_ROOT / "tension_strap_smoke.yaml")
+    for path in paths:
+        args = LaunchArgs(config_path=str(path), output_dir=str(tmp_path / path.stem))
+        env_cfg, config, servers = _load_config(args)
+        assert args.single_program and args.max_tokens == 8192 and args.max_query_retries == 0
+        assert args.model == "gpt-6-astra" and args.reasoning_effort == "high"
+        assert config["max_trial_attempts"] == 1 and servers[0]["seed"] == 41000
+        assert config["skills_sha256"] and env_cfg["cfg"]["multi_turn_prompt"] == ""
+        env = instantiate(env_cfg)
+        assert not forbidden.search(env._tactile_skill_block())
+        for name in env_cfg["cfg"]["tactile_skills"]:
+            skill = default_library().get(name)
+            assert skill.channels == () and not forbidden.search(skill.render(provenance=True))
+        for api in env._apis.values():
+            assert not forbidden.search(api.combined_doc())
+        assert "{force_request}" not in env._task_prompt
+
+
+def test_agent0_sent_action_count_includes_http_rejection_but_not_queries_or_end(tmp_path, monkeypatch):
+    import json
+    import requests
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    monkeypatch.setenv("CAPX_RUN_DIR", str(tmp_path))
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode("none")
+    def post(url, **kwargs):
+        def reject():
+            if url.endswith("/move_delta"):
+                raise requests.HTTPError(response=SimpleNamespace(status_code=422, text='{"detail":"limit"}'))
+        return SimpleNamespace(raise_for_status=reject, json=lambda: {"success": True})
+    monkeypatch.setattr(requests, "post", post)
+    monkeypatch.setattr(requests, "get", lambda *a, **kw: SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"position": [0,0,0], "quaternion_wxyz": [1,0,0,0]}))
+    with pytest.raises(RuntimeError):
+        api.move_delta(dx=10)
+    api.open_gripper()
+    api.get_ee_pose()
+    api.submit_episode()
+    sent = [json.loads(x) for x in (tmp_path / "actions_sent.jsonl").read_text().splitlines()]
+    assert [x["endpoint"] for x in sent] == ["/move_delta", "/gripper"]
+    assert not (tmp_path / "raw_tactile").exists()
+
+
+def test_agent0_initial_scene_image_reaches_prompt_without_an_extra_model_call(monkeypatch):
+    import numpy as np
+    from capx.envs import trial
+    image = np.full((3, 4, 3), 82, dtype=np.uint8)
+    env = SimpleNamespace(render=lambda: image)
+    obs = {"full_prompt": [{"role": "user", "content": [{"type": "text", "text": "place object"}]}]}
+    config = {"use_visual_feedback": True, "use_img_differencing": False, "use_video_differencing": False}
+    args = SimpleNamespace(model="gpt-6.1-sol")
+    monkeypatch.setattr(trial, "_query_model", lambda *a, **kw: pytest.fail("Extra image-description request"))
+    images, _, _ = trial._capture_initial_visual_feedback(env, obs, config, args, args)
+    assert len(images) == 1
+    assert obs["full_prompt"][-1]["content"][-1]["type"] == "image_url"
+    assert obs["full_prompt"][-1]["content"][-1]["image_url"]["url"].startswith("data:image/")
+
+
+def test_agent0_aggregate_is_native_success_and_incomplete_suite_stays_provisional(tmp_path):
+    import json
+    from capx.utils.launch_utils import _save_agent0_summary
+    folder = tmp_path / "seed_41000" / "one"
+    folder.mkdir(parents=True)
+    row = {"seed": 41000, "split": "test", "task_completed": False, "code_success": True,
+           "failure_type": "native_task_failure", "Execute_steps": 4, "physics_steps": 20,
+           "input_tokens": None, "output_tokens": None, "elapsed_seconds": 5.0}
+    (folder / "metrics.json").write_text(json.dumps(row))
+    cfg = {"suite_dir": str(tmp_path), "test_seeds": list(range(41000, 41040))}
+    _save_agent0_summary([], cfg)
+    result = json.loads((tmp_path / "aggregate.json").read_text())
+    assert result["success_count"] == 0 and result["success_rate"] is None and result["final"] is False
+    assert len(result["not_run"]) == 39 and result["input_tokens"]["unknown_count"] == 1
+    assert result["input_tokens"]["sum_known"] is None
+    second = tmp_path / "seed_41000" / "two"
+    second.mkdir()
+    (second / "metrics.json").write_text(json.dumps({**row, "task_completed": True}))
+    _save_agent0_summary([], cfg)
+    result = json.loads((tmp_path / "aggregate.json").read_text())
+    assert result["duplicate_seeds"] == [41000] and result["success_count"] == 0
+
+
+def test_native_classify_profile_and_standalone_ball_defaults():
+    ns = _native_submission_namespace()
+    assert ns["_backing_for"]("grasp_classify").config_file == "gelsight.yml"
+    assert ns["_backing_for"]("blind_pick_balls").config_file is None
+
+def _shadow_server_namespace():
+    import ast
+    import io
+    import base64
+    import numpy as np
+    from unittest.mock import Mock
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    names = {"_shadow_move", "_shadow_tactile", "_shadow_hand_state"}
+    nodes = [n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef) and n.name in names]
+    ns = {"np": np, "io": io, "base64": base64,
+          "_SHADOW_SUBMITTED": False, "_record_frame": Mock(), "_physics_sample": Mock(return_value={"physics_step": 12, "time_seconds": .05})}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), ns)
+    return ns
+
+
+def test_shadow_native_step_stops_on_termination_and_rejects_bounds():
+    import numpy as np
+    from unittest.mock import Mock
+    ns = _shadow_server_namespace()
+    task = SimpleNamespace(_done=False, action_space=SimpleNamespace(
+        low=np.array([-.01,-.32,-.006,0.]), high=np.array([.09,.26,.05,.50])))
+    def step(action):
+        task._done = True
+        return {"tactile": {"index": {"rgb": np.zeros((2,3,3),dtype=np.uint8)}}}, 99., True, False, {"success": True, "key_forces": [99.]}
+    task.step = Mock(side_effect=step)
+    ns.update(_TASK=task, _SHADOW_ACTION=np.zeros(4))
+    for target in ([0.,0.,0.,.51], [float("nan"),0.,0.,0.], [0.,0.]):
+        with pytest.raises(ValueError):
+            ns["_shadow_move"](target, 2)
+    task.step.assert_not_called()
+    result = ns["_shadow_move"]([0.,0.,0.,.4], 5)
+    assert result == {"success": True, "native_done": True}
+    assert task.step.call_count == 1
+    with pytest.raises(RuntimeError, match="ended"):
+        ns["_shadow_move"](None, 1)
+    task._done = False
+    ns["_SHADOW_SUBMITTED"] = True
+    with pytest.raises(RuntimeError, match="ended"):
+        ns["_shadow_move"](None, 1)
+
+
+def test_shadow_raw_observations_roundtrip_and_none_disabled(tmp_path):
+    import base64
+    import io
+    import json
+    import numpy as np
+    from PIL import Image
+    from capx.integrations.tactile.univtac_api import UniVTACShadowPianoApi
+    rgb = np.arange(18,dtype=np.uint8).reshape(2,3,3)
+    depth = np.array([[.02,.019,.018],[.017,.016,.015]],dtype="<f4")
+    ns = _shadow_server_namespace()
+    ns.update(Image=Image, _TASK=SimpleNamespace(tactile=SimpleNamespace(depth_m=depth)),
+              _SHADOW_RGB=rgb, _OBSERVATION_MODE="raw")
+    payload = ns["_shadow_tactile"]()
+    api = UniVTACShadowPianoApi(None)
+    api.configure_observation_mode("raw", str(tmp_path))
+    api._get = lambda *args, **kwargs: payload
+    result = api.get_digit_tactile()
+    np.testing.assert_array_equal(result["depth"], depth)
+    np.testing.assert_array_equal(result["rgb"], rgb)
+    api.get_digit_tactile()
+    records = [json.loads(line) for line in (tmp_path/"index.jsonl").read_text().splitlines()]
+    assert len(records) == 1 and records[0]["depth_unit"] == "m"
+    assert set(result) == {"sensor","rgb","depth","depth_unit","step","time_seconds"}
+    api.configure_observation_mode("none")
+    assert "get_digit_tactile" not in api.functions()
+    with pytest.raises(RuntimeError):
+        api.get_digit_tactile()
+    ns["_OBSERVATION_MODE"] = "none"
+    with pytest.raises(RuntimeError):
+        ns["_shadow_tactile"]()
+
+
+def test_shadow_hand_state_contains_no_key_or_score_fields():
+    import numpy as np
+    import torch
+    ns = _shadow_server_namespace()
+    data = SimpleNamespace(body_pos_w=torch.zeros(1,1,3), body_quat_w=torch.tensor([[[1.,0.,0.,0.]]]),
+                           body_lin_vel_w=torch.zeros(1,1,3), joint_pos=torch.zeros(1,8), joint_vel=torch.zeros(1,8))
+    ns["_TASK"] = SimpleNamespace(hand=SimpleNamespace(data=data), _palm=0, _index=7, _arm_ids=list(range(7)),
+                                 _action_state=lambda: np.zeros(4), _done=False,
+                                 cfg=SimpleNamespace(physics_dt=1/240, action_repeat=4))
+    result = ns["_shadow_hand_state"]()
+    assert result["control_dt_seconds"] == 1/60
+    assert not ({"score","success","key_angles","key_forces","reward","notes_completed"} & set(result))
+
+def test_public_grasp_geometry_does_not_cache_the_current_wrist(monkeypatch):
+    import ast
+    import sys
+    import numpy as np
+    from unittest.mock import Mock
+    class Pose:
+        def __init__(self, p, q):
+            self.p, self.q = np.asarray(p), np.asarray(q)
+        def to_transformation_matrix(self):
+            return np.eye(4)
+        def add_bias(self, delta):
+            return Pose(self.p + delta, self.q)
+    transforms = SimpleNamespace(Pose=Pose, construct_grasp_pose=lambda p, z, x: Pose(p, [0.,1.,0.,0.]))
+    monkeypatch.setitem(sys.modules, "envs.utils.transforms", transforms)
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    node = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == "_sim_geometric_grasp_pose")
+    convert = Mock(side_effect=lambda p: Pose(p.p + [0.,0.,.13], p.q))
+    manager = SimpleNamespace(gripper_center_to_ee=convert)
+    ns = {"np":np, "_TASK_NAME":"weight_classify", "_TASK":SimpleNamespace(_robot_manager=manager),
+          "_sim_get_object_pose":Mock(return_value={"found":True,"position":[.38,0.,.002],
+              "quaternion_wxyz":[1.,0.,0.,0.],"bbox_extent":[.01,.01,.08]})}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
+    result = ns["_sim_geometric_grasp_pose"]("block")
+    np.testing.assert_allclose(result["position"], [.38,0.,.172])
+    assert convert.call_count == 1
+    ns["_sim_get_object_pose"].return_value["bbox_extent"] = None
+    with pytest.raises(ValueError, match="bounding box"):
+        ns["_sim_geometric_grasp_pose"]("block")
+
+
+def test_agent0_feed_never_uses_private_force_to_adjust_motion(monkeypatch):
+    import ast
+    import sys
+    import numpy as np
+    from unittest.mock import Mock
+    class Pose:
+        def __init__(self, p, q):
+            self.p, self.q = np.asarray(p, dtype=float), np.asarray(q, dtype=float)
+    monkeypatch.setitem(sys.modules, "envs.utils.transforms", SimpleNamespace(Pose=Pose))
+    monkeypatch.setitem(sys.modules, "transforms3d", SimpleNamespace(quaternions=SimpleNamespace(
+        axangle2quat=Mock(return_value=np.array([1.,0.,0.,0.])),
+        qmult=Mock(return_value=np.array([1.,0.,0.,0.])))))
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    node = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == "_sim_gripper_feed")
+    for mode in ("raw", "none"):
+        task = SimpleNamespace(step_count=0, plan_success=True, failure=None,
+            _robot_manager=SimpleNamespace(get_gripper_center_pose=lambda: Pose([.4,0.,.2], [1.,0.,0.,0.])),
+            _measure=Mock(side_effect=AssertionError("Private force must not control Agent 0")))
+        def advance(p):
+            task.step_count += 2
+            return True
+        task._ik_to_center = Mock(side_effect=advance)
+        ns = {"np": np, "_TASK": task, "_TASK_NAME":"bulb_tightening", "_OBSERVATION_MODE": mode,
+              "_FEED_MAX_STEPS":800, "_FEED_MIN_STEP_RAD":np.radians(2.5),
+              "_FEED_FRAME_EVERY":5, "_record_frame":Mock(), "_sim_get_tactile_data":lambda: {}}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
+        result = ns["_sim_gripper_feed"]("light_bulb", .2, 10, .003)
+        assert result["completed"] == 10 and result["trace"] == [] and result["reached"] is None
+        task._measure.assert_not_called()
+        assert task._ik_to_center.call_count == 10
+        np.testing.assert_allclose(task._ik_to_center.call_args.args[0].p, [.4,0.,.2-.003*.2/(2*np.pi)])
+
+
+def test_shadow_table2_yaml_loads_request_and_only_selected_public_apis(tmp_path, monkeypatch):
+    import json
+    from capx.envs.launch import LaunchArgs
+    from capx.utils.launch_utils import _load_config
+    from capx.envs.configs.instantiate import instantiate
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setenv("CAPX_TASK_SEED", "42000")
+    args = LaunchArgs(config_path=str(CONFIG_ROOT / "arm_shadow_piano_smoke.yaml"), output_dir=str(tmp_path))
+    env_cfg, config, servers = _load_config(args)
+    env = instantiate(env_cfg)
+    api = env._apis["UniVTACShadowPianoApi"]
+    visible = set(api.selected_functions()) - api._prompt_hidden
+    expected = {"get_note_target", "get_hand_state", "move_shadow_index", "wait_steps"}
+    if config["agent0_mode"] == "raw":
+        expected.add("get_digit_tactile")
+    assert visible == expected
+    assert set(re.findall(r"^([a-z_]+)\(", api.combined_doc(), re.M)) == expected
+    assert args.single_program and args.max_query_retries == 0 and args.max_tokens == 8192
+    assert args.model == "gpt-6-astra" and args.reasoning_effort == "high"
+    assert config["max_trial_attempts"] == 1 and servers[0]["task"] == "arm_shadow_piano"
+    assert env.cfg.append_final_check == "submit_episode"
+    assert env._exec_globals["submit_episode"] == api.submit_episode
+    request = json.loads((Path(config["output_dir"]) / "protocol.json").read_text())["request"]
+    assert json.dumps(request, ensure_ascii=False) in env._task_prompt
+    assert request["notes"] == ["E4","F4","C#4","D#4","D#4","E4","C#4","F4"]
+    assert request["dynamics"] == ["light","heavy","light","heavy","light","heavy","heavy","light"]
+    assert request["hold_seconds"] == [.12] * 8
+    assert "{piano_request}" not in env._task_prompt
+    for name in ("estimate_key_force", "locate_visual_keys", "finish_piano_note_attempt", "breakpoint_code_block"):
+        assert name not in env._task_prompt and name not in api.selected_functions()
+    assert env_cfg["cfg"]["multi_turn_prompt"] == ""
+    for name in env_cfg["cfg"]["tactile_skills"]:
+        assert default_library().get(name).summary in env._tactile_skill_block()
+
+
+
+
+
+
+def _reset_diagnostic_namespace():
+    import ast
+    import logging
+    import os
+    import sys
+    import numpy as np
+
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    names = {"_configure_compact_match", "_bind_compact_match", "_run_native_reset"}
+    nodes = [n for n in ast.parse(path.read_text()).body
+             if isinstance(n, ast.FunctionDef) and n.name in names]
+    ns = {"os": os, "sys": sys, "np": np, "logger": logging.getLogger("reset-diagnostic-test")}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), ns)
+    return ns
+
+
+@pytest.mark.parametrize("seed", [41000, 41039, 42000])
+def test_compact_scene_preserves_pair_and_following_random_draw(seed):
+    import numpy as np
+    ns = _reset_diagnostic_namespace()
+
+    class Native:
+        def _choose_identity_pair(self):
+            return tuple(self.rng.choice(["a", "b", "c"], size=2, replace=False))
+
+    cfg = SimpleNamespace(random_texture=False, compact_fixed_pair_scene=True,
+                          reference_class_key="random", distractor_class_key="random", seed=seed)
+    expected_rng = np.random.default_rng(seed)
+    expected_pair = Native._choose_identity_pair(SimpleNamespace(rng=expected_rng))
+    expected_following = expected_rng.random(4)
+    selection = ns["_configure_compact_match"](SimpleNamespace(Task=Native), cfg, seed)
+    assert tuple(selection["pair"]) == expected_pair
+    assert cfg.compact_fixed_pair_scene
+    task = SimpleNamespace(cfg=cfg, rng=np.random.default_rng(seed),
+                           _choose_identity_pair=lambda: (cfg.reference_class_key, cfg.distractor_class_key))
+    ns["_bind_compact_match"](task, selection)
+    for _ in range(2):
+        task.rng = np.random.default_rng(seed)
+        assert task._choose_identity_pair() == expected_pair
+        np.testing.assert_array_equal(task.rng.random(4), expected_following)
+    task.cfg.seed += 1
+    with pytest.raises(RuntimeError, match="fresh process"):
+        task._choose_identity_pair()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_reset_diagnostics_restore_methods_and_propagate_original_error(monkeypatch, caplog, fail):
+    import logging
+    ns = _reset_diagnostic_namespace()
+    monkeypatch.setenv("UNIVTAC_DEBUG_RESET", "1")
+    error = RuntimeError("native step error")
+
+    class Task:
+        cfg = SimpleNamespace(reset_time_limit=600)
+        step_count = 0
+
+        def _step(self):
+            self.step_count += 1
+            if fail:
+                raise error
+            return 7
+
+        def reset(self, seed):
+            return self._step(), seed
+
+    task = Task()
+    caplog.set_level(logging.INFO, logger="reset-diagnostic-test")
+    if fail:
+        with pytest.raises(RuntimeError) as caught:
+            ns["_run_native_reset"](task, 42000)
+        assert caught.value is error
+        assert "reset _step raised" in caplog.text
+        assert "reset _step returned" not in caplog.text
+    else:
+        assert ns["_run_native_reset"](task, 42000) == (7, 42000)
+        assert "reset _step returned" in caplog.text
+    assert "_step" not in vars(task)
+    assert task.step_count == 1
+
+
+def test_single_channel_camera_depth_png_accepts_trailing_channel_dimension():
+    import ast
+    import base64
+    import io
+    import numpy as np
+    import torch
+    from PIL import Image
+
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    node = next(n for n in ast.parse(path.read_text()).body
+                if isinstance(n, ast.FunctionDef) and n.name == "_depth_tensor_to_base64")
+    ns = {"torch": torch, "np": np, "Image": Image, "io": io, "base64": base64}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
+    depth = torch.tensor([[0., 1.], [2., 3.]])
+    encoded = [ns["_depth_tensor_to_base64"](x) for x in (depth, depth[..., None])]
+    assert encoded[0] == encoded[1]
+    decoded = np.array(Image.open(io.BytesIO(base64.b64decode(encoded[1]))))
+    np.testing.assert_array_equal(decoded, [[0, 21845], [43690, 65535]])
+    with pytest.raises(ValueError, match="single-channel"):
+        ns["_depth_tensor_to_base64"](torch.ones(2, 2, 3))
+
+
+@pytest.mark.parametrize("supported,opt_in,fail", [
+    (False, True, False), (False, True, True),
+    (False, False, False), (True, True, False),
+])
+def test_blind_legacy_physx_is_scoped_and_opt_in(monkeypatch, supported, opt_in, fail):
+    import ast
+    import logging
+    import os
+
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    node = next(n for n in ast.parse(path.read_text()).body
+                if isinstance(n, ast.FunctionDef) and n.name == "_construct_blind_task")
+    ns = {"os": os, "logger": logging.getLogger("blind-compatibility-test")}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
+    monkeypatch.setenv("UNIVTAC_BLIND_LEGACY_PHYSX", "1" if opt_in else "0")
+    calls = []
+
+    def legacy(solver_type=1):
+        calls.append((solver_type, "default"))
+        return calls[-1]
+
+    def modern(solver_type=1, enable_external_forces_every_iteration=False):
+        calls.append((solver_type, enable_external_forces_every_iteration))
+        return calls[-1]
+
+    original = SimpleNamespace(PhysxCfg=modern if supported else legacy)
+    factory = lambda: None
+    module = SimpleNamespace(sim_utils=original, Articulation=factory)
+    error = RuntimeError("native constructor error")
+
+    def task(cfg, render_mode):
+        assert render_mode == "rgb_array"
+        result = module.sim_utils.PhysxCfg(solver_type=0, enable_external_forces_every_iteration=True)
+        if fail:
+            raise error
+        return result
+
+    module.Task = task
+    if not supported and not opt_in:
+        with pytest.raises(TypeError, match="enable_external_forces_every_iteration"):
+            ns["_construct_blind_task"](module, None)
+        assert not calls
+    elif fail:
+        with pytest.raises(RuntimeError) as caught:
+            ns["_construct_blind_task"](module, None)
+        assert caught.value is error
+    else:
+        assert ns["_construct_blind_task"](module, None) == (0, True if supported else "default")
+    assert module.sim_utils is original
+    assert module.Articulation is factory
+    assert original.PhysxCfg is (modern if supported else legacy)
+
+
+def _blind_compatibility_namespace():
+    import ast
+    import logging
+    import os
+    import torch
+
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    names = {"_BlindLegacyWrenchComposer", "_construct_blind_task"}
+    nodes = [n for n in ast.parse(path.read_text()).body
+             if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names]
+    ns = {"os": os, "torch": torch, "logger": logging.getLogger("blind-compatibility-test")}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), ns)
+    return ns
+
+
+@pytest.mark.parametrize("modern,fail", [(False, False), (False, True), (True, False)])
+def test_blind_wrench_binding_precedes_task_setup_and_restores_module(monkeypatch, modern, fail):
+    import torch
+
+    ns = _blind_compatibility_namespace()
+    monkeypatch.setenv("UNIVTAC_BLIND_LEGACY_PHYSX", "1")
+    calls = []
+    existing = object()
+    robot = SimpleNamespace(set_external_force_and_torque=lambda **kw: calls.append(kw))
+    if modern:
+        robot.permanent_wrench_composer = existing
+    factory = lambda cfg: robot
+    sim = SimpleNamespace(PhysxCfg=lambda: None)
+    module = SimpleNamespace(Articulation=factory, sim_utils=sim)
+
+    def task(cfg, render_mode):
+        result = module.Articulation(cfg)
+        if not modern:
+            result._external_force_b = torch.ones(1, 2, 3)
+            result.permanent_wrench_composer.reset()
+            assert len(calls) == 1
+            assert not calls[0]["forces"].any()
+        else:
+            assert result.permanent_wrench_composer is existing
+        if fail:
+            raise RuntimeError("native setup failed")
+        return result
+
+    module.Task = task
+    if fail:
+        with pytest.raises(RuntimeError, match="native setup failed"):
+            ns["_construct_blind_task"](module, None)
+    else:
+        assert ns["_construct_blind_task"](module, None) is robot
+    assert module.Articulation is factory
+    assert module.sim_utils is sim
+
+
+def test_blind_wrench_mapping_uses_installed_legacy_setter_and_write_timing():
+    import ast
+    import types
+    from typing import Sequence
+    import torch
+
+    path = Path("/mnt/data/ljz/opentacbench/src/IsaacLab/source/isaaclab/isaaclab/assets/articulation/articulation.py")
+    if not path.is_file():
+        pytest.skip("Installed Isaac Lab source unavailable")
+    node = next(n for n in ast.parse(path.read_text()).body
+                if isinstance(n, ast.ClassDef) and n.name == "Articulation")
+    methods = [n for n in node.body if isinstance(n, ast.FunctionDef)
+               and n.name in {"set_external_force_and_torque", "write_data_to_sim"}]
+    native = {"torch": torch, "Sequence": Sequence,
+              "omni": SimpleNamespace(log=SimpleNamespace(warn=lambda message: None))}
+    exec(compile(ast.Module(body=methods, type_ignores=[]), str(path), "exec"), native)
+    applied = []
+    view = SimpleNamespace(
+        apply_forces_and_torques_at_position=lambda **kw: applied.append(
+            {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in kw.items()}),
+        set_dof_actuation_forces=lambda *args: None)
+    robot = SimpleNamespace(
+        device="cpu", num_bodies=3, _ALL_INDICES=torch.tensor([0]),
+        _external_force_b=torch.zeros(1, 3, 3), _external_torque_b=torch.zeros(1, 3, 3),
+        _external_wrench_positions_b=torch.zeros(1, 3, 3),
+        has_external_wrench=False, uses_external_wrench_positions=False,
+        _use_global_wrench_frame=False, root_physx_view=view,
+        _apply_actuator_model=lambda: None, _joint_effort_target_sim=torch.zeros(1, 7),
+        _has_implicit_actuators=False)
+    for name, method in native.items():
+        if name in {"set_external_force_and_torque", "write_data_to_sim"}:
+            setattr(robot, name, types.MethodType(method, robot))
+    composer = _blind_compatibility_namespace()["_BlindLegacyWrenchComposer"](robot)
+    forces = torch.arange(-4, 5, dtype=torch.float32).reshape(1, 3, 3)
+    torques = -forces * 0.125
+    composer.reset()
+    composer.set_forces_and_torques(forces=forces, torques=torques, is_global=True)
+    assert not applied
+    assert robot.has_external_wrench
+    robot.write_data_to_sim()
+    robot.write_data_to_sim()
+    assert len(applied) == 2
+    for record in applied:
+        torch.testing.assert_close(record["force_data"], forces[0], rtol=0, atol=0)
+        torch.testing.assert_close(record["torque_data"], torques[0], rtol=0, atol=0)
+        assert record["is_global"] is True and record["position_data"] is None
+    for invalid in [dict(forces=forces[:, :1], torques=torques, is_global=True),
+                    dict(forces=forces, torques=torques, is_global=False)]:
+        with pytest.raises(ValueError, match="full-body world-frame"):
+            composer.set_forces_and_torques(**invalid)
+    torch.testing.assert_close(robot._external_force_b, forces, rtol=0, atol=0)
+    composer.reset()
+    robot.write_data_to_sim()
+    assert not robot.has_external_wrench
+    assert not robot._external_force_b.any() and not robot._external_torque_b.any()
+    assert len(applied) == 2
+
+
+def test_health_supports_native_shadow_without_planner_field():
+    import ast
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    node = next(n for n in ast.parse(path.read_text()).body
+                if isinstance(n, ast.FunctionDef) and n.name == "health")
+    node.decorator_list = []
+    ns = {"_TASK_NAME": "arm_shadow_piano", "_TASK": SimpleNamespace(step_count=4)}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), ns)
+    assert ns["health"]() == {"status": "ok", "task": "arm_shadow_piano", "step": 4, "plan_success": None}
+    ns["_TASK"].plan_success = False
+    assert ns["health"]()["plan_success"] is False
+    ns["_TASK"] = None
+    assert ns["health"]()["step"] == 0
+    assert ns["health"]()["plan_success"] is True
+
+
+@pytest.mark.parametrize("count", [15, 30])
+def test_agent0_summary_uses_manifest_size(tmp_path, count):
+    import json
+    from capx.utils.launch_utils import _save_agent0_summary
+    for seed in range(count):
+        folder = tmp_path / f"seed_{seed}" / "one"
+        folder.mkdir(parents=True)
+        row = {"seed": seed, "split": "test", "task_completed": seed == 0,
+               "failure_type": None if seed == 0 else "native_task_failure",
+               "Execute_steps": 2, "physics_steps": 8, "input_tokens": 100,
+               "output_tokens": 20, "elapsed_seconds": 3.0}
+        (folder / "metrics.json").write_text(json.dumps(row))
+    _save_agent0_summary([], {"suite_dir": str(tmp_path), "test_seeds": list(range(count))})
+    result = json.loads((tmp_path / "aggregate.json").read_text())
+    assert result["final"] and result["expected_seeds"] == count
+    assert result["success_rate"] == 1 / count
+    assert result["Execute_steps"]["sum_known"] == 2 * count
+
+
+def test_agent0_seed_zero_is_executed(tmp_path, monkeypatch):
+    from capx.envs import runner
+    calls = []
+    monkeypatch.setattr(runner, "_run_trial_batch", lambda ids, **kwargs: calls.extend(ids) or [])
+    monkeypatch.setattr(runner, "_print_and_save_summary", lambda *args: None)
+    runner._run_headless_trials(SimpleNamespace(), {}, {
+        "agent0_mode": "raw", "total_trials": 0, "resume_idx": 0,
+        "record_video": False, "output_dir": str(tmp_path), "num_workers": 1,
+    }, 0.0)
+    assert calls == [0]
+    assert (tmp_path / "aaa_done_flag/aaa_done_flag.txt").read_text() == "1"

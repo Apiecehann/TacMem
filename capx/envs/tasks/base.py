@@ -2,7 +2,7 @@ import contextlib
 import io
 import sys
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, SupportsFloat
 
@@ -59,6 +59,10 @@ class CodeExecEnvConfig:
     privileged: bool = False
     enable_render: bool = True
     viser_debug: bool = False
+    api_functions: dict[str, list[str]] | None = None
+    observation_mode: str = "native"
+    tactile_skills: list[str] | None = None
+    raw_observation_dir: str | None = None
 
 
 class SimpleExecutor:
@@ -102,6 +106,22 @@ class CodeExecutionEnvBase(Env):
         )  # type: ignore[assignment]
         # Create APIs once; maximize sharing inside a worker via lru_cache in get_api
         self._apis: dict[str, ApiBase] = {n: get_api(n)(self.low_level_env) for n in cfg.apis}
+        if cfg.observation_mode not in {"native", "raw", "none"}:
+            raise ValueError("observation_mode must be native, raw or none")
+        for api in self._apis.values():
+            configure = getattr(api, "configure_observation_mode", None)
+            if configure is not None:
+                configure(cfg.observation_mode, cfg.raw_observation_dir)
+        if cfg.tactile_skills is not None:
+            self.tactile_skills = tuple(cfg.tactile_skills)
+        if cfg.api_functions is not None:
+            if not isinstance(cfg.api_functions, Mapping):
+                raise TypeError("api_functions must map configured API names to function lists")
+            unknown = set(cfg.api_functions) - self._apis.keys()
+            if unknown:
+                raise ValueError(f"api_functions names unconfigured APIs: {sorted(unknown, key=str)}")
+            for name, functions in cfg.api_functions.items():
+                self._apis[name].configure_functions(functions)
         # for api in self._apis.values():
         #     api.set_env(self.low_level_env)
         self._executor = SimpleExecutor(self.low_level_env, self._apis)
@@ -151,7 +171,7 @@ class CodeExecutionEnvBase(Env):
         """
         hidden: set[str] = set()
         for api in self._apis.values():
-            hidden |= getattr(api, "_prompt_hidden", set()) & api.functions().keys()
+            hidden |= getattr(api, "_prompt_hidden", set()) & api.selected_functions().keys()
         if len(hidden) == 1:
             return next(iter(hidden))
         return None
@@ -209,7 +229,7 @@ class CodeExecutionEnvBase(Env):
         apis = getattr(self, "_apis", None)
         if not apis:
             return True
-        return any("get_tactile_data" in api.functions() for api in apis.values())
+        return any("get_tactile_data" in api.selected_functions() for api in apis.values())
 
     def _tactile_skill_block(self) -> str:
         """The tactile-skill block this task's prompt ends with.
@@ -240,7 +260,7 @@ class CodeExecutionEnvBase(Env):
             library = default_library()
             skills = [library.get(name) for name in wanted]
             body = "\n".join(s.render(compact=not verbose) for s in skills)
-            return f"TACTILE SKILLS (named by {type(self).__name__}):\n{body}".strip()
+            return f"SKILLS (named by {type(self).__name__}):\n{body}".strip()
 
         library = default_library()
         task = self._task_name()
@@ -272,7 +292,7 @@ class CodeExecutionEnvBase(Env):
         self._exec_globals["APIS"] = self._apis
         # Ensure API helper functions remain bound/current
         for api in self._apis.values():
-            for fn_name, fn in api.functions().items():
+            for fn_name, fn in api.selected_functions().items():
                 self._exec_globals[fn_name] = fn
 
         stdout_buffer = io.StringIO()
@@ -314,7 +334,7 @@ class CodeExecutionEnvBase(Env):
         }
         # Bind helper functions from APIs into the global namespace for convenience
         for api in self._apis.values():
-            for fn_name, fn in api.functions().items():
+            for fn_name, fn in api.selected_functions().items():
                 g[fn_name] = fn
         self._exec_globals = g
 

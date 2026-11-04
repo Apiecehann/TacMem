@@ -123,11 +123,12 @@ except ImportError:
     print("R1Pro not installed, skipping R1Pro APIs")
 
 # UniVTAC APIs (always available — talk to server over HTTP)
-from .tactile.univtac_api import UniVTACTactileApi
+from .tactile.univtac_api import UniVTACTactileApi, UniVTACShadowPianoApi
 from .tactile.univtac_ball_api import UniVTACBallApi
 from .tactile.univtac_motion_api import UniVTACMotionApi
 from .tactile.univtac_perception_api import UniVTACPerceptionApi
 register_api("UniVTACTactileApi", UniVTACTactileApi)
+register_api("UniVTACShadowPianoApi", UniVTACShadowPianoApi)
 register_api("UniVTACBallApi", UniVTACBallApi)
 register_api("UniVTACMotionApi", UniVTACMotionApi)
 register_api("UniVTACPerceptionApi", UniVTACPerceptionApi)

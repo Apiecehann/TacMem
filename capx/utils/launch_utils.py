@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import base64
 import copy
+import csv
+import hashlib
+import re
+import signal
 import io
 import json
 import multiprocessing
 import os
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +37,7 @@ from capx.llm.client import (  # noqa: F401
     _completions_to_responses_convert_prompt,
     collapse_text_image_inputs,
     is_openrouter_model,
+    is_vlm_model,
 )
 from capx.llm.client import (  # noqa: F401
     query_model as _query_model,
@@ -68,13 +74,48 @@ class TrialSummary:
     num_regenerations: int = 0
     num_finishes: int = 0
     num_code_blocks: int = 0
+    metrics: dict[str, Any] | None = None
+    failure_phase: str | None = None
+
+
+def _run_server_cli(api_cfg):
+    command = [str(api_cfg["python"]), "-m", api_cfg["_target_"].rsplit(".", 1)[0]]
+    for key, value in api_cfg.items():
+        if key in {"_target_", "python"} or value is None or value is False:
+            continue
+        command.append("--" + (key if key in {"kit_args", "enable_cameras"} else key.replace("_", "-")))
+        if value is not True:
+            command.append(str(value))
+    env = {key: value for key, value in os.environ.items()
+           if key.lower() not in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}}
+    gpu = env.get("GPU")
+    if gpu is None or not gpu.isdecimal():
+        raise ValueError("Set GPU to exactly one physical GPU index")
+    uuid = subprocess.check_output(
+        ["nvidia-smi", "-i", gpu, "--query-gpu=uuid", "--format=csv,noheader"],
+        text=True, timeout=10).strip()
+    if not uuid.startswith("GPU-") or "\n" in uuid:
+        raise ValueError("Expected exactly one physical GPU UUID")
+    env["CUDA_VISIBLE_DEVICES"] = uuid
+    env["CAPX_GPU"] = gpu
+    env["EGL_DEVICE_ID"] = gpu
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2]) + os.pathsep + env.get("CAPX_SIM_HTTP_DEPS", "")
+    run_dir = api_cfg.get("run_dir")
+    if run_dir:
+        folder = Path(run_dir) / "private"
+        folder.mkdir(parents=True, exist_ok=True)
+        stream = os.open(str(folder / "simulator.log"), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        os.dup2(stream, 1)
+        os.dup2(stream, 2)
+        os.close(stream)
+    os.execve(command[0], command, env)
 
 
 def run_server_proc(api_cfg) -> multiprocessing.Process:
     # Make sure we use spawn for CUDA
     ctx = multiprocessing.get_context("spawn")
     proc = ctx.Process(
-        target=instantiate,  # child will call main(**cfg) via Hydra-style instantiate
+        target=_run_server_cli if api_cfg.get("python") else instantiate,
         args=(api_cfg,),
         daemon=True,
     )
@@ -108,6 +149,10 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
     # Merge server URLs and VDM model settings from YAML into args
     # (CLI args take priority; YAML fills in when CLI uses defaults)
     _CLI_DEFAULTS = {
+        "model": "google/gemini-3.1-pro-preview",
+        "max_tokens": 65536,
+        "temperature": 1.0,
+        "reasoning_effort": "medium",
         "server_url": "http://127.0.0.1:8110/chat/completions",
         "visual_differencing_model": "google/gemini-3.1-pro-preview",
         "visual_differencing_model_server_url": "http://127.0.0.1:8110/chat/completions",
@@ -167,26 +212,78 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
         "exec_alarm_seconds": configs_dict.get("exec_alarm_seconds", None),
     }
 
-    if configs_dict.get('ablation'):
-        from capx.ablation.protocol import load_spec, require_ready, request_for
-        spec = load_spec(config_path)
-        require_ready(spec)
-        seed = int(os.environ['CAPX_ABLATION_SEED'])
-        if not os.environ.get('CAPX_ABLATION_RUN_ID'):
-            raise ValueError('CAPX_ABLATION_RUN_ID required; existing artifacts are never overwritten')
-        request_for(spec, seed)
-        if not os.environ.get('GPU'):
-            raise ValueError('Explicit GPU is required; no automatic selection')
-        args.model, args.max_tokens = spec['model'], 8192
-        args.trial_timeout = spec['process_timeout_s']
-        args.temperature, args.reasoning_effort = spec['temperature'], spec['reasoning_effort']
-        merged_config.update(ablation=True, ablation_seed=seed, total_trials=1, num_workers=1,
-            use_oracle_code=False, use_parallel_ensemble=False, use_multimodel=False,
-            use_visual_feedback=False, use_img_differencing=False, use_video_differencing=False,
-            use_wrist_camera=False, web_ui=False, record_video=False,
-            output_dir=str(spec['output_root']))
-        if api_servers:
-            raise ValueError('Start the explicitly selected single-GPU server separately')
+    mode = configs_dict.get("agent0_mode")
+    if mode is not None:
+        if mode not in {"raw", "none"}:
+            raise ValueError("agent0_mode must be raw or none")
+        seed = int(merged_config["resume_idx"])
+        if merged_config["total_trials"] != seed or merged_config["num_workers"] != 1:
+            raise ValueError("Agent 0 runs one seed in a fresh process")
+        for key in ("use_oracle_code", "use_parallel_ensemble", "use_multimodel", "use_img_differencing", "use_video_differencing", "web_ui"):
+            if merged_config[key]:
+                raise ValueError(f"Agent 0 requires {key}=false")
+        if not merged_config["use_visual_feedback"] or not is_vlm_model(args.model):
+            raise ValueError("Agent 0 requires a vision-capable model and initial scene image")
+        env_factory["cfg"]["multi_turn_prompt"] = ""
+        manifest_path = Path(configs_dict["seed_manifest"]).resolve()
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        task = configs_dict["task_name"]
+        request_key = {"tactile_memory_match": "combined_match", "arm_shadow_piano": "shadow_piano"}.get(task, task)
+        request = (manifest["requests"].get(request_key, {}).get(str(seed))
+                   or manifest.get("smoke_requests", {}).get(request_key, {}).get(str(seed)))
+        if seed not in manifest["test_seeds"] + manifest["development_seeds"]:
+            raise ValueError("Seed is not in the frozen test/development manifest")
+        if task == "arm_shadow_piano":
+            if request is None:
+                raise ValueError("Missing frozen piano sequence")
+            env_factory["cfg"]["prompt"] = env_factory["cfg"]["prompt"].replace(
+                "{piano_request}", json.dumps(request, ensure_ascii=False))
+        if task == "tension_strap" and request is not None:
+            env_factory["cfg"]["prompt"] = env_factory["cfg"]["prompt"].replace(
+                "{force_request}", json.dumps(request, ensure_ascii=False))
+        else:
+            env_factory["cfg"]["prompt"] = env_factory["cfg"]["prompt"].replace(
+                "{force_request}", "12 N for 3 s, then 18 N for 3 s, tolerance +/-0.5 N")
+        base = Path(merged_config["output_dir"])
+        run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"_{os.getpid()}"
+        output = base / task / f"seed_{seed}" / run_id
+        output.mkdir(parents=True, exist_ok=False)
+        os.environ["CAPX_RUN_DIR"] = str(output)
+        merged_config.update(agent0_mode=mode, task_name=task, output_dir=str(output),
+                             suite_dir=str(base / task), test_seeds=manifest["test_seeds"],
+                             seed_manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                             max_trial_attempts=1)
+        env_factory["cfg"]["raw_observation_dir"] = str(output / "raw_tactile") if mode == "raw" else None
+        for server in api_servers or []:
+            server["run_dir"] = str(output)
+            server["episode_request_file"] = str(manifest_path)
+            server["seed"] = seed
+        args.single_program = True
+        args._code_request_count = 0
+        args.request_log_dir = str(output / "model")
+        args.model_timeout_seconds = 300
+        args.max_query_retries = 0
+        args.disable_proxy = True
+        if args.api_key is None:
+            args.api_key = os.environ.get("CAPX_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        args.trial_timeout = getattr(args, "trial_timeout", None) or configs_dict.get("trial_timeout_seconds", 1200)
+        from capx.tactile_skills import default_library
+        library = default_library()
+        skill_records = []
+        for name in env_factory["cfg"].get("tactile_skills", []):
+            skill = library.get(name)
+            skill_records.append({"name": name, "content": skill.render(compact=False, provenance=True)})
+        skills_json = json.dumps(skill_records, sort_keys=True, ensure_ascii=False)
+        merged_config["skills_sha256"] = hashlib.sha256(skills_json.encode()).hexdigest()
+        (output / "skills.json").write_text(skills_json, encoding="utf-8")
+        (output / "config.yaml").write_bytes(Path(config_path).read_bytes())
+        (output / "protocol.json").write_text(json.dumps({
+            **merged_config, "seed": seed, "model": args.model,
+            "max_tokens": args.max_tokens, "temperature": args.temperature,
+            "process_timeout_seconds": configs_dict.get("process_timeout_seconds"),
+            "reasoning_effort": args.reasoning_effort,
+            "request": request, "config_sha256": hashlib.sha256(Path(config_path).read_bytes()).hexdigest(),
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
     return env_factory, merged_config, api_servers
 
 
@@ -431,14 +528,14 @@ def _save_trial_artifacts(
     trial_dir.mkdir(parents=True, exist_ok=True)
 
     code_path_obj = trial_dir / "code.py"
-    code_path_obj.write_text(final_code, encoding='utf-8')
+    code_path_obj.write_text(final_code)
     code_path = str(code_path_obj)
 
     if raw_code:
-        (trial_dir / "raw_response.sh").write_text(raw_code, encoding='utf-8')
+        (trial_dir / "raw_response.sh").write_text(raw_code)
 
-    (trial_dir / "all_responses.json").write_text(json.dumps(all_responses, indent=2), encoding='utf-8')
-    (trial_dir / "summary.txt").write_text("\n".join(log_lines), encoding='utf-8')
+    (trial_dir / "all_responses.json").write_text(json.dumps(all_responses, indent=2))
+    (trial_dir / "summary.txt").write_text("\n".join(log_lines))
 
     # Save initial ensemble data if provided
     if ensemble_data:
@@ -491,6 +588,141 @@ def _save_trial_artifacts(
 
 
 
+def _single_program(content: str) -> str:
+    fences = re.findall(r"```(?:python)?\s*\n(.*?)```", content, flags=re.DOTALL)
+    if "```" in content:
+        if len(fences) != 1 or content.count("```") != 2:
+            raise ValueError("Expected one complete Python program")
+        code = fences[0].strip()
+    else:
+        code = content.strip()
+    if not code:
+        raise ValueError("Empty Python program")
+    compile(code, "<generated>", "exec")
+    return code
+
+
+def _agent0_metrics(summary, config, elapsed_seconds):
+    folder = Path(config["output_dir"])
+    events = []
+    log_file = folder / "univtac_actions.jsonl"
+    if log_file.exists():
+        for line in log_file.read_text(encoding="utf-8").splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    motions = {"move", "move_delta", "gripper", "rotate_gripper", "shadow_move", "shadow_wait"}
+    starts = {event["action_id"] for event in events
+              if event.get("evt") == "action_begin" and event.get("a") in motions}
+    ends = {event["action_id"]: event for event in events
+            if event.get("kind") == "action" and "action_id" in event}
+    def span(event):
+        first, last = event.get("physics_start"), event.get("physics_end")
+        return last - first if isinstance(first, int) and isinstance(last, int) and last >= first else None
+    values = [span(ends.get(action_id, {})) for action_id in starts]
+    sent_file = folder / "actions_sent.jsonl"
+    sent = len(sent_file.read_text(encoding="utf-8").splitlines()) if sent_file.exists() else 0
+    physics = sum(values) if sent == len(starts) and all(value is not None for value in values) else None
+    query_values = [span(event) for event in events if event.get("evt") == "query_span" and event.get("category") != "end"]
+    end_values = [span(event) for event in events if event.get("evt") == "query_span" and event.get("category") == "end"]
+    reset_values = [span(event) for event in events if event.get("kind") == "action" and event.get("a") == "reset"]
+    usage = None
+    response_path = folder / "model/response.json"
+    if response_path.exists():
+        try:
+            usage = json.loads(response_path.read_text(encoding="utf-8")).get("usage")
+        except (ValueError, AttributeError):
+            pass
+    def token(name, fallback):
+        value = (usage or {}).get(name, (usage or {}).get(fallback))
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+    request_status = {}
+    status_path = folder / "model/request_status.json"
+    if status_path.exists():
+        try:
+            request_status = json.loads(status_path.read_text(encoding="utf-8"))
+        except ValueError:
+            pass
+    failure = None
+    if summary.truncated:
+        failure = "timeout"
+    elif not summary.success:
+        if summary.num_code_blocks:
+            failure = "code_execution"
+        elif request_status.get("completed") is True:
+            failure = "generation"
+        elif request_status or summary.failure_phase in {"startup", "runner", "reset", "generation"}:
+            failure = "infrastructure"
+        else:
+            failure = "unknown"
+    elif summary.task_completed is not True:
+        failure = "native_task_failure" if summary.task_completed is False else "native_result_unavailable"
+    result = {
+        "task": config["task_name"], "condition": config["agent0_mode"], "seed": summary.trial,
+        "split": "test" if summary.trial in config["test_seeds"] else "development",
+        "task_completed": summary.task_completed, "code_executed": summary.num_code_blocks > 0,
+        "code_success": summary.success, "sandbox_rc": summary.sandbox_rc, "failure_type": failure,
+        "Execute_steps": sent, "physics_steps": physics,
+        "measured_physics_steps": sum(value for value in values if value is not None),
+        "failure_phase": summary.failure_phase,
+        "server_motion_requests": len(starts),
+        "physics_steps_complete": physics is not None,
+        "query_physics_steps": sum(query_values) if all(v is not None for v in query_values) else None,
+        "end_physics_steps": sum(end_values) if all(v is not None for v in end_values) else None,
+        "reset_physics_steps": sum(reset_values) if reset_values and all(v is not None for v in reset_values) else None,
+        "input_tokens": token("input_tokens", "prompt_tokens"),
+        "output_tokens": token("output_tokens", "completion_tokens"), "provider_usage": usage,
+        "elapsed_seconds": elapsed_seconds, "num_code_blocks": summary.num_code_blocks,
+        "num_regenerations": summary.num_regenerations,
+        "model_requests": int((folder / "model/request.json").exists()),
+        "skills_sha256": config["skills_sha256"], "seed_manifest_sha256": config["seed_manifest_sha256"],
+        "run_dir": str(folder), "code_path": summary.code_path,
+    }
+    (folder / "metrics.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    with (folder / "metrics.csv").open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(result))
+        writer.writeheader()
+        writer.writerow({key: json.dumps(value) if isinstance(value, dict) else value for key, value in result.items()})
+    return result
+
+
+def _save_agent0_summary(summaries, config):
+    root = Path(config["suite_dir"])
+    rows = []
+    for path in sorted(root.glob("seed_*/*/metrics.json")):
+        rows.append(json.loads(path.read_text(encoding="utf-8")))
+    if rows:
+        with (root / "runs.csv").open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    formal = [r for r in rows if r["split"] == "test"]
+    counts = {seed: sum(r["seed"] == seed for r in formal) for seed in config["test_seeds"]}
+    unique = [r for r in formal if counts[r["seed"]] == 1]
+    duplicates = [seed for seed, count in counts.items() if count > 1]
+    successes = sum(r["task_completed"] is True for r in unique)
+    expected = len(config["test_seeds"])
+    complete = expected > 0 and len(unique) == expected and not duplicates and all(r["task_completed"] is not None for r in unique)
+    report = {"expected_seeds": expected, "unique_seeds_run": len(unique), "duplicate_seeds": duplicates,
+              "not_run": [seed for seed, count in counts.items() if count == 0],
+              "success_count": successes,
+              "success_rate": successes / expected if complete else None,
+              "provisional_success_rate": successes / len(unique) if unique else None,
+              "infrastructure_failures": sum(r["failure_type"] == "infrastructure" for r in unique),
+              "generation_failures": sum(r["failure_type"] == "generation" for r in unique),
+              "failure_types": {kind: sum(r["failure_type"] == kind for r in unique)
+                                for kind in sorted({r["failure_type"] for r in unique if r["failure_type"]})},
+              "final": complete,
+              "development_runs": sum(r["split"] == "development" for r in rows)}
+    for key in ("Execute_steps", "physics_steps", "input_tokens", "output_tokens", "elapsed_seconds"):
+        available = [r[key] for r in unique if r[key] is not None]
+        report[key] = {"known_count": len(available), "unknown_count": len(unique) - len(available),
+                       "sum_known": sum(available) if available else None,
+                       "mean_known": sum(available) / len(available) if available else None}
+    (root / "aggregate.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
 def _print_and_save_summary(
     summaries: list[TrialSummary], args: LaunchArgs, config: dict[str, Any], start_time: float
 ) -> None:
@@ -501,6 +733,8 @@ def _print_and_save_summary(
         args: Launch arguments
         config: Configuration dictionary
     """
+    if config.get("agent0_mode"):
+        _save_agent0_summary(summaries, config)
     # Compute statistics
     success_count = 0
     task_completed_count = 0

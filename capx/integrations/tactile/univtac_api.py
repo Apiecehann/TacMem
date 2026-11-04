@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import base64
 import io
+import json
+from pathlib import Path
 import os
 import time
 from typing import Any
@@ -143,7 +145,8 @@ class UniVTACTactileApi(ApiBase):
     # The framework appends a final check_success() call after code generation
     # (CodeExecEnvConfig.append_final_check) and computes the reward itself
     # after each step, so the agent neither sees nor needs this function.
-    _prompt_hidden = {"check_success"}
+    _prompt_hidden = {"check_success", "submit_episode"}
+    _optional_functions = ("get_tactile_image", "get_tactile_depth", "get_ee_pose", "submit_episode")
 
     # This class is the privileged line: get_object_pose reads /object_pose,
     # the simulator's ground truth.  It may therefore ask the server for a
@@ -165,8 +168,110 @@ class UniVTACTactileApi(ApiBase):
     # ApiBase interface
     # ------------------------------------------------------------------
 
+    def configure_observation_mode(self, mode: str, output_dir: str | None = None) -> None:
+        if mode not in {"native", "raw", "none"}:
+            raise ValueError("Unknown observation mode")
+        self._observation_mode = mode
+        self._raw_output_dir = Path(output_dir) if output_dir and mode == "raw" else None
+        self._saved_raw_frames = set()
+        self._optional_functions = ("get_ee_pose", "submit_episode")
+        if mode != "none":
+            self._optional_functions += ("get_tactile_image", "get_tactile_depth")
+
+    def _motion_feedback(self, data: dict) -> dict:
+        if getattr(self, "_observation_mode", "native") == "native":
+            return _trim_motion_tactile(data.get("tactile", {}))
+        return {"ok": bool(data.get("success", True)), "step": data.get("step")}
+
+    def close_gripper_position(self, position: float | None = None) -> dict:
+        """Close with native position control.
+
+        position is a normalized opening in [0, 1], not metres or force:
+        0 means fully closed and 1 fully open. Omitting position, or passing
+        None, requests a fully closed target, equivalent to position=0.
+
+        If an object blocks closure before the server accepts the target,
+        this call can raise RuntimeError("Motion failed: Native action failed").
+        It does not return a failure dict in that case. The fingers may remain
+        at the blocked position; the exception alone proves neither a secure
+        grasp nor an empty gripper. Handle RuntimeError with try/except if
+        recovery is needed, while respecting native termination and limits.
+
+        On normal return, provides action execution status and physical step.
+        """
+        return self.close_gripper(position=position, adaptive=False)
+
+    def _doc_text(self, fn) -> str:
+        if getattr(self, "_observation_mode", "native") == "native":
+            return super()._doc_text(fn)
+        name = fn.__name__
+        if name in {"goto_pose", "move_delta"}:
+            text = super()._doc_text(fn).split("Returns:", 1)[0]
+            return text + "Returns: action execution status and physical step."
+        docs = {
+            "goto_pose": "Move the wrist flange to position [x,y,z] in metres and quaternion [w,x,y,z]. z_approach first approaches above the target. Returns action status and physical step.",
+            "move_delta": "Move by a Cartesian delta in metres and a rotation delta in radians, in the world or ee frame. Native motion limits apply. Returns action status and physical step.",
+            "open_gripper": "Open the gripper using native position control. Returns action status and physical step.",
+            "rotate_gripper": "Rotate the held object by angle_rad, using steps native iterations. Optional feed_lead_m commands axial travel per full turn. Returns execution counts; no task verdict or sensor summary is provided.",
+            "get_tactile_data": "Read one snapshot of raw observations. Returns step, time_seconds and sensors[left/right]. Each sensor contains rgb and rgb_marker (H,W,3 uint8 RGB arrays), depth (H,W float32 in mm), and depth_unit. Missing channels are None. No marker coordinates, scalar features, classification or force estimates are supplied. Analyse the arrays with numpy/cv2 as needed.",
+            "get_tactile_image": "Read a uint8 RGB array for side left/right and image_type rgb/rgb_marker. Returns None if that specific channel is missing; channels are never substituted.",
+            "get_tactile_depth": "Read the complete float32 depth array (H,W), in mm, for side left/right. Returns None if missing. This is not an 8-bit display image or an estimated force.",
+        }
+        return docs.get(name, super()._doc_text(fn))
+
+    def _read_raw_tactile(self) -> dict:
+        if getattr(self, "_observation_mode", "native") != "raw":
+            raise RuntimeError("Raw observations are unavailable in this condition")
+        data = self._get("/tactile")
+        if data.get("observation_mode") != "raw":
+            raise RuntimeError("Client/server observation mode mismatch")
+        result = {"step": data["step"], "time_seconds": data["time_seconds"], "sensors": {}}
+        for side in ("left", "right"):
+            source = data.get("sensors", {}).get(side, {})
+            dest = {"rgb": None, "rgb_marker": None, "depth": None, "depth_unit": "mm"}
+            for channel in ("rgb", "rgb_marker"):
+                if source.get(channel):
+                    dest[channel] = np.asarray(Image.open(io.BytesIO(base64.b64decode(source[channel]))).convert("RGB"), dtype=np.uint8)
+            depth = source.get("depth")
+            if depth is not None:
+                if depth.get("dtype") != "float32" or depth.get("unit") != "mm":
+                    raise ValueError("Invalid raw depth format")
+                shape = tuple(depth["shape"])
+                if len(shape) != 2 or any(int(n) != n or n <= 0 for n in shape):
+                    raise ValueError("Invalid raw depth shape")
+                values = np.frombuffer(base64.b64decode(depth["data"]), dtype="<f4").copy()
+                if values.size != int(np.prod(shape)):
+                    raise ValueError("Invalid raw depth payload length")
+                dest["depth"] = values.reshape(shape)
+            result["sensors"][side] = dest
+            directory = getattr(self, "_raw_output_dir", None)
+            key = (result["step"], side)
+            if directory is not None and key not in self._saved_raw_frames:
+                directory.mkdir(parents=True, exist_ok=True)
+                record = {"sensor": side, "step": result["step"], "time_seconds": result["time_seconds"], "depth_unit": "mm", "files": {}}
+                for channel in ("rgb", "rgb_marker", "depth"):
+                    value = dest[channel]
+                    if value is None:
+                        record["files"][channel] = None
+                        continue
+                    path = directory / f"{result['step']}_{side}_{channel}{'.npy' if channel == 'depth' else '.png'}"
+                    if channel == "depth":
+                        np.save(path, value, allow_pickle=False)
+                    else:
+                        Image.fromarray(value).save(path)
+                    record["files"][channel] = {"path": path.name, "shape": list(value.shape), "dtype": str(value.dtype)}
+                with (directory / "index.jsonl").open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(record) + "\n")
+                self._saved_raw_frames.add(key)
+        return result
+
+    def get_tactile_depth(self, side: str = "left") -> np.ndarray | None:
+        if side not in {"left", "right"}:
+            raise ValueError("side must be left or right")
+        return self._read_raw_tactile()["sensors"][side]["depth"]
+
     def functions(self) -> dict[str, Any]:
-        return {
+        functions = {
             "goto_pose": self.goto_pose,
             "move_delta": self.move_delta,
             "open_gripper": self.open_gripper,
@@ -178,6 +283,14 @@ class UniVTACTactileApi(ApiBase):
             "rotate_gripper": self.rotate_gripper,
             "check_success": self.check_success,
         }
+
+        mode = getattr(self, "_observation_mode", "native")
+        if mode != "native":
+            functions.pop("detect_slip", None)
+            functions["close_gripper"] = self.close_gripper_position
+        if mode == "none":
+            functions.pop("get_tactile_data", None)
+        return functions
 
     # ------------------------------------------------------------------
     # HTTP helpers
@@ -192,6 +305,11 @@ class UniVTACTactileApi(ApiBase):
             return False
 
     def _post(self, path: str, body: dict | None = None) -> dict:
+        if getattr(self, "_observation_mode", "native") != "native" and path in {"/move", "/move_delta", "/gripper", "/rotate_gripper", "/shadow/move", "/shadow/wait"}:
+            log_dir = os.environ.get("CAPX_RUN_DIR")
+            if log_dir:
+                with (Path(log_dir) / "actions_sent.jsonl").open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps({"endpoint": path, "args": body}) + "\n")
         started = time.monotonic()
         try:
             r = requests.post(
@@ -359,7 +477,7 @@ class UniVTACTactileApi(ApiBase):
         print(f"Moved to position={np.round(position, 3)} "
               f"quat_w={quaternion_wxyz[0]:.3f} z_approach={z_approach}"
               + _settled_note(data))
-        return _trim_motion_tactile(data.get("tactile", {}))
+        return self._motion_feedback(data)
 
     def move_delta(
         self,
@@ -413,7 +531,7 @@ class UniVTACTactileApi(ApiBase):
         print(f"Moved delta: dx={dx:.3f} dy={dy:.3f} dz={dz:.3f} "
               f"drx={drx:.3f} dry={dry:.3f} drz={drz:.3f} coord={coord}"
               + _settled_note(data))
-        return _trim_motion_tactile(data.get("tactile", {}))
+        return self._motion_feedback(data)
 
     def move_reflexive(
         self,
@@ -498,7 +616,7 @@ class UniVTACTactileApi(ApiBase):
         print(f"Reflexive move: dx={dx:.3f} dy={dy:.3f} dz={dz:.3f} "
               f"terminated_by={term}")
         return {
-            "tactile": _trim_motion_tactile(data.get("tactile", {})),
+            "tactile": self._motion_feedback(data),
             "terminated_by": term,
             "event": event,
         }
@@ -512,7 +630,7 @@ class UniVTACTactileApi(ApiBase):
         """
         data = self._post("/gripper", {"action": "open"})
         print("Gripper opened")
-        return _trim_motion_tactile(data.get("tactile", {}))
+        return self._motion_feedback(data)
 
     def close_gripper(self, force_threshold: float | None = None,
                       position: float | None = None,
@@ -561,6 +679,9 @@ class UniVTACTactileApi(ApiBase):
             dict with the scalar tactile readings after closing (same set as
             goto_pose).
         """
+        if getattr(self, "_observation_mode", "native") != "native":
+            if force_threshold is not None or adaptive:
+                raise ValueError("Only position-control closing is enabled")
         payload: dict = {"action": "close", "use_adaptive_grasp": adaptive}
         if force_threshold is not None:
             payload["force_threshold"] = force_threshold
@@ -568,7 +689,7 @@ class UniVTACTactileApi(ApiBase):
             payload["position"] = position
         data = self._post("/gripper", payload)
         print("Gripper closed")
-        return _trim_motion_tactile(data.get("tactile", {}))
+        return self._motion_feedback(data)
 
     # ------------------------------------------------------------------
     # Tactile sensing API
@@ -653,6 +774,11 @@ class UniVTACTactileApi(ApiBase):
             fingertip exposes a full height map; absent from the response
             otherwise.)
         """
+        mode = getattr(self, "_observation_mode", "native")
+        if mode == "none":
+            raise RuntimeError("Sensor observations are disabled")
+        if mode == "raw":
+            return self._read_raw_tactile()
         data = self._get("/tactile")
         # The server computes the marker anisotropy from the same uint8 array
         # its PNG payload carries.  Derive it here only when the response has
@@ -676,7 +802,7 @@ class UniVTACTactileApi(ApiBase):
         # Strip images before returning to avoid huge logs
         return {k: v for k, v in data.items() if "base64" not in k}
 
-    def get_tactile_image(self, side: str = "left") -> np.ndarray | None:
+    def get_tactile_image(self, side: str = "left", image_type: str = "rgb_marker") -> np.ndarray | None:
         """Return the GelSight marker-view image of one fingertip as RGB.
 
         The image shows the marker grid printed on the gel — the raw visual
@@ -692,6 +818,13 @@ class UniVTACTactileApi(ApiBase):
             (H, W, 3) uint8 array of the marker-view image, or None when
             the image is unavailable.
         """
+        if side not in {"left", "right"} or image_type not in {"rgb", "rgb_marker"}:
+            raise ValueError("Unknown sensor or image channel")
+        mode = getattr(self, "_observation_mode", "native")
+        if mode == "none":
+            raise RuntimeError("Sensor observations are disabled")
+        if mode == "raw":
+            return self._read_raw_tactile()["sensors"][side][image_type]
         data = self._get("/tactile")
         b64 = data.get(f"{side}_rgb_base64", "")
         if not b64:
@@ -724,6 +857,8 @@ class UniVTACTactileApi(ApiBase):
         Returns:
             bool, True if the object is slipping.
         """
+        if getattr(self, "_observation_mode", "native") != "native":
+            raise RuntimeError("Derived observations are disabled")
         data = self._get("/tactile")
         left_disp = float(data.get("left_marker_displacement_px", 0.0))
         right_disp = float(data.get("right_marker_displacement_px", 0.0))
@@ -848,11 +983,16 @@ class UniVTACTactileApi(ApiBase):
         if feed_lead_m is not None:
             payload["feed_lead_m"] = feed_lead_m
         data = self._post("/rotate_gripper", payload)
+        if getattr(self, "_observation_mode", "native") != "native":
+            result = self._motion_feedback(data)
+            if feed_lead_m is not None:
+                result["helix"] = {key: data.get(key) for key in ("feed_lead_m", "completed", "requested")}
+            return result
         if feed_lead_m is None:
             print(f"Rotated gripper holding '{object_name}' by {angle_rad:.2f} rad "
                   f"in {steps} steps")
-            return _trim_motion_tactile(data.get("tactile", {}))
-        readings = _trim_motion_tactile(data.get("tactile", {}))
+            return self._motion_feedback(data)
+        readings = self._motion_feedback(data)
         readings["helix"] = {
             "feed_lead_m": data.get("feed_lead_m"),
             "completed": data.get("completed"),
@@ -867,6 +1007,9 @@ class UniVTACTactileApi(ApiBase):
               f"{'seated' if data.get('reached') else 'stopped: ' + str(data.get('aborted')) if data.get('aborted') else 'OK'}")
         return readings
 
+    def submit_episode(self) -> None:
+        self._post("/submit_episode")
+
     def check_success(self) -> bool:
         """Check whether the task is complete. Call at the end of the code to
         verify.
@@ -876,6 +1019,8 @@ class UniVTACTactileApi(ApiBase):
         """
         data = self._get("/check_success")
         result = bool(data.get("completed", False))
+        if getattr(self, "_observation_mode", "native") != "native":
+            return result
         if result:
             print("Task check: SUCCESS")
         else:
@@ -997,15 +1142,12 @@ class UniVTACTactileApi(ApiBase):
             for cam in ("head", "wrist")
         )
         print(f"Observation: {shapes}")
+        if getattr(self, "_observation_mode", "native") != "native":
+            result.pop("tactile", None)
         return result
 
     def get_ee_pose(self) -> dict:
         """Return the end-effector pose in the world frame.
-
-        Agent-facing only: this method is intentionally NOT listed in
-        ``functions()``, so it never appears in the generated LLM prompt and
-        is not bound in the exec sandbox.  It exists for coding agents that
-        drive the arm interactively (see ``univtac_skill/robo.py``).
 
         Diagnostic use only: verify that a commanded move_delta actually
         executed (execution state != world state), detect drift from a
@@ -1023,3 +1165,106 @@ class UniVTACTactileApi(ApiBase):
             [w, x, y, z], both in the world frame.
         """
         return self._get("/ee_pose")
+
+class UniVTACShadowPianoApi(UniVTACTactileApi):
+    def configure_observation_mode(self, mode: str, output_dir: str | None = None) -> None:
+        super().configure_observation_mode(mode, output_dir)
+        self._optional_functions = ()
+
+    def functions(self) -> dict[str, Any]:
+        result = {name: getattr(self, name) for name in (
+            "get_note_target", "get_hand_state", "move_shadow_index", "wait_steps",
+            "check_success", "submit_episode")}
+        if getattr(self, "_observation_mode", "none") == "raw":
+            result["get_digit_tactile"] = self.get_digit_tactile
+        return result
+
+    def _doc_text(self, fn) -> str:
+        return ApiBase._doc_text(self, fn)
+
+    def get_note_target(self, note: str | int) -> dict:
+        """Read static piano key geometry and a wrist target for a note name or MIDI.
+
+        Returns note, midi, black, key_position_m, key_size_m,
+        wrist_x_offset_m, wrist_y_m, press_lift_z_m and hover_lift_z_m.
+        These are geometric targets, not measured key angles or contact forces.
+        """
+        return self._get("/shadow/note_target", params={"note": str(note)})
+
+    def get_hand_state(self) -> dict:
+        """Read actual robot state: wrist offsets in m, index flexion in rad,
+        palm pose, palm velocity, and arm joint positions and velocities.
+        Includes physical step, simulation time, control_dt_seconds and native_done.
+        No key angles, contact forces, task score or musical progress are returned.
+        """
+        return self._get("/shadow/hand_state")
+
+    def move_shadow_index(self, wrist_x_offset_m: float, wrist_y_m: float,
+                          lift_z_m: float, index_flexion_rad: float,
+                          steps: int = 1) -> dict:
+        """Command [wrist X offset, wrist Y, lift Z, index flexion].
+
+        Bounds are X [-0.01,0.09] m, Y [-0.32,0.26] m, Z [-0.006,0.05] m,
+        index [0,0.50] rad. Each of 1..600 control steps lasts 1/60 s.
+        Read actual state to check arrival; a target is not an achieved pose.
+        Returns ok, step and native_done. Further actions after termination are refused.
+        """
+        result = self._post("/shadow/move", {
+            "action": [wrist_x_offset_m, wrist_y_m, lift_z_m, index_flexion_rad],
+            "steps": steps})
+        return {"ok": bool(result["success"]), "step": result.get("step"),
+                "native_done": bool(result.get("native_done", False))}
+
+    def wait_steps(self, steps: int = 1) -> dict:
+        """Hold the last commanded wrist/index target for 1..600 control steps.
+        One control step lasts 1/60 s. Returns ok, step and native_done.
+        Stops at native termination and refuses subsequent motion.
+        """
+        result = self._post("/shadow/wait", {"steps": steps})
+        return {"ok": bool(result["success"]), "step": result.get("step"),
+                "native_done": bool(result.get("native_done", False))}
+
+    def get_digit_tactile(self) -> dict:
+        """Read single-index DIGIT rgb (H,W,3 uint8) and simulated depth (H,W float32, m).
+        Returns sensor='index', rgb, depth, depth_unit, step and time_seconds.
+        Missing channels are None. No marker array, derived feature or force estimate is supplied.
+        """
+        if getattr(self, "_observation_mode", "none") != "raw":
+            raise RuntimeError("Sensor observations are disabled")
+        data = self._get("/shadow/tactile")
+        rgb = data.get("rgb")
+        image = np.asarray(Image.open(io.BytesIO(base64.b64decode(rgb))).convert("RGB")).copy() if rgb else None
+        payload = data.get("depth")
+        depth = None
+        if payload is not None:
+            shape = payload["shape"]
+            if payload.get("unit") != "m" or payload.get("dtype") != "float32" or len(shape) != 2:
+                raise ValueError("Invalid DIGIT depth contract")
+            values = np.frombuffer(base64.b64decode(payload["data"]), dtype="<f4").copy()
+            if values.size != int(np.prod(shape)):
+                raise ValueError("Invalid DIGIT depth payload")
+            depth = values.reshape(shape)
+        result = {"sensor": "index", "rgb": image, "depth": depth, "depth_unit": "m",
+                  "step": data["step"], "time_seconds": data["time_seconds"]}
+        directory = getattr(self, "_raw_output_dir", None)
+        key = (result["step"], "index")
+        if directory is not None and key not in self._saved_raw_frames:
+            directory.mkdir(parents=True, exist_ok=True)
+            record = {k: result[k] for k in ("sensor", "step", "time_seconds", "depth_unit")}
+            record["files"] = {}
+            for channel in ("rgb", "depth"):
+                value = result[channel]
+                if value is None:
+                    record["files"][channel] = None
+                    continue
+                path = directory / f"{result['step']}_index_{channel}{'.npy' if channel == 'depth' else '.png'}"
+                if channel == "depth":
+                    np.save(path, value, allow_pickle=False)
+                else:
+                    Image.fromarray(value).save(path)
+                record["files"][channel] = {"path": path.name, "shape": list(value.shape), "dtype": str(value.dtype)}
+            with (directory / "index.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record) + "\n")
+            self._saved_raw_frames.add(key)
+        return result
+

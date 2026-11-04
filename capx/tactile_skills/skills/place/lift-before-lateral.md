@@ -2,26 +2,21 @@
 id: P2
 name: lift-before-lateral
 family: place
-summary: Lift clear of the table before moving sideways — a resting object is toppled, not carried.
-task_types: [classify, insert, manipulate, wipe]
+summary: 'Lift clear before lateral transport: about 0.03 m in the original example, increased for obstacles.'
+task_types:
+- classify
+- insert
+- manipulate
+- wipe
 channels: []
 objects: any
-evidence: Standard practice across the manipulation tasks; the sideways move while the object is still supported tips it rather than sliding it.
-copies:
-  - docs/univtac_api_reference.md §3.4
-  - univtac_skill/SKILL.md
+evidence: Original P2 gives an approximate 3 cm clearance example.
 ---
 
 ## How
 
-Roughly 3 cm of clearance before any horizontal translation, and enough to
-clear whatever the object has to pass — a shelf lip, another object, the rim of
-a plate.
+Rise vertically, translate above supports, then descend at the destination.
 
 ## Traps
 
-- Dragging an object along the surface is not carrying it: friction with the
-  table rolls or tips it, and the grip that was verified before the move is not
-  the grip that exists after it.
-- The same applies at the other end. Descend onto the target vertically and
-  only translate once the object is above it.
+A lateral move before clearance may tip or drag an object instead of carrying it.

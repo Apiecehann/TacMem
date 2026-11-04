@@ -44,24 +44,6 @@ _EPISODE: str | None = None
 _HARNESS_MODE = False  # eval harness announced itself — stop logging
 
 
-def log_ablation(path: Path, event: str, fields: dict) -> None:
-    """Strict eval variant of this logger. Only host-produced public fields.
-
-    Program stdout and the server's rich action responses never enter here.
-    Required artifact writes fail visibly, unlike optional interactive logging.
-    """
-    allowed = {
-        'action': {'operation', 'arguments', 'executed', 'physics_step', 'time_s'},
-        'tactile_image': {'episode', 'sensor', 'physics_step', 'time_s', 'image', 'sha256'},
-        'execution_error': {'error_type'},
-    }
-    if event not in allowed or set(fields) != allowed[event]:
-        raise ValueError('Invalid ablation log record')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open('a', encoding='utf-8') as stream:
-        stream.write(json.dumps({'kind': event, 't_ms': int(time.time()*1000), **fields}, ensure_ascii=False) + '\n')
-
-
 def set_harness_mode() -> None:
     """Stop writing the action log.
 
