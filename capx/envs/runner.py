@@ -111,6 +111,9 @@ def _setup_output_dir(args, config: dict[str, Any]) -> None:
     if config.get("use_oracle_code"):
         args.model = "oracle"
     if config["output_dir"]:
+        if config.get("logger2skill_episode"):
+            Path(config["output_dir"]).mkdir(parents=True, exist_ok=True)
+            return
         parts = config["output_dir"].split("/")
         parts.insert(-1, str(args.model).replace("/", "_"))
         new_out_dir = "/".join(parts)
@@ -232,9 +235,10 @@ def _run_trial_with_retries(
     """Attempt a trial up to MAX_TRIAL_RETRIES times, retrying on timeout."""
     # Bridge the respawn window after a cuRobo hang (see _wait_for_server_healthy).
     _wait_for_server_healthy(env)
-    for attempt in range(MAX_TRIAL_RETRIES):
+    attempts = 1 if config.get("single_program") else MAX_TRIAL_RETRIES
+    for attempt in range(attempts):
         try:
-            is_last_attempt = attempt == MAX_TRIAL_RETRIES - 1
+            is_last_attempt = attempt == attempts - 1
             timeout = getattr(args, "trial_timeout", TRIAL_TIMEOUT_SECONDS) or TRIAL_TIMEOUT_SECONDS
             return _run_single_trial_with_timeout(
                 env=env,

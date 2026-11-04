@@ -103,7 +103,7 @@ VITAFORGE_ROOT = Path(os.environ.get("VITAFORGE_ROOT", str(_REPO_ROOT.parent / "
 # One line per tactile reading (marker displacement + depth + ground-truth
 # texture) appended on every tactile read, for calibrating the
 # rough/smooth classification thresholds in the grasp_classify prompt.
-TACTILE_CALIBRATION_LOG = _REPO_ROOT / "outputs" / "univtac_tactile_calibration.log"
+TACTILE_CALIBRATION_LOG = Path(os.environ.get("UNIVTAC_CALIBRATION_LOG", str(_REPO_ROOT / "outputs" / "univtac_tactile_calibration.log")))
 
 AVAILABLE_TASKS = [
     "insert_hole",
@@ -117,6 +117,7 @@ AVAILABLE_TASKS = [
     "tactile_transfer_rearrange_clean",
     "tactile_memory_match",
     "weight_classify",
+    "tension_strap",
     "hardness_classify",
     "bulb_tightening",
     "wipe_vase",
@@ -156,6 +157,7 @@ DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
 # the task, not of the invocation, so it lives here rather than in a CLI flag —
 # an unsupported task/root combination is then unrepresentable.
 TASK_BACKING: dict[str, TaskBacking] = {
+    "tension_strap": TaskBacking(VITAFORGE_ROOT, "tension_strap.yml", vitforge_tacex=True),
     "weight_classify": TaskBacking(
         VITAFORGE_ROOT,
         "gelsight.yml",
@@ -771,6 +773,7 @@ class PoseResponse(BaseModel):
 
 
 class SuccessResponse(BaseModel):
+    verified: bool = True
     completed: bool = False
     check_early_stop: bool = False
     detail: dict | None = None
@@ -1974,7 +1977,7 @@ def _sim_check_success() -> dict:
     except Exception as exc:
         logger.warning("check_success failed: %s", traceback.format_exc())
         action_log.log_query_failure("check_success", f"check_success failed: {exc}")
-        return {"completed": False, "check_early_stop": False, "detail": None}
+        return {"completed": False, "check_early_stop": False, "detail": None, "verified": False}
 
 
 def _jsonable(value):
@@ -2059,6 +2062,9 @@ def _sim_submit_episode() -> dict:
     before the review motions disturb it.
     """
     global _TASK
+    if _TASK_NAME == "tension_strap":
+        _TASK.finish_episode()
+        return {"success": True, "message": "END submitted"}
     if not hasattr(_TASK, "_finish_bulb_episode"):
         return {"completed": False, "check_early_stop": False, "detail": None,
                 "message": f"task '{_TASK_NAME}' has no force-task submission"}
@@ -2871,7 +2877,7 @@ def check_success():
             "check_success",
             "Simulation busy — returned completed=False without checking",
         )
-        return SuccessResponse(completed=False, check_early_stop=False)
+        return SuccessResponse(completed=False, check_early_stop=False, verified=False)
 
 
 # The two endpoints below are the force-task port's contract, kept deliberately
@@ -2948,6 +2954,38 @@ def get_object_pose(object_name: str, return_bbox_extent: bool = False):
                                      args=_object_pose_args)
         raise HTTPException(status_code=503, detail="Simulation busy — retry in a few seconds")
     return ObjectPoseResponse(**result)
+
+
+class WaitRequest(BaseModel):
+    seconds: float
+
+
+def _sim_wait(seconds: float) -> dict:
+    import math
+    if not math.isfinite(seconds) or not 0 < seconds <= 10:
+        raise ValueError("wait duration must be in (0, 10] seconds")
+    count = int(math.ceil(seconds / (float(_TASK.cfg.sim.dt) * int(_TASK.cfg.decimation))))
+    for _ in range(count):
+        if _TASK.check_early_stop() or not _TASK.plan_success:
+            raise RuntimeError("Native task cannot continue")
+        _TASK._step(is_save=False)
+    return {"success": True, "message": "Wait completed"}
+
+
+@app.post("/wait")
+def wait_task(req: WaitRequest):
+    return _run_action("wait", req.model_dump(), _MOTION_TIMEOUT, _sim_wait,
+                       req.seconds, detail_prefix="Wait failed")
+
+
+@app.get("/task_request")
+def task_request():
+    def read_request():
+        if _TASK_NAME != "tension_strap":
+            raise ValueError("No strap request for this task")
+        return {key: _jsonable(_TASK.params[key]) for key in
+                ("force_time_sequence", "tolerance_N", "overload_N")}
+    return _run_on_main(read_request, timeout=30.0)
 
 
 @app.get("/health")
@@ -3548,6 +3586,13 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Step 2: Launch Isaac Sim app (must happen before isaaclab imports)
     # -------------------------------------------------------------------
+    if os.environ.get("CAPX_LOGGER2SKILL"):
+        _prefer_vitforge_tacex(_backing_for(cli.task).root)
+        cli.multi_gpu = False
+        cli.active_gpu = int(os.environ["CAPX_RENDER_GPU"])
+        cli.kit_args = (getattr(cli, "kit_args", "") +
+                        f" --/renderer/activeGpu={cli.active_gpu} --/renderer/multiGpu/enabled=false"
+                        " --/rtx/multiGpu/enabled=false")
     app_launcher = AppLauncher(cli)
     simulation_app = app_launcher.app
 

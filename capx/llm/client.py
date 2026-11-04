@@ -274,6 +274,7 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         payload = {
             "model": args.model,
             "input": prompt,
+            "max_output_tokens": args.max_tokens,
             # Same knob as the chat path, under the Responses API's own name.
             # Left unset the provider picks its default, which for reasoning
             # models is the slow-and-expensive direction.
@@ -333,7 +334,8 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
         server_url, headers=headers, data=json.dumps(payload), timeout=600
     )
     retry = 1
-    while response.status_code in [404, 500, 502, 503, 504]:
+    retry_limit = getattr(args, "max_query_retries", None)
+    while response.status_code in [404, 500, 502, 503, 504] and (retry_limit is None or retry <= retry_limit):
         sleep_time = 240 + random.uniform(-90, 90)
         print(f"Retry {retry}. Model query failed with status code {response.status_code}. Error: {response.text}. Retrying in {sleep_time} seconds...")
         time.sleep(sleep_time)
@@ -346,7 +348,7 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     print(f"Time taken to query model: {end_time - start_time:.2f} seconds")
     response.raise_for_status()
     body = response.json()
-    out = {}
+    out = {"usage": body.get("usage")}
     if args.debug:
         print(json.dumps(body, indent=2))
     try:

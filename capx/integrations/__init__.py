@@ -137,3 +137,5 @@ if _libero_available:
     register_api("FrankaLiberoApi", lambda env: FrankaLiberoApi(env, use_sam3=True))
     register_api("FrankaLiberoApiReduced", FrankaLiberoApiReduced)
     register_api("FrankaLiberoApiReducedSkillLibrary", FrankaLiberoApiReducedSkillLibrary)
+from .tactile.univtac_tension_api import UniVTACTensionApi
+register_api("UniVTACTensionApi", UniVTACTensionApi)

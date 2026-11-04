@@ -42,7 +42,10 @@ class LaunchArgs:
     """
 
     # YAML config path (required)
-    config_path: str
+    config_path: str = ""
+    logger2skill_config: str | None = None
+    single_program: bool = False
+    max_query_retries: int | None = None
     """Path to the YAML configuration file defining the environment and task."""
 
     # Model server configuration
@@ -215,6 +218,15 @@ def main(args: LaunchArgs) -> None:
     """Load config and dispatch to web UI or headless trial execution."""
     from capx.envs.runner import _run_headless_trials, _start_api_servers, _stop_api_servers
 
+    if args.logger2skill_config:
+        from capx.logger2skill.experiment import run_experiment
+        run_experiment(args.logger2skill_config, args.output_dir)
+        return
+
+    if args.single_program:
+        args.max_query_retries = 0
+        if args.api_key is None:
+            args.api_key = os.environ.get("CAPX_CODING_API_KEY")
     start_time = time.time()
     env_factory, config, api_servers = _load_config(args)
     server_procs = _start_api_servers(api_servers)

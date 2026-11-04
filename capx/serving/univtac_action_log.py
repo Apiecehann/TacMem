@@ -55,7 +55,7 @@ def set_harness_mode() -> None:
     harness mode.
     """
     global _HARNESS_MODE
-    _HARNESS_MODE = True
+    _HARNESS_MODE = not bool(os.environ.get("CAPX_LOGGER2SKILL"))
 
 
 def _default_path(task: str, ep: str) -> Path:

@@ -158,7 +158,7 @@ class TactileSkillLibrary:
     # ------------------------------------------------------------------
 
     @classmethod
-    def load(cls, root: Path | str | None = None) -> "TactileSkillLibrary":
+    def load(cls, root: Path | str | None = None, *, allow_empty: bool = False) -> "TactileSkillLibrary":
         """Read every ``skills/*/*.md`` under ``root`` plus its taxonomy.
 
         Raises:
@@ -175,7 +175,7 @@ class TactileSkillLibrary:
             if skill.name in skills:
                 raise SkillError(f"{path}: duplicate skill name {skill.name!r}")
             skills[skill.name] = skill
-        if not skills:
+        if not skills and not allow_empty:
             raise SkillError(f"{root}: no skills found under skills/*/*.md")
         return cls(skills, task_types, root)
 

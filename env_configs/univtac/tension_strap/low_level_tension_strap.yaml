@@ -1,0 +1,2 @@
+_target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+task_name: tension_strap

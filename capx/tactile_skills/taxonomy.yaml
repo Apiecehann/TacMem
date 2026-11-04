@@ -116,6 +116,7 @@ task_types:
     # itself, nor contact-flag-is-range (withheld here); it says when 34.00 can
     # be read as "nothing there" and when it cannot.
     - blind_pick_balls
+    - tension_strap
     - lift_bottle
     - lift_can
     - pull_out_key
