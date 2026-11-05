@@ -1543,12 +1543,92 @@ def _reset_diagnostic_namespace():
     import numpy as np
 
     path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
-    names = {"_configure_compact_match", "_create_compact_match", "_bind_compact_match", "_run_native_reset"}
+    names = {"_configure_compact_match", "_create_compact_match", "_bind_compact_match",
+             "_bind_tension_strap_pre_move", "_run_native_reset"}
     nodes = [n for n in ast.parse(path.read_text()).body
              if isinstance(n, ast.FunctionDef) and n.name in names]
     ns = {"os": os, "sys": sys, "np": np, "logger": logging.getLogger("reset-diagnostic-test")}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), ns)
     return ns
+
+
+@pytest.mark.parametrize("debug", [False, True])
+@pytest.mark.parametrize("failure", [None, "open", "above_strap", "approach_strap", "position", "rotation", "nonfinite"])
+def test_strap_pre_move_approaches_open_before_policy(monkeypatch, debug, failure):
+    import sys
+    import numpy as np
+
+    class Pose:
+        def __init__(self, p, q):
+            self.p, self.q = np.asarray(p, dtype=float), np.asarray(q, dtype=float)
+
+    monkeypatch.setitem(sys.modules, "envs.utils.transforms", SimpleNamespace(Pose=Pose))
+    monkeypatch.setenv("UNIVTAC_DEBUG_RESET", "1" if debug else "0")
+    ns = _reset_diagnostic_namespace()
+    events = []
+    offset = np.array([0., 0., .131])
+    orientation = np.array([0., 1., 0., 0.])
+
+    class Task:
+        cfg = SimpleNamespace(skip_pre_move=False, reset_time_limit=600)
+        base = np.array([.57, .01, .005])
+        motion_speed_scale = 3.
+
+        def __init__(self):
+            self.pose = Pose([0., 0., 0.], orientation)
+            self._robot_manager = SimpleNamespace(
+                get_gripper_center_pose=lambda: self.pose,
+                gripper_center_to_ee=lambda p: Pose(p.p + offset, p.q))
+            self.atom = SimpleNamespace(move_to_pose=lambda p: p)
+
+        def pre_move(self):
+            events.append("open")
+            self.plan_success = failure != "open"
+
+        def move(self, action, *, tag, time_dilation_factor, delay):
+            events.append(tag)
+            assert time_dilation_factor == 1. and delay is False
+            expected = self.base + [0., 0., .174 + (.05 if tag == "above_strap" else 0.)]
+            np.testing.assert_allclose(action.p, expected + offset)
+            np.testing.assert_array_equal(action.q, orientation)
+            self.pose = Pose(action.p - offset, action.q)
+            self.step_count += 11
+            self.plan_success = failure != tag
+            if tag == "approach_strap":
+                if failure == "position": self.pose.p[0] += .02
+                if failure == "rotation": self.pose.q = np.array([1., 0., 0., 0.])
+                if failure == "nonfinite": self.pose.p[0] = float("nan")
+
+        def reset(self, seed):
+            self.step_count = 0
+            self.pre_move()
+            self.policy_start_step = self.step_count
+            events.append("policy")
+            return seed
+
+    task = Task()
+    ns["_bind_tension_strap_pre_move"](task)
+    bound = task.pre_move
+    if failure:
+        with pytest.raises(RuntimeError, match="Strap pre_move"):
+            ns["_run_native_reset"](task, 42000)
+        assert "policy" not in events
+        if failure == "open": assert events == ["open"]
+        if failure == "above_strap": assert events == ["open", "above_strap"]
+    else:
+        for _ in range(2):
+            assert ns["_run_native_reset"](task, 42000) == 42000
+            assert task.policy_start_step == 22
+        assert events == ["open", "above_strap", "approach_strap", "policy"] * 2
+    assert task.pre_move is bound
+
+
+def test_strap_pre_move_rejects_skipped_preparation(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, "envs.utils.transforms", SimpleNamespace(Pose=object))
+    with pytest.raises(ValueError, match="requires pre_move"):
+        _reset_diagnostic_namespace()["_bind_tension_strap_pre_move"](
+            SimpleNamespace(cfg=SimpleNamespace(skip_pre_move=True)))
 
 
 @pytest.mark.parametrize("seed", [41000, 41039, 42000])

@@ -1058,6 +1058,41 @@ def _bind_compact_match(task, selection):
     task._choose_identity_pair = choose
 
 
+def _bind_tension_strap_pre_move(task):
+    from envs.utils.transforms import Pose
+
+    if getattr(task.cfg, "skip_pre_move", False):
+        raise ValueError("The strap policy-start configuration requires pre_move")
+    native_pre_move = task.pre_move
+
+    def pre_move():
+        native_pre_move()
+        if not task.plan_success:
+            raise RuntimeError("Strap pre_move failed while opening the gripper")
+        center = np.asarray(task.base, dtype=float) + [0., 0., .174]
+        q = np.asarray(task._robot_manager.get_gripper_center_pose().q, dtype=float).copy()
+        for dz, tag in ((.05, "above_strap"), (0., "approach_strap")):
+            target = Pose(center + [0., 0., dz], q)
+            task.move(task.atom.move_to_pose(task._robot_manager.gripper_center_to_ee(target)),
+                      tag=tag, time_dilation_factor=min(1., .5 * task.motion_speed_scale), delay=False)
+            if not task.plan_success:
+                raise RuntimeError(f"Strap pre_move failed during {tag}")
+        actual = task._robot_manager.get_gripper_center_pose()
+        position_error = float(np.linalg.norm(np.asarray(actual.p) - center))
+        actual_q = np.asarray(actual.q, dtype=float)
+        norm = float(np.linalg.norm(q) * np.linalg.norm(actual_q))
+        rotation_error = (float(2 * np.arccos(np.clip(abs(np.dot(q, actual_q)) / norm, 0., 1.)))
+                          if np.isfinite(norm) and norm > 0 else float("nan"))
+        logger.info("Strap pre_move target=%s actual=%s position_error_m=%.6f rotation_error_rad=%.6f",
+                    center.tolist(), np.asarray(actual.p).tolist(), position_error, rotation_error)
+        if (not np.isfinite(position_error) or not np.isfinite(rotation_error)
+                or position_error > .005 or rotation_error > np.deg2rad(5.)):
+            raise RuntimeError("Strap pre_move did not reach the handle grasp pose")
+        logger.info("Strap pre_move complete: gripper open at handle; policy starts with closing")
+
+    task.pre_move = pre_move
+
+
 def _run_native_reset(task, seed):
     if os.environ.get("UNIVTAC_DEBUG_RESET") != "1":
         return task.reset(seed=seed)
@@ -4065,6 +4100,8 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     _TASK = (_create_compact_match(task_module, env_cfg, compact_selection)
              if compact_selection is not None else task_module.Task(env_cfg, mode="collect"))
     _TASK_NAME = task_name
+    if task_name == "tension_strap" and _OBSERVATION_MODE in ("raw", "none"):
+        _bind_tension_strap_pre_move(_TASK)
     if compact_selection is not None:
         _bind_compact_match(_TASK, compact_selection)
         private_dir = Path(os.environ["UNIVTAC_ACTION_LOG"]).parent / "private"

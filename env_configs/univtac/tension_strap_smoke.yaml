@@ -34,6 +34,12 @@ env:
       counts only if it stays within half a newton of its target. The strap is the
       only thing in the scene, and it is called "elastic_strap".
 
+      Before this program starts, initialization opens the gripper and moves it
+      above the strap handle, then down to the handle grasp pose. The actual pose
+      is checked before handoff. The gripper is still open: begin by closing it
+      with the documented position-control API. Do not repeat the initial approach.
+      The preparation has not closed the gripper or issued a pulling action.
+
       The simulation advances only while the hand is being commanded; waiting passes
       no time at all, so a hold is made of commands.
 
