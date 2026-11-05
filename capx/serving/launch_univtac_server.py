@@ -997,6 +997,50 @@ def _configure_compact_match(task_module, cfg, seed):
             "rng_state": copy.deepcopy(selector.rng.bit_generator.state)}
 
 
+def _create_compact_match(task_module, cfg, selection):
+    import copy
+
+    class PoseRecorder:
+        def set_pose(self, pose):
+            self.pose = pose
+
+    preview = object.__new__(task_module.Task)
+    preview.cfg = cfg
+    preview.rng = np.random.default_rng(selection["seed"])
+    preview.rng.bit_generator.state = copy.deepcopy(selection["rng_state"])
+    preview._compact_reference_actor = PoseRecorder()
+    preview._compact_match_actor = PoseRecorder()
+    preview._compact_distractor_actor = PoseRecorder()
+    preview._reset_episode_state = lambda: None
+    task_module.Task._reset_actors(preview)
+    poses = [preview._compact_reference_actor.pose, preview._compact_match_actor.pose,
+             preview._compact_distractor_actor.pose]
+    selection["spawn_layout"] = {
+        name: {"position": np.asarray(pose.p).tolist(), "quaternion": np.asarray(pose.q).tolist()}
+        for name, pose in zip(("reference_active", "match_active", "distractor_active"), poses)
+    }
+    selection["match_on_left"] = bool(preview.match_on_left)
+    native_create = task_module.Task.create_actors
+
+    def create_at_targets(task):
+        existed = "_stash_pose" in vars(task)
+        previous = vars(task).get("_stash_pose")
+        task._stash_pose = lambda index: poses[index]
+        try:
+            return native_create(task)
+        finally:
+            if existed:
+                task._stash_pose = previous
+            else:
+                delattr(task, "_stash_pose")
+
+    task_module.Task.create_actors = create_at_targets
+    try:
+        return task_module.Task(cfg, mode="collect")
+    finally:
+        task_module.Task.create_actors = native_create
+
+
 def _bind_compact_match(task, selection):
     import copy
 
@@ -4018,7 +4062,8 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     logger.info("Creating task '%s' (sensor=%s, device=%s)...", task_name, sensor_type, device)
     # Use "collect" mode — avoids per-step _update_render() overhead
     # that makes "eval" mode unusably slow (~2 FPS vs ~25 FPS).
-    _TASK = task_module.Task(env_cfg, mode="collect")
+    _TASK = (_create_compact_match(task_module, env_cfg, compact_selection)
+             if compact_selection is not None else task_module.Task(env_cfg, mode="collect"))
     _TASK_NAME = task_name
     if compact_selection is not None:
         _bind_compact_match(_TASK, compact_selection)
@@ -4026,7 +4071,7 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
         private_dir.mkdir(parents=True, exist_ok=True)
         (private_dir / "compact_scene.json").write_text(
             json.dumps(compact_selection, indent=2), encoding="utf-8")
-        logger.info("Compact scene enabled: three task objects; native seed RNG state preserved")
+        logger.info("Compact scene enabled: three task objects at native seed positions; native seed RNG state preserved")
     logger.info("Task '%s' initialized successfully.", task_name)
 
     # Startup reset.  Agents have no reset() (see robo.py), so the scene must
