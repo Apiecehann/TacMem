@@ -1543,7 +1543,7 @@ def _reset_diagnostic_namespace():
     import numpy as np
 
     path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
-    names = {"_configure_compact_match", "_bind_compact_match", "_run_native_reset"}
+    names = {"_configure_compact_match", "_create_compact_match", "_bind_compact_match", "_run_native_reset"}
     nodes = [n for n in ast.parse(path.read_text()).body
              if isinstance(n, ast.FunctionDef) and n.name in names]
     ns = {"os": os, "sys": sys, "np": np, "logger": logging.getLogger("reset-diagnostic-test")}
@@ -1578,6 +1578,92 @@ def test_compact_scene_preserves_pair_and_following_random_draw(seed):
     task.cfg.seed += 1
     with pytest.raises(RuntimeError, match="fresh process"):
         task._choose_identity_pair()
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2, 3, 29, 42000])
+@pytest.mark.parametrize("fail_create", [False, True])
+def test_compact_creation_uses_native_targets_and_restores_creation_method(seed, fail_create):
+    import copy
+    import numpy as np
+    ns = _reset_diagnostic_namespace()
+    constructed = []
+
+    class Actor:
+        def set_pose(self, pose):
+            self.pose = pose
+
+    class Native:
+        def __init__(self, cfg, mode):
+            assert mode == "collect"
+            self.cfg = cfg
+            self.rng = np.random.default_rng(seed)
+            constructed.append(self)
+            self.create_actors()
+
+        def _choose_identity_pair(self):
+            if self.cfg.compact_fixed_pair_scene:
+                return self.cfg.reference_class_key, self.cfg.distractor_class_key
+            return tuple(self.rng.choice(["a", "b", "c"], size=2, replace=False))
+
+        @staticmethod
+        def _stash_pose(index):
+            return SimpleNamespace(p=np.array([-2.0, -2.0 - index, 0.021]), q=np.array([1., 0., 0., 0.]))
+
+        def create_actors(self):
+            self.created = [self._stash_pose(i) for i in range(3)]
+            for name in ("_compact_reference_actor", "_compact_match_actor", "_compact_distractor_actor"):
+                setattr(self, name, Actor())
+            if self.cfg.fail_create:
+                raise RuntimeError("native constructor failed")
+
+        def _reset_episode_state(self):
+            self.reset_called = True
+
+        def _reset_actors(self):
+            self._choose_identity_pair()
+            self.match_on_left = bool(self.rng.random() < 0.5)
+            centers = [[0.68, 0.24], [0.60, -0.345], [0.60, -0.175]]
+            if not self.match_on_left:
+                centers[1], centers[2] = centers[2], centers[1]
+            actors = [self._compact_reference_actor, self._compact_match_actor, self._compact_distractor_actor]
+            for actor, center in zip(actors, centers):
+                xy = np.asarray(center) + self.rng.uniform(-0.002, 0.002, size=2)
+                actor.set_pose(SimpleNamespace(p=np.r_[xy, 0.021], q=np.array([1., 0., 0., 0.])))
+            self._reset_episode_state()
+
+    cfg = SimpleNamespace(random_texture=False, compact_fixed_pair_scene=True,
+                          reference_class_key="random", distractor_class_key="random", seed=seed,
+                          fail_create=False)
+    selection = ns["_configure_compact_match"](SimpleNamespace(Task=Native), cfg, seed)
+    control = Native(cfg, "collect")
+    ns["_bind_compact_match"](control, selection)
+    control._reset_actors()
+    expected = [control._compact_reference_actor.pose, control._compact_match_actor.pose,
+                control._compact_distractor_actor.pose]
+    following = control.rng.random(4)
+    cfg.fail_create = fail_create
+    original_create = Native.create_actors
+    original_reset = Native._reset_actors
+    rng_state = copy.deepcopy(selection["rng_state"])
+    if fail_create:
+        with pytest.raises(RuntimeError, match="native constructor failed"):
+            ns["_create_compact_match"](SimpleNamespace(Task=Native), cfg, selection)
+    else:
+        task = ns["_create_compact_match"](SimpleNamespace(Task=Native), cfg, selection)
+        ns["_bind_compact_match"](task, selection)
+        task._reset_actors()
+        np.testing.assert_array_equal(task.rng.random(4), following)
+        assert task.reset_called
+    created = constructed[-1]
+    for actual, target in zip(created.created, expected):
+        np.testing.assert_array_equal(actual.p, target.p)
+        np.testing.assert_array_equal(actual.q, target.q)
+    assert "_stash_pose" not in vars(created)
+    assert Native.create_actors is original_create
+    assert Native._reset_actors is original_reset
+    assert selection["rng_state"] == rng_state
+    assert selection["match_on_left"] == control.match_on_left
+    assert set(selection["spawn_layout"]) == {"reference_active", "match_active", "distractor_active"}
 
 
 @pytest.mark.parametrize("fail", [False, True])
