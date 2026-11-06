@@ -2,7 +2,7 @@
 id: R9
 name: grasp-verification
 family: protocol
-summary: Inspect both raw fingertip views after closing and during transport; a sent
+summary: Inspect raw images and depth from both fingertips after closing and during transport; a sent
   close command does not prove a stable grasp.
 task_types:
 - classify
@@ -18,7 +18,7 @@ evidence: Sampling and observation cautions adapted from original R9; no new exp
 
 ## How
 
-Collect left and right raw snapshots after closing. Observe changes when the robot lifts and carries the object, together with allowed robot state and scene vision.
+Collect left and right raw images and depth after closing. Observe changes when the robot lifts and carries the object, together with allowed robot state and scene vision.
 
 ## Traps
 

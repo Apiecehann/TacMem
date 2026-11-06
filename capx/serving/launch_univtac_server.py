@@ -3979,6 +3979,10 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
             task_config["task_parameters"] = {**task_config.get("task_parameters", {}),
                                               "force_time_sequence": request["force_time_sequence"],
                                               "tolerance_N": request["tolerance_N"]}
+            if "strap_color_mode" in manifest:
+                if manifest["strap_color_mode"] not in {"blue", "tricolor"}:
+                    raise ValueError("strap_color_mode must be blue or tricolor")
+                task_config["task_parameters"]["strap_color_mode"] = manifest["strap_color_mode"]
 
     # Must happen before ``import envs.*`` — once envs.utils.actor is bound, its
     # UipcObject base class is fixed for the life of the process.  Two ways in:

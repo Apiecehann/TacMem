@@ -29,10 +29,11 @@ env:
       You are controlling a Franka Emika robot with GelSight Mini tactile sensors
       on both fingertips. The API is described below.
 
-      Goal: pull the elastic strap to 12 newtons and hold it there for three
-      seconds, then pull it to 18 newtons and hold that for three seconds. A hold
-      counts only if it stays within half a newton of its target. The strap is the
-      only thing in the scene, and it is called "elastic_strap".
+      Goal: execute this episode's two-stage force and time request: {force_request}.
+      The force_time_sequence field is [first force in newtons, first hold in seconds,
+      second force in newtons, second hold in seconds]. Complete the stages in that
+      order. Each hold counts only while the force stays continuously within half
+      a newton of its target. The strap is called "elastic_strap".
 
       Before this program starts, initialization opens the gripper and moves it
       above the strap handle, then down to the handle grasp pose. The actual pose
@@ -43,12 +44,13 @@ env:
       The simulation advances only while the hand is being commanded; waiting passes
       no time at all, so a hold is made of commands.
 
-      The arm's own travel is not a measure of the load. How far this strap
-      stretches for a given force is a property of the strap, and it is different
-      every episode, so a plan made of distances cannot be this task. What does not
-      change is that the load passes through the fingers: the pads carry it, and the
-      gel is therefore the only thing here that can say how hard the strap is being
-      pulled.
+      Judge the elastic strap tension from the available raw tactile images and depth.
+
+      Infer the tension yourself and attempt both requested force-and-time stages.
+      Do not stop, return early, or raise an exception solely because a calibrated
+      force estimate, conversion formula, or known-force reference is unavailable.
+      Make your best attempt using the observations and APIs available to you.
+      Continue to respect native termination, action limits, and execution budgets.
 
       The strap is elastic, so the load is set by where the hand is and by nothing
       else - the pull raises it and backing off lowers it by as much. There is no
@@ -70,7 +72,7 @@ env:
     - no-absolute-without-reference
 agent0_mode: raw
 task_name: tension_strap
-seed_manifest: env_configs/ablations/seeds40.json
+seed_manifest: env_configs/ablations/seeds30_tension.json
 model: gpt-6-astra
 reasoning_effort: high
 max_tokens: 8192
@@ -78,7 +80,7 @@ temperature: 1.0
 server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 api_servers:
 - _target_: capx.serving.launch_univtac_server.main
-  python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  python: ${oc.env:CAPX_SIM_PYTHON,/mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python}
   task: tension_strap
   port: 8120
   host: 127.0.0.1
@@ -95,10 +97,10 @@ use_video_differencing: false
 use_oracle_code: false
 use_parallel_ensemble: false
 use_multimodel: false
-exec_alarm_seconds: 1200
+exec_alarm_seconds: 1800
 trial_timeout_seconds: 1800
-process_timeout_seconds: 2400
-output_dir: /mnt/data/ljz/opentacbench/cap-agent0-baselines/raw_tactile
+process_timeout_seconds: 1800
+output_dir: ${oc.env:CAPX_OUTPUT_ROOT,/mnt/data/ljz/opentacbench/cap-agent0-baselines}/raw_tactile
 trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
 resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
 num_workers: 1

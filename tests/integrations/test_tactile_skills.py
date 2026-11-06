@@ -1259,7 +1259,7 @@ def test_agent0_sanitized_skill_selection_and_native_config_loading(tmp_path, mo
     from capx.utils.launch_utils import _load_config
     from capx.envs.configs.instantiate import instantiate
     monkeypatch.chdir(REPO_ROOT)
-    monkeypatch.setenv("CAPX_TASK_SEED", "41000")
+    monkeypatch.setenv("CAPX_TASK_SEED", "0")
     forbidden = re.compile(r"left_depth_mm|right_depth_mm|marker_|detect_slip|force_threshold|anisotrop|coherence|contact.flag|estimated_.*force", re.I)
     paths = [CONFIG_ROOT / f"{task}/univtac_{task}.yaml" for task in ("weight_classify","grasp_classify","hardness_classify","tactile_memory_match","bulb_tightening","blind_pick_balls")]
     paths.append(CONFIG_ROOT / "tension_strap_smoke.yaml")
@@ -1268,7 +1268,7 @@ def test_agent0_sanitized_skill_selection_and_native_config_loading(tmp_path, mo
         env_cfg, config, servers = _load_config(args)
         assert args.single_program and args.max_tokens == 8192 and args.max_query_retries == 0
         assert args.model == "gpt-6-astra" and args.reasoning_effort == "high"
-        assert config["max_trial_attempts"] == 1 and servers[0]["seed"] == 41000
+        assert config["max_trial_attempts"] == 1 and servers[0]["seed"] == 0
         assert config["skills_sha256"] and env_cfg["cfg"]["multi_turn_prompt"] == ""
         env = instantiate(env_cfg)
         assert not forbidden.search(env._tactile_skill_block())
@@ -2013,3 +2013,49 @@ def test_agent0_seed_zero_is_executed(tmp_path, monkeypatch):
     }, 0.0)
     assert calls == [0]
     assert (tmp_path / "aaa_done_flag/aaa_done_flag.txt").read_text() == "1"
+
+
+@pytest.mark.parametrize("color", [None, "blue", "tricolor", "invalid"])
+def test_strap_frozen_request_preserves_native_parameters(color):
+    import ast
+    import copy
+    import json
+
+    manifest = json.loads((REPO_ROOT / "env_configs/ablations/seeds30_tension.json").read_text())
+    if color is None:
+        manifest.pop("strap_color_mode")
+    else:
+        manifest["strap_color_mode"] = color
+    original = {"task_parameters": {"strap_color_mode": "blue", "overload_N": 24.0,
+                                    "mesh_path": "assets/native_mesh.npz", "policy_timeout_seconds": 60.0}}
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    init = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == "init_task")
+    block = next(n for n in ast.walk(init) if isinstance(n, ast.If)
+                 and ast.unparse(n.test) == "task_name == 'tension_strap' and request is not None")
+    code = compile(ast.Module(body=[block], type_ignores=[]), str(path), "exec")
+    for seed in manifest["test_seeds"]:
+        request = manifest["requests"]["tension_strap"][str(seed)]
+        ns = {"task_name": "tension_strap", "request": request, "manifest": manifest,
+              "task_config": copy.deepcopy(original)}
+        if color == "invalid":
+            with pytest.raises(ValueError, match="strap_color_mode"):
+                exec(code, ns)
+            continue
+        exec(code, ns)
+        assert ns["task_config"]["task_parameters"] == {
+            **original["task_parameters"], "force_time_sequence": request["force_time_sequence"],
+            "tolerance_N": request["tolerance_N"], "strap_color_mode": color or "blue"}
+
+
+def test_strap_formal_requests_and_thirty_minute_configuration():
+    import json
+
+    cfg = yaml.safe_load((CONFIG_ROOT / "tension_strap_smoke.yaml").read_text())
+    manifest = json.loads((REPO_ROOT / cfg["seed_manifest"]).read_text())
+    source = json.loads((REPO_ROOT / manifest["request_source"]["path"]).read_text())
+    assert manifest["test_seeds"] == list(range(30))
+    assert manifest["strap_color_mode"] == "tricolor"
+    for seed in range(30):
+        assert manifest["requests"]["tension_strap"][str(seed)] == source["requests"]["tension_strap"][str(41000 + seed)]
+    assert {cfg[k] for k in ("exec_alarm_seconds", "trial_timeout_seconds", "process_timeout_seconds")} == {1800}
+    assert "{force_request}" in cfg["env"]["cfg"]["prompt"]
