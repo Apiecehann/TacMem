@@ -62,6 +62,8 @@ class CodeExecEnvConfig:
     api_functions: dict[str, list[str]] | None = None
     observation_mode: str = "native"
     tactile_skills: list[str] | None = None
+    tactile_skill_root: str | None = None
+    tactile_feature_groups: str | None = None
     raw_observation_dir: str | None = None
 
 
@@ -112,6 +114,8 @@ class CodeExecutionEnvBase(Env):
             configure = getattr(api, "configure_observation_mode", None)
             if configure is not None:
                 configure(cfg.observation_mode, cfg.raw_observation_dir)
+            if cfg.tactile_feature_groups is not None:
+                api.configure_tactile_feature_groups(cfg.tactile_feature_groups)
         if cfg.tactile_skills is not None:
             self.tactile_skills = tuple(cfg.tactile_skills)
         if cfg.api_functions is not None:
@@ -250,19 +254,20 @@ class CodeExecutionEnvBase(Env):
         for each skill's whole body.  Naming skills directly skips the tactile
         check: an explicit list is a deliberate choice.
         """
-        from capx.tactile_skills import default_library
+        from capx.tactile_skills import default_library, TactileSkillLibrary
+
+        root = getattr(getattr(self, "cfg", None), "tactile_skill_root", None)
+        library = TactileSkillLibrary.load(root) if root else default_library()
 
         verbose = bool(getattr(self, "tactile_skills_verbose", False))
         wanted = getattr(self, "tactile_skills", True)
         if wanted is not True:
             if not wanted:
                 return ""
-            library = default_library()
             skills = [library.get(name) for name in wanted]
             body = "\n".join(s.render(compact=not verbose) for s in skills)
             return f"SKILLS (named by {type(self).__name__}):\n{body}".strip()
 
-        library = default_library()
         task = self._task_name()
         if library.task_type_of(task) is None or not self._reads_the_gel():
             return ""

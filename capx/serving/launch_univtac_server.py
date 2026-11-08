@@ -365,6 +365,7 @@ app = FastAPI(title="UniVTAC Tactile API Server")
 _TASK: Any = None
 _TASK_NAME: str = ""
 _OBSERVATION_MODE = "native"
+_TACTILE_FEATURE_GROUPS = None
 _EPISODE_REQUEST_FILE: str | None = None
 _ACTION_SEQUENCE = 0
 # Marker positions at reset time (gripper open, no contact), used as the
@@ -443,7 +444,7 @@ def _physics_sample():
 
 def _exec_wrapper(fn, args, kwargs, out: dict) -> None:
     """Execute *fn* and store result/exception in *out* (thread-safe)."""
-    before = _physics_sample() if _OBSERVATION_MODE != "native" else {}
+    before = _physics_sample() if _OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS else {}
     try:
         out["result"] = fn(*args, **kwargs)
         out["error"] = None
@@ -451,7 +452,7 @@ def _exec_wrapper(fn, args, kwargs, out: dict) -> None:
         out["result"] = None
         out["error"] = exc
     finally:
-        if _OBSERVATION_MODE != "native" and getattr(fn, "__name__", "") != "measured":
+        if (_OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS) and getattr(fn, "__name__", "") != "measured":
             after = _physics_sample()
             action_log.log_event("query_span", query=getattr(fn, "__name__", "unknown"),
                                  physics_start=before.get("physics_step"),
@@ -494,7 +495,23 @@ def _run_on_main(fn, *args, timeout: float = _QUERY_TIMEOUT, **kwargs):
     return result_holder["result"]
 
 
+def _feature_view(data):
+    if isinstance(data, list):
+        return [_feature_view(value) for value in data]
+    if not isinstance(data, dict):
+        return data
+    allowed = {"contact", "depth_mm", "marker_displacement_px", "marker_shear_dx", "marker_shear_dy", "marker_coherence"}
+    if _TACTILE_FEATURE_GROUPS == "BDS":
+        allowed |= {"marker_anisotropy", "height_roughness_mm"}
+    return {key: _feature_view(value) for key, value in data.items()
+            if not key.startswith(("left_", "right_")) or key.split("_", 1)[1] in allowed}
+
+
 def _public_response(model, data: dict):
+    if _TACTILE_FEATURE_GROUPS:
+        payload = model(**data).model_dump(mode="json")
+        payload.update({k: data[k] for k in ("step", "time_seconds") if k in data})
+        return JSONResponse(content=_feature_view(payload))
     if _OBSERVATION_MODE == "native":
         return model(**data)
     return JSONResponse(content=data)
@@ -521,14 +538,15 @@ def _agent0_action(name, args, timeout, fn, fargs, detail_prefix):
         action_log.log_action(name, args, ok=False, msg=f"{detail_prefix}: {type(exc).__name__}",
                               dur_s=_time.perf_counter()-started,
                               extra={"action_id": action_id, **span})
-        raise HTTPException(status_code=500, detail=f"{detail_prefix}: native action did not complete") from None
+        detail = str(exc) if _TACTILE_FEATURE_GROUPS else "native action did not complete"
+        raise HTTPException(status_code=500, detail=f"{detail_prefix}: {detail}") from None
     clean = {key: result[key] for key in ("success", "seed", "step_limit", "completed", "requested", "feed_lead_m", "grip_released", "native_done") if key in result}
     clean["step"] = span.get("physics_end")
     clean["message"] = "OK" if result.get("success", True) else "Native action failed"
     action_log.log_action(name, args, ok=bool(result.get("success", True)), msg=clean["message"],
                           dur_s=_time.perf_counter()-started, step=clean["step"],
                           extra={"action_id": action_id, **span})
-    return clean
+    return {**result, "step": clean["step"]} if _TACTILE_FEATURE_GROUPS else clean
 
 
 def _raw_tactile_snapshot() -> dict:
@@ -580,7 +598,7 @@ def _run_action(name: str, args: dict, timeout: float, fn, *fargs,
     HTTPException(500, f"{detail_prefix}: {e}") on error — the same
     response text the handlers produced before.
     """
-    if _OBSERVATION_MODE != "native":
+    if _OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS:
         return _agent0_action(name, args, timeout, fn, fargs, detail_prefix)
     t0 = _time.perf_counter()
     try:
@@ -935,7 +953,7 @@ def _capture_frame() -> str:
         return base64.b64encode(buf.getvalue()).decode("ascii")
     _TASK._update_render()
     obs = _TASK._get_observations()
-    if _OBSERVATION_MODE != "native":
+    if _OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS:
         cameras = obs.get("observation", {})
         img = cameras.get("head", {}).get("rgb")
         if img is None:
@@ -2056,6 +2074,9 @@ def _sim_get_tactile_data(*, raw_read: bool = False) -> dict:
         if left_roughness is not None:
             result["left_height_roughness_mm"] = round(left_roughness, 4)
             result["right_height_roughness_mm"] = round(right_roughness, 4)
+        if _TACTILE_FEATURE_GROUPS:
+            sample = _physics_sample()
+            result.update(step=sample["physics_step"], time_seconds=sample["time_seconds"])
         return result
     except Exception as exc:
         logger.warning("Tactile data unavailable: %s", traceback.format_exc())
@@ -3221,7 +3242,7 @@ def check_success():
         raise HTTPException(status_code=503, detail="Task not initialized")
     try:
         result = _run_on_main(_sim_check_success, timeout=30.0)
-        if _OBSERVATION_MODE != "native":
+        if _OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS:
             root = os.environ.get("UNIVTAC_ACTION_LOG")
             if root:
                 path = Path(root).parent / "private" / "native_result.json"
@@ -3452,7 +3473,7 @@ def set_recording_mode(req: RecordingModeRequest):
     """
     if req.mode == "harness":
         _RECORDER.set_harness_mode()
-        if _OBSERVATION_MODE == "native":
+        if _OBSERVATION_MODE == "native" and not _TACTILE_FEATURE_GROUPS:
             action_log.set_harness_mode()
     return {"mode": req.mode, "harness_mode": _RECORDER.harness_mode}
 
@@ -4167,6 +4188,7 @@ def main() -> None:
                         help="Scene-randomization seed for the startup reset "
                              "(drives pre_move noise, e.g. grasp offset)")
     parser.add_argument("--observation-mode", choices=["native", "raw", "none"], default="native")
+    parser.add_argument("--tactile-feature-groups", choices=["BD", "BDS"], default=None)
     parser.add_argument("--run-dir", default=None)
     parser.add_argument("--episode-request-file", default=None)
     parser.add_argument("--cfg-override", action="append", default=[], metavar="KEY=VALUE",
@@ -4177,8 +4199,11 @@ def main() -> None:
 
     # Parse combined args
     cli = parser.parse_args()
-    global _OBSERVATION_MODE, _EPISODE_REQUEST_FILE, _RECORDER
+    global _OBSERVATION_MODE, _EPISODE_REQUEST_FILE, _RECORDER, _TACTILE_FEATURE_GROUPS
     _OBSERVATION_MODE = cli.observation_mode
+    _TACTILE_FEATURE_GROUPS = cli.tactile_feature_groups
+    if _TACTILE_FEATURE_GROUPS and _OBSERVATION_MODE != "native":
+        raise ValueError("Feature groups require native observations")
     _EPISODE_REQUEST_FILE = cli.episode_request_file
     if cli.run_dir:
         output = Path(cli.run_dir).resolve()
@@ -4227,7 +4252,7 @@ def main() -> None:
     class SingleGpuAppLauncher(AppLauncher):
         def _resolve_device_settings(self, launcher_args):
             super()._resolve_device_settings(launcher_args)
-            if _OBSERVATION_MODE != "native":
+            if _OBSERVATION_MODE != "native" or _TACTILE_FEATURE_GROUPS:
                 physical_gpu = os.environ.get("GPU")
                 if physical_gpu is None or not physical_gpu.isdecimal():
                     raise ValueError("Set GPU to one physical GPU index")

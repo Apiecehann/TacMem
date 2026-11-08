@@ -1,0 +1,164 @@
+# Routing keys for the tactile skill library.
+#
+# A task type is a family of tasks that need the same tactile skills; the task
+# names are the `task_name` of each config's low-level environment
+# (env_configs/univtac/<task>/low_level_<task>.yaml), which is also the name
+# the simulator knows the task by.  A test keeps this table in step with those
+# configs, so a task that is added or renamed fails loudly instead of silently
+# routing to nothing.
+#
+# Skills declare the task types they apply to (frontmatter `task_types`), and
+# may name individual tasks on top of that (`tasks`) when they serve one task
+# inside a type that does not need them.  The same key also removes one task
+# from a type-wide rule: descent-until-contact keeps four types by type and
+# names the five `manipulate` tasks that are not `blind_pick`, because in a
+# blind search the first pad event is an object's top edge rather than a
+# graspable depth (see the `manipulate` note below).
+#
+# The `place` family is deliberately not routed to `screw`.  Every rule in it
+# is about an object that is free — resting on a support, being carried, being
+# set down — and a threaded part is none of those: its thread holds it, so
+# backing up to unload drags it out of its seat, lowering until the height
+# stops falling presses it in, and a world-frame delta while gripping tears the
+# grasp.  On 2026-10-08 a run followed the family's 5 mm unload with the bulb
+# still gripped and took the pad force from 108 N to 145 N, past the 135 N the
+# glass holds, ending the episode.  Readdition needs a run that says otherwise.
+
+task_types:
+  classify:
+    # Tactile is the answer itself: the reading is the classification.
+    - weight_classify
+    - hardness_classify
+    - grasp_classify
+    - tactile_memory_match
+  insert:
+    # Tactile is the process signal: contact, tilt, jam, seating.
+    - insert_hdmi
+    - insert_hole
+    - insert_tube
+  manipulate:
+    # Tactile appears at the ends: confirming a grasp, confirming support.
+    #
+    # blind_pick (2026-10-15) is routed here for the opposite end of that
+    # sentence. The pads are the only sensor that can FIND the object — the box
+    # is opaque and the object sits below the rim, so nothing the delivered API
+    # returns says where it is — which makes touch the opening of the episode as
+    # well as its close. It is not given a type of its own because what this
+    # family carries is exactly what the task needs once contact is made: a
+    # grasp checked before it is trusted, a lift before any lateral move, a grip
+    # kept while the load changes. Until 2026-10-19 the library had no rule for
+    # the search itself. Three now exist and are routed by task name rather than
+    # by type: search-past-first-contact (A21), search-close-default (A22) and
+    # search-continues-after-miss (R14). The seed 3-10 batch (0/8) produced all
+    # three — five runs closed on the block's top edge at wrist 0.200-0.205 and
+    # lost it on the first lift, four raised on that first miss instead of
+    # trying their remaining columns, and one used a full position close
+    # (adaptive=False, no position) that drove the pads through the grasp.
+    # They stay task-scoped because they are false for the rest of this type:
+    # 0.177 is this box's block height, and "try the next site" presumes a
+    # search over an unknown pose. Routing them by type would hand lift_can and
+    # the rest a procedure for an episode they do not run.
+    #
+    # The family's oldest descent rule, descent-until-contact (A2), is the one
+    # skill routed to the rest of this family by name rather than by type.  It
+    # says to stop when a pad leaves the far plane, which is exactly the rule
+    # the seed 3-10 batch followed into a top-edge grasp: on a blind search the
+    # first event is the top of the object, not a graspable height, so the rule
+    # is inverted there.  Naming the other five tasks removes the contradiction
+    # from blind_pick's block without adding an exception to A2's summary on
+    # the five named tasks that still need it.
+    - blind_pick
+    # blind_pick_balls (2026-10-22) is the same opening as blind_pick and a
+    # different question. The box is opaque and the balls sit below its rim, so
+    # touch still carries the search; but what the episode has to settle is
+    # which ball, not where one is -- twelve identical-looking 30 mm spheres,
+    # three kinds, one kind wanted. The material is a world fact no reading
+    # names, so the only thing that can separate them is how a ball answers
+    # being touched, and the pads are the entire instrument. Routed here rather
+    # than into `classify` because the classification is not the deliverable:
+    # the episode ends on a lifted, verified grasp released in the bowl, and the
+    # family's grasp-check / lift-first / keep-the-grip rules are what that half
+    # of the task needs. It also inherits this family's descent rule being
+    # named away (above), which is right for the same reason. The search rules
+    # A21/A22 stay task-scoped to blind_pick: they are written for a box
+    # holding one block (0.177 is that block's wrist height, and the miss they
+    # recover from is a top-edge grasp), not for a row of candidates that must
+    # each be judged before being moved.
+    #
+    # R14 does reach here, from 2026-10-24. It was withheld on the same
+    # reasoning until the first LLM run on this task (gpt-6-astra, seed 1)
+    # ended at its first row on an uncaught `goto_pose` refusal: the arm came
+    # back 16 mm short of a descent to ball-centre height, the server spent its
+    # whole per-move budget in place, and the program had no try/except around
+    # the motion. A refused motion here is one candidate failing for the same
+    # reason it is in blind_pick, and the sweep does have "next sites" -- each
+    # ball the pads stop at. What differs is only who refuses: blind_pick's
+    # planner, this task's differential IK running out of reach.
+    #
+    # A25 (reach-band-at-ball-height, 2026-10-24) is the world fact behind that
+    # refusal, measured instead of inferred: the pads can be put on a ball's
+    # centre only between x ~ 0.38 and 0.63, and every stop outside it leaves
+    # both gels on the far plane, so the arm stopped the descent and no ball
+    # did. Task-scoped because the band is this box's near wall against this
+    # arm's envelope, not a property of a refused motion anywhere: blind_pick's
+    # single block sits well inside it, and no other task descends into a box.
+    # It is not a duplicate of R14 -- R14 says a refusal costs one candidate,
+    # A25 says which refusals are the world's and which are the search's.
+    #
+    # S24 (wide-pads-see-nothing, 2026-10-25) is what that far plane means at
+    # the widest opening. With the jaws at full open the two gels are 80 mm
+    # apart, so a 60 mm ball between them clears each by 10 mm -- past the
+    # ~5.7 mm the depth scale covers -- and both pads read 34.00 with the ball
+    # right there: 365 logged frames of a 2026-10-24 descent, and the run that
+    # lost all three rows never left the far plane at all. Task-scoped because
+    # every number in it is this box's, a 60 mm ball against this gripper's
+    # 80 mm of travel. It is not depth-grip-scale, which gives the scale
+    # itself, nor contact-flag-is-range (withheld here); it says when 34.00 can
+    # be read as "nothing there" and when it cannot.
+    - blind_pick_balls
+    - lift_bottle
+    - lift_can
+    - pull_out_key
+    - put_bottle_in_shelf
+    - tactile_transfer_rearrange_clean
+  screw:
+    # Tactile is the only judge: direction, lead, seating.
+    - bulb_tightening
+  wipe:
+    # Tactile is the gauge of a process that leaves no other trace: how hard
+    # the tool is pressed, whether the grip survives the stroke, how far the
+    # pad actually travelled.  The task's pass line is a pressure band the pad
+    # has to hold while it slides, and pressure is not a position — nothing the
+    # delivered API returns states it, so the gel and the slip channels are
+    # what the agent has to reason from.
+    #
+    # Shares the grasp-carry-contact-monitor skeleton with `manipulate` and
+    # adds a sustained-pressure dimension on top of it, which is why the whole
+    # of `manipulate`'s core reaches here too.  What is deliberately withheld
+    # is the putting-down half of `place` — unload-before-open,
+    # descend-until-supported, settle-after-release, seat-height-from-plate —
+    # because nothing is ever set down: the pad is held for the entire episode,
+    # and those rules describe a free object being lowered onto a support,
+    # which a pad pressed into a wall against a commanded reach is not.  The
+    # carrying half of `place` does reach here.  The `screw` and `insert`
+    # families are withheld too: there is no thread to follow and no hole to
+    # find — contact here is made and kept, not entered.
+    - wipe_vase
+  force:
+    # Tactile is the gauge: the episode is a load held at a number, and the
+    # load is the only thing scored.  Nothing is placed, inserted or screwed,
+    # so the `place`, `insert` and `screw` families are wrong for it end to
+    # end — there is no free object to set down, no hole to enter and no
+    # thread to follow, and every rule in them is about one of those.
+    #
+    # What it does need from `manipulate` is the carrying half: a grasp
+    # checked before it is trusted, and a grip kept while the load changes.
+    # That half reaches here because the shared rules are typed, not because
+    # this task is routed to that family; the descent-and-seat rules that the
+    # rest of `manipulate` carries do not.
+    #
+    # tension_strap (2026-10-31) is the only member.  Its load is not a
+    # position and not a force the API reports: the strap's modulus is drawn
+    # per episode, so the same tension sits at a different height on every
+    # seed, and only the gel can say how hard it is being pulled.
+    - tension_strap

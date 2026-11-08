@@ -1,0 +1,98 @@
+env:
+  _target_: capx.envs.tasks.tactile.univtac_grasp_classify.UniVTACGraspClassifyCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/grasp_classify/low_level_grasp_classify.yaml
+    privileged: false
+    apis:
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+    prompt: "\nYou are controlling a Franka Emika robot with GelSight Mini tactile sensors\non both fingertips.\
+      \ The API is described below.\n\nGoal: Grasp the prism, use tactile sensing to determine whether its surface\n\
+      texture is rough or smooth, and gently place it on the matching pad:\n  - Rough texture → orange pad\n  -\
+      \ Smooth texture → green pad\n\nKey rules:\n- Texture is read from the gel's marker-image anisotropy (get_tactile_data),\n\
+      \  and its size depends on how hard the gel is pressed — so it is read at two\n  COMMANDED grip depths and\
+      \ the two are compared. Which channel, which two\n  depths, and the calibrated values to split on are in the\
+      \ tactile skills at\n  the end of this prompt.\n- Place the prism with the placement recipe in those same\
+      \ skills: the task is\n  scored on where it ends up, upright and on the right pad.\n- Final placement: within\
+      \ 2 cm horizontally and 1 cm vertically, upright\n  within 15°.\n\nWrite ONLY executable Python code (no code\
+      \ fences). Import numpy if needed.\n"
+    observation_mode: native
+    tactile_skills:
+    - descent-until-contact
+    - grasp-pose-from-offset
+    - one-call-approach
+    - reflex-stop-on-events
+    - descend-until-supported
+    - keep-closed-if-task-allows
+    - lift-before-lateral
+    - seat-height-from-plate
+    - settle-after-release
+    - unload-before-open
+    - world-frame-transport
+    - channel-selection
+    - differential-across-states
+    - grasp-verification
+    - no-absolute-without-reference
+    - one-grasp-multi-property
+    - readability-not-identity
+    - tactile-cannot-locate
+    - close-lands-on-target
+    - contact-flag-is-range
+    - depth-grip-scale
+    - finger-position-grip
+    - follow-is-signal
+    - gel-shear-weight
+    - no-calibration-transfer
+    - position-mode-for-yield
+    - shear-vs-displacement
+    - slip-pair-baseline
+    - texture-slope-two-grips
+    multi_turn_prompt: ''
+    tactile_feature_groups: BDS
+    tactile_skill_root: env_configs/ablations/tactile_features/skills/full
+agent0_mode: native
+task_name: grasp_classify
+seed_manifest: env_configs/ablations/tactile_features/seeds.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  python: ${oc.env:CAPX_SIM_PYTHON}
+  task: grasp_classify
+  port: ${oc.decode:${oc.env:UNIVTAC_PORT,8132}}
+  host: 127.0.0.1
+  observation_mode: native
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+  tactile_feature_groups: BDS
+record_video: true
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 1200
+trial_timeout_seconds: 1800
+process_timeout_seconds: 2400
+output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/full
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1

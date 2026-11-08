@@ -214,8 +214,8 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
 
     mode = configs_dict.get("agent0_mode")
     if mode is not None:
-        if mode not in {"raw", "none"}:
-            raise ValueError("agent0_mode must be raw or none")
+        if mode not in {"raw", "none", "native"}:
+            raise ValueError("agent0_mode must be raw, none or native")
         seed = int(merged_config["resume_idx"])
         if merged_config["total_trials"] != seed or merged_config["num_workers"] != 1:
             raise ValueError("Agent 0 runs one seed in a fresh process")
@@ -267,8 +267,9 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
         if args.api_key is None:
             args.api_key = os.environ.get("CAPX_API_KEY") or os.environ.get("OPENAI_API_KEY")
         args.trial_timeout = getattr(args, "trial_timeout", None) or configs_dict.get("trial_timeout_seconds", 1200)
-        from capx.tactile_skills import default_library
-        library = default_library()
+        from capx.tactile_skills import default_library, TactileSkillLibrary
+        skill_root = env_factory["cfg"].get("tactile_skill_root")
+        library = TactileSkillLibrary.load(skill_root) if skill_root else default_library()
         skill_records = []
         for name in env_factory["cfg"].get("tactile_skills", []):
             skill = library.get(name)

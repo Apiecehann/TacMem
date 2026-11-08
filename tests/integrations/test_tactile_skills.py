@@ -35,6 +35,105 @@ from capx.tactile_skills import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_bd_feature_view_keeps_native_values_and_controls(monkeypatch, capsys):
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode("native")
+    api.configure_tactile_feature_groups("BD")
+    api.configure_functions(["get_tactile_data", "close_gripper", "get_ee_pose"])
+    data = {"left_depth_mm": 26.3, "right_depth_mm": 25.8,
+            "left_marker_displacement_px": 1.7, "right_marker_shear_dx": -0.3,
+            "left_marker_coherence": 0.7, "left_contact": True,
+            "left_marker_anisotropy": 1.2, "right_height_roughness_mm": 0.06,
+            "left_rgb_base64": "must not decode", "step": 42, "time_seconds": 0.35}
+    monkeypatch.setattr(api, "_get", lambda *a, **kw: data)
+    read = api.get_tactile_data()
+    assert read["left_depth_mm"] == 26.3 and read["right_marker_shear_dx"] == -0.3
+    assert read["step"] == 42 and read["time_seconds"] == 0.35
+    feedback = api._motion_feedback({"tactile": data})
+    assert feedback == {k: v for k, v in read.items() if k not in {"step", "time_seconds"}}
+    for text in (repr(read), repr(feedback), api.combined_doc(), capsys.readouterr().out):
+        assert "anisotropy" not in text and "roughness" not in text and "base64" not in text
+    assert api.selected_functions()["close_gripper"].__func__ is UniVTACTactileApi.close_gripper
+    with pytest.raises(ValueError):
+        api.configure_functions(["get_tactile_image"])
+
+
+@pytest.mark.parametrize("groups", ["BD", "BDS"])
+def test_bd_http_view_covers_nested_observation_without_changing_input(groups):
+    import ast
+    import copy
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    tree = ast.parse(path.read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_feature_view")
+    scope = {"_TACTILE_FEATURE_GROUPS": groups}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), "exec"), scope)
+    native = {"tactile": {"left_depth_mm": 26.0, "right_marker_shear_dx": -1.0,
+                          "left_marker_anisotropy": 1.2, "left_rgb_base64": "pixels"},
+              "head_rgb_base64": "scene", "ee_position": [1, 2, 3]}
+    before = copy.deepcopy(native)
+    public = scope["_feature_view"](native)
+    expected = {"left_depth_mm": 26.0, "right_marker_shear_dx": -1.0}
+    if groups == "BDS":
+        expected["left_marker_anisotropy"] = 1.2
+    assert public["tactile"] == expected
+    assert public["head_rgb_base64"] == "scene" and native == before
+
+
+def test_bd_skill_root_is_used_by_prompt(tmp_path):
+    import shutil
+    root = tmp_path / "skills"
+    shutil.copytree(REPO_ROOT / "capx/tactile_skills", root)
+    path = root / "skills/protocol/channel-selection.md"
+    text = path.read_text()
+    text = re.sub(r"(?m)^summary:.*$", "summary: External library selected", text, count=1)
+    path.write_text(text)
+    env = object.__new__(CodeExecutionEnvBase)
+    env.cfg = SimpleNamespace(tactile_skill_root=str(root))
+    env.tactile_skills = ("channel-selection",)
+    assert "External library selected" in env._tactile_skill_block()
+
+
+@pytest.mark.parametrize("mode,groups,stop_log", [("native", "BD", False), ("native", "BDS", False), ("native", None, True), ("raw", None, False), ("none", None, False)])
+def test_bd_recording_keeps_motion_statistics(mode, groups, stop_log):
+    import ast
+    from unittest.mock import Mock
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    fn = next(n for n in ast.parse(path.read_text()).body
+              if isinstance(n, ast.FunctionDef) and n.name == "set_recording_mode")
+    fn.decorator_list = []
+    recorder = SimpleNamespace(set_harness_mode=Mock(), harness_mode=True)
+    log = SimpleNamespace(set_harness_mode=Mock())
+    scope = {"_RECORDER": recorder, "_OBSERVATION_MODE": mode,
+             "_TACTILE_FEATURE_GROUPS": groups, "action_log": log,
+             "RecordingModeRequest": SimpleNamespace}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), "exec"), scope)
+    scope["set_recording_mode"](SimpleNamespace(mode="harness"))
+    assert recorder.set_harness_mode.call_count == 1
+    assert log.set_harness_mode.called is stop_log
+
+
+def test_full_feature_view_preserves_spatial_scalars(monkeypatch):
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode("native")
+    api.configure_tactile_feature_groups("BDS")
+    api.configure_functions(["get_tactile_data", "close_gripper", "get_ee_pose"])
+    data = {}
+    for side in ("left", "right"):
+        for name, value in {"contact": True, "depth_mm": 26.3, "marker_displacement_px": 1.7,
+                            "marker_shear_dx": -0.3, "marker_shear_dy": 0.1,
+                            "marker_coherence": 0.7, "marker_anisotropy": 1.2,
+                            "height_roughness_mm": 0.06}.items():
+            data[f"{side}_{name}"] = value
+    monkeypatch.setattr(api, "_get", lambda *a, **kw: dict(data))
+    assert api.get_tactile_data() == data
+    assert api._motion_feedback({"tactile": data}) == data
+    docs = api.combined_doc()
+    assert "marker_anisotropy" in docs and "height_roughness_mm" in docs
+    assert api.selected_functions()["close_gripper"].__func__ is UniVTACTactileApi.close_gripper
 CONFIG_ROOT = REPO_ROOT / "env_configs" / "univtac"
 LIBRARY_ROOT = REPO_ROOT / "capx" / "tactile_skills"
 

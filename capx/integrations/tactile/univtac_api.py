@@ -179,9 +179,18 @@ class UniVTACTactileApi(ApiBase):
             self._optional_functions += ("get_tactile_image", "get_tactile_depth")
 
     def _motion_feedback(self, data: dict) -> dict:
+        if getattr(self, "_tactile_feature_groups", None) == "BD":
+            return {k: v for k, v in data.get("tactile", {}).items()
+                    if k in _MOTION_TACTILE_FIELDS and not k.endswith("height_roughness_mm")}
         if getattr(self, "_observation_mode", "native") == "native":
             return _trim_motion_tactile(data.get("tactile", {}))
         return {"ok": bool(data.get("success", True)), "step": data.get("step")}
+
+    def configure_tactile_feature_groups(self, groups: str) -> None:
+        if groups not in {"BD", "BDS"} or getattr(self, "_observation_mode", "native") != "native":
+            raise ValueError("This feature view requires native observations and groups BD or BDS")
+        self._tactile_feature_groups = groups
+        self._optional_functions = ("get_ee_pose", "submit_episode")
 
     def close_gripper_position(self, position: float | None = None) -> dict:
         """Close with native position control.
@@ -202,6 +211,18 @@ class UniVTACTactileApi(ApiBase):
         return self.close_gripper(position=position, adaptive=False)
 
     def _doc_text(self, fn) -> str:
+        if getattr(self, "_tactile_feature_groups", None) == "BD":
+            text = super()._doc_text(fn)
+            if fn.__name__ == "get_tactile_data":
+                text = text.split("left_marker_anisotropy", 1)[0].rstrip()
+                start = text.find("(marker_anisotropy")
+                if start >= 0:
+                    end = text.index(")", start) + 1
+                    text = text[:start] + text[end:]
+                return text
+            if fn.__name__ in {"goto_pose", "move_delta", "open_gripper", "close_gripper", "rotate_gripper"}:
+                return text.split("Returns:", 1)[0] + "Returns: left/right contact, depth_mm, marker_displacement_px, marker_shear_dx, marker_shear_dy and marker_coherence, when available."
+            return text
         if getattr(self, "_observation_mode", "native") == "native":
             return super()._doc_text(fn)
         name = fn.__name__
@@ -305,7 +326,7 @@ class UniVTACTactileApi(ApiBase):
             return False
 
     def _post(self, path: str, body: dict | None = None) -> dict:
-        if getattr(self, "_observation_mode", "native") != "native" and path in {"/move", "/move_delta", "/gripper", "/rotate_gripper", "/shadow/move", "/shadow/wait"}:
+        if (getattr(self, "_observation_mode", "native") != "native" or getattr(self, "_tactile_feature_groups", None)) and path in {"/move", "/move_delta", "/gripper", "/rotate_gripper", "/shadow/move", "/shadow/wait"}:
             log_dir = os.environ.get("CAPX_RUN_DIR")
             if log_dir:
                 with (Path(log_dir) / "actions_sent.jsonl").open("a", encoding="utf-8") as stream:
@@ -780,6 +801,12 @@ class UniVTACTactileApi(ApiBase):
         if mode == "raw":
             return self._read_raw_tactile()
         data = self._get("/tactile")
+        if getattr(self, "_tactile_feature_groups", None) == "BD":
+            data = {k: v for k, v in data.items()
+                    if (k in _MOTION_TACTILE_FIELDS and not k.endswith("height_roughness_mm"))
+                    or k in {"step", "time_seconds"}}
+            print(f"Tactile: {data}")
+            return data
         # The server computes the marker anisotropy from the same uint8 array
         # its PNG payload carries.  Derive it here only when the response has
         # none, so an older server loses no reading over it.

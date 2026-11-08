@@ -1,0 +1,142 @@
+env:
+  _target_: capx.envs.tasks.tactile.univtac_tactile_memory_match.UniVTACTactileMemoryMatchCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/tactile_memory_match/low_level_tactile_memory_match.yaml
+    privileged: false
+    apis:
+    - UniVTACTactileApi
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+    prompt: "\nYou are controlling a Franka Emika robot with GelSight Mini tactile sensors\non both fingertips.\
+      \ The API is described below.\n\nTask: tactile memory matching.  Three identical orange cans (lying flat on\
+      \ \nthe table) sit in a line: one REFERENCE can at the back, two CANDIDATE cans \nin front of it (candidate_left\
+      \ on the left, candidate_right on the right).  \nA green MATCH SLOT lies beside the row. Public pose names\
+      \ (get_object_pose; \nreturns position, quaternion_wxyz, bbox_extent): reference_object, \ncandidate_left,\
+      \ candidate_right and match_slot.\n\nPosition GT and grasp coordinates for this task:\nget_object_pose(name,\
+      \ return_bbox_extent=True) returns the simulator\nactor's world position in metres, quaternion_wxyz, and full\
+      \ bounding-box\ndimensions. It is ground-truth geometry, not an image estimate or an\nattribute/class label.\
+      \ For these lying cans the actor origin is at the\ncan centre; do not assume the generic bottom-origin description\
+      \ applies.\nget_ee_pose() returns the robot wrist-flange world pose. goto_pose takes\nthis wrist pose, not\
+      \ an object centre or a fingertip contact point.\n\nBefore issuing any robot motion, query the reference_object\
+      \ pose and call\nsample_grasp_pose(\"reference_object\") once. Save its grasp quaternion and\ngrasp_offset\
+      \ = reference_grasp_position - reference_object_position.\nThe reset pre-move anchors this helper to the reference\
+      \ only. Do NOT call\nsample_grasp_pose for candidate_left, candidate_right or match_slot:\nwithout a task-specific\
+      \ rule its first call returns the current wrist\npose, which is not a valid grasp target for a new object.\n\
+      For each initially aligned candidate, query its live get_object_pose\nposition and use candidate_position\
+      \ + grasp_offset as the wrist grasp\ntarget, with the saved reference grasp quaternion. Re-query object poses\n\
+      after motion rather than reusing stale positions. Retain this offset\ninstead of recalibrating it after the\
+      \ arm has left the reset pose.\n\nThe cans look exactly the same but differ physically in three independent\n\
+      ways: 2 surface textures x 2 weights x 2 hardnesses (one rigid, one\ncompliant).  One candidate is the reference's\
+      \ \"twin\" (identical in all\nthree); the other differs in at least one of them.  Your job:\n\n  1. Measure\
+      \ the available property responses of the reference from one progressive\n     position-commanded grasp, following\
+      \ the one-grasp protocol in the\n     tactile skills at the end of this prompt.\n  2. Probe both candidates\
+      \ with the exact same one-grasp protocol.\n  3. Place on the MATCH SLOT the candidate whose feel is closest\
+      \ to the\n     reference.  Vision cannot tell them apart — decide ONLY from tactile\n     data.\n\nKey rules:\n\
+      - Every call can fail, time out, or be rejected.  Wrap each in try/except and\n  treat a failure as \"this\
+      \ attempt missed\", never as the end of your program:\n  a crashed trial scores 0 exactly like a wrong answer.\n\
+      - Budget the episode, not the attempt: the whole run has to fit in roughly\n  250 API calls, at most 3 grips\
+      \ per can plus one re-grasp.  Every call costs\n  about the same ~10 s whether it moves 2 mm or 50 mm, so\
+      \ the count is what\n  costs, not the distance.  Once a can's budget is spent, decide with the\n  readings\
+      \ you have — two cans fully read beats three cans half-read.\n- Obtain valid protocol readings for the reference\
+      \ and both candidates before\n  deciding.  The skills below say what makes a reading valid, what a missed\n\
+      \  approach costs, and which candidate the readings do and do not identify.\n\nComparison and fallback for\
+      \ this evaluation:\nComplete the reference and candidate probes before selecting a candidate.\nCompare the\
+      \ valid measured responses under the same probing protocol, using\nonly the available channels and compatible\
+      \ skill rules. Use this comparison\nto choose the candidate best supported by the reference measurements.\n\
+      An unavailable property is UNKNOWN and is omitted from the comparison;\nit is not a mismatch, and does not\
+      \ invalidate the other measured properties.\nIf the remaining measured properties distinguish the candidates,\
+      \ use that\nevidence to select. Do not discard it merely because another property is\nunavailable. Do not\
+      \ select randomly before probing or collect measurements\nwithout using them in the final candidate decision.\n\
+      Only when the remaining valid evidence cannot distinguish the candidates,\nor no valid evidence can be obtained\
+      \ within the existing budget, choose\nuniformly at random among the candidates that remain possible. Make\
+      \ the\nfinal selection once after comparison and retain it through placement.\nPhysically attempt the selected\
+      \ candidate's grasp, transport and placement.\nDo not invent observations, labels or calibration values. Respect\
+      \ native\ntermination, motion limits and the existing execution budget.\nThis available-evidence comparison\
+      \ takes precedence over any requirement\nabove to measure every property or obtain a complete set of readings.\n\
+      \nAvailable tactile features for this evaluation:\nThe documented per-side contact, depth_mm, marker_displacement_px,\n\
+      marker_shear_dx, marker_shear_dy, marker_coherence and marker_anisotropy\nvalues are available. height_roughness_mm\
+      \ is available only where the task\nand sensor report it; do not assume an unavailable field has a zero value.\n\
+      Use the retained skills and measured values; missing properties stay unknown.\nDo not request unlisted fields\
+      \ or raw sensor arrays. Apply the comparison and conditional fallback defined above.\nWrite ONLY executable\
+      \ Python code (no code fences). Import numpy if needed.\n"
+    observation_mode: native
+    tactile_skills:
+    - descent-until-contact
+    - grasp-pose-from-offset
+    - one-call-approach
+    - reflex-stop-on-events
+    - descend-until-supported
+    - keep-closed-if-task-allows
+    - lift-before-lateral
+    - seat-height-from-plate
+    - settle-after-release
+    - unload-before-open
+    - world-frame-transport
+    - channel-selection
+    - differential-across-states
+    - grasp-verification
+    - memory-match-one-grasp
+    - no-absolute-without-reference
+    - one-grasp-multi-property
+    - readability-not-identity
+    - tactile-cannot-locate
+    - can-texture-difference
+    - close-lands-on-target
+    - contact-flag-is-range
+    - depth-grip-scale
+    - finger-position-grip
+    - follow-is-signal
+    - gel-shear-weight
+    - no-calibration-transfer
+    - position-mode-for-yield
+    - shear-vs-displacement
+    - slip-pair-baseline
+    multi_turn_prompt: ''
+    tactile_feature_groups: BDS
+    tactile_skill_root: env_configs/ablations/tactile_features/skills/full
+agent0_mode: native
+task_name: tactile_memory_match
+seed_manifest: env_configs/ablations/tactile_features/seeds.json
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+temperature: 1.0
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  python: ${oc.env:CAPX_SIM_PYTHON}
+  task: tactile_memory_match
+  cfg_override: compact_fixed_pair_scene=true
+  port: ${oc.decode:${oc.env:UNIVTAC_PORT,8132}}
+  host: 127.0.0.1
+  observation_mode: native
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+  headless: true
+  device: cuda:0
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+  tactile_feature_groups: BDS
+record_video: true
+use_visual_feedback: true
+use_wrist_camera: false
+use_img_differencing: false
+use_video_differencing: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_multimodel: false
+exec_alarm_seconds: 2400
+trial_timeout_seconds: 3600
+process_timeout_seconds: 4200
+output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/full
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,42000}}
+num_workers: 1
