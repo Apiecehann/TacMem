@@ -61,7 +61,7 @@ def test_bd_feature_view_keeps_native_values_and_controls(monkeypatch, capsys):
         api.configure_functions(["get_tactile_image"])
 
 
-@pytest.mark.parametrize("groups", ["BD", "BDS"])
+@pytest.mark.parametrize("groups", ["B", "BD", "BS", "DS", "BDS"])
 def test_bd_http_view_covers_nested_observation_without_changing_input(groups):
     import ast
     import copy
@@ -76,7 +76,11 @@ def test_bd_http_view_covers_nested_observation_without_changing_input(groups):
     before = copy.deepcopy(native)
     public = scope["_feature_view"](native)
     expected = {"left_depth_mm": 26.0, "right_marker_shear_dx": -1.0}
-    if groups == "BDS":
+    if groups in {"B", "BS"}:
+        expected.pop("right_marker_shear_dx")
+    if groups == "DS":
+        expected.pop("left_depth_mm")
+    if groups in {"BS", "DS", "BDS"}:
         expected["left_marker_anisotropy"] = 1.2
     assert public["tactile"] == expected
     assert public["head_rgb_base64"] == "scene" and native == before
@@ -969,6 +973,7 @@ def _native_submission_namespace():
             nodes.append(node)
     ns = {"__name__": __name__, "dataclass": dataclass, "Path": Path, "Any": Any,
           "VITAFORGE_ROOT": Path("/native/opentac"), "UNIVTAC_ROOT": Path("/native/univtac"),
+          "os": __import__("os"), "_REPO_ROOT": REPO_ROOT,
           "logger": logging.getLogger(__name__), "traceback": traceback}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec", dont_inherit=True), ns)
     return ns
@@ -2158,3 +2163,180 @@ def test_strap_formal_requests_and_thirty_minute_configuration():
         assert manifest["requests"]["tension_strap"][str(seed)] == source["requests"]["tension_strap"][str(41000 + seed)]
     assert {cfg[k] for k in ("exec_alarm_seconds", "trial_timeout_seconds", "process_timeout_seconds")} == {1800}
     assert "{force_request}" in cfg["env"]["cfg"]["prompt"]
+
+
+@pytest.mark.parametrize("groups", ["B", "BS"])
+def test_bs_view_preserves_hardness_inputs_and_native_position_commands(groups, monkeypatch, capsys):
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    from unittest.mock import Mock
+    data = {"left_depth_mm": 27.0, "right_depth_mm": 27.3,
+            "left_contact": True, "right_contact": True,
+            "left_marker_displacement_px": 1.6, "right_marker_displacement_px": 0.8,
+            "left_marker_anisotropy": 1.2, "right_marker_anisotropy": 1.3,
+            "left_height_roughness_mm": 0.07, "left_marker_shear_dx": 0.4,
+            "right_marker_shear_dy": -0.2, "left_marker_coherence": 0.8,
+            "left_rgb_base64": "withheld", "step": 42, "time_seconds": 0.175}
+    api = UniVTACTactileApi(None)
+    api.configure_observation_mode("native")
+    api.configure_tactile_feature_groups(groups)
+    api.configure_functions(["get_tactile_data", "close_gripper", "get_ee_pose", "goto_pose", "move_delta", "open_gripper", "rotate_gripper", "get_object_pose", "sample_grasp_pose"])
+    monkeypatch.setattr(api, "_get", lambda *a, **kw: dict(data))
+    post = Mock(return_value={"success": True, "tactile": data})
+    monkeypatch.setattr(api, "_post", post)
+    read = api.get_tactile_data()
+    feedback = api.close_gripper(position=0.06, adaptive=False)
+    post.assert_called_once_with("/gripper", {"action": "close", "use_adaptive_grasp": False, "position": 0.06})
+    assert read["step"] == 42 and read["time_seconds"] == 0.175
+    retained = ["left_depth_mm", "right_depth_mm", "left_contact", "left_marker_displacement_px"]
+    if groups == "BS":
+        retained += ["left_marker_anisotropy", "left_height_roughness_mm"]
+    for key in retained:
+        assert read[key] == feedback[key] == data[key]
+    for text in (repr(read), repr(feedback), api.combined_doc(), capsys.readouterr().out):
+        removed_fields = ["marker_shear", "marker_coherence", "base64"]
+        if groups == "B":
+            removed_fields += ["marker_anisotropy", "height_roughness_mm"]
+        for removed in removed_fields:
+            assert removed not in text
+    with pytest.raises(ValueError):
+        api.configure_functions(["get_tactile_image"])
+
+
+def test_ds_view_withholds_basic_feedback_without_changing_native_motion(monkeypatch, capsys):
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    from capx.integrations.tactile.univtac_ball_api import UniVTACBallApi
+    from unittest.mock import Mock
+    data = {f"{side}_{field}": value for side in ("left", "right")
+            for field, value in {"contact": True, "depth_mm": 26.5,
+                "marker_displacement_px": 1.7, "marker_shear_dx": -0.4,
+                "marker_shear_dy": 0.0, "marker_coherence": 0.0,
+                "marker_anisotropy": 1.2, "height_roughness_mm": 0.07,
+                "rgb_base64": "withheld"}.items()}
+    data.update(step=42, time_seconds=0.35)
+    for cls in (UniVTACTactileApi, UniVTACBallApi):
+        api = cls(None)
+        api.configure_observation_mode("native")
+        api.configure_tactile_feature_groups("DS")
+        api.configure_functions(["get_tactile_data", "close_gripper", "goto_pose", "get_ee_pose"])
+        monkeypatch.setattr(api, "_get", lambda *args, **kwargs: dict(data))
+        post = Mock(return_value={"success": True, "tactile": data})
+        monkeypatch.setattr(api, "_post", post)
+        read = api.get_tactile_data()
+        feedback = api.close_gripper(force_threshold=26.5, adaptive=True)
+        post.assert_called_once_with("/gripper", {"action": "close", "force_threshold": 26.5,
+                                                  "use_adaptive_grasp": True})
+        for side in ("left", "right"):
+            for field in ("marker_shear_dx", "marker_shear_dy", "marker_coherence",
+                          "marker_anisotropy", "height_roughness_mm"):
+                key = f"{side}_{field}"
+                assert read[key] == feedback[key] == data[key]
+        assert read["step"] == 42 and read["time_seconds"] == 0.35
+        for text in (repr(read), repr(feedback), api.combined_doc(), capsys.readouterr().out):
+            for field in ("left_contact", "right_contact", "depth_mm", "marker_displacement_px", "base64"):
+                assert field not in text
+        with pytest.raises(ValueError):
+            api.configure_functions(["get_tactile_image"])
+
+
+@pytest.mark.parametrize("groups", ["BD", "BS", "DS", "BDS"])
+def test_feature_view_hides_bulb_internal_force_and_preserves_terminal_state(groups):
+    import ast
+    import copy
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    fn = next(n for n in ast.parse(path.read_text()).body
+              if isinstance(n, ast.FunctionDef) and n.name == "_feature_view")
+    scope = {"_TACTILE_FEATURE_GROUPS": groups}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), "exec"), scope)
+    data = {"success": True, "completed": 7, "requested": 10,
+            "message": "the bulb is loaded on its seat (3.47 N)",
+            "reached": "the bulb is loaded on its seat (3.47 N)", "aborted": None,
+            "trace": [{"step": 42, "angle_deg": 3.0, "pad_max_N": 89.0,
+                       "torque_Nm": 0.2, "seat_force_N": 3.47,
+                       "formal_advance_m": 0.006, "phase_error_m": 0.001}]}
+    before = copy.deepcopy(data)
+    public = scope["_feature_view"](data)
+    assert data == before and public["reached"] is True
+    assert public["trace"] == [{"step": 42, "angle_deg": 3.0}]
+    assert public["completed"] == 7 and public["requested"] == 10
+    for value in ("3.47", "pad_max_N", "torque_Nm", "seat_force_N", "phase_error_m"):
+        assert value not in repr(public)
+    failure = scope["_feature_view"]({"message": "pad force 128.2 N reached 128 N guard"})
+    assert failure == {"message": "Native safety limit reached"}
+
+
+@pytest.mark.parametrize("group", ["DS", "BS", "BD", "BDS"])
+@pytest.mark.parametrize("task,alias", [("tactile_memory_match", "combination"),
+    ("tension_strap", "tension_strap"), ("bulb_tightening", "bulb"),
+    ("blind_pick_balls", "blind")])
+def test_leave_one_group_config_binds_only_documented_signals(group, task, alias, tmp_path, monkeypatch):
+    import json
+    from capx.envs.launch import LaunchArgs
+    from capx.utils.launch_utils import _load_config
+    from capx.envs.configs.instantiate import instantiate
+    root = REPO_ROOT / "env_configs/ablations/tactile_features"
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setenv("CAPX_TASK_SEED", "0")
+    monkeypatch.setenv("CAPX_SIM_PYTHON", "/test/simulator/python")
+    monkeypatch.setenv("CAPX_ABLATION_OUTPUT_DIR", str(tmp_path))
+    path = root / f"{alias}_{group.lower()}.yaml"
+    args = LaunchArgs(config_path=str(path), output_dir=str(tmp_path / alias / group))
+    env_cfg, config, servers = _load_config(args)
+    env = instantiate(env_cfg)
+    assert args.single_program and args.max_query_retries == 0
+    assert args.model == "gpt-6-astra" and args.reasoning_effort == "high"
+    assert args.max_tokens == 8192 and args.model_timeout_seconds == 300
+    assert config["max_trial_attempts"] == 1 and servers[0]["seed"] == 0
+    assert servers[0]["tactile_feature_groups"] == group
+    assert env.cfg.tactile_feature_groups == group
+    assert env.cfg.multi_turn_prompt == "" and "{force_request}" not in env._task_prompt
+    api = next(iter(env._apis.values()))
+    prompt = env._get_complete_prompt()
+    fields = {"B": ("left_contact", "right_contact", "depth_mm", "marker_displacement_px"),
+              "D": ("marker_shear_dx", "marker_shear_dy", "marker_coherence"),
+              "S": ("marker_anisotropy", "height_roughness_mm")}
+    for letter, names in fields.items():
+        if letter not in group:
+            assert all(name not in prompt for name in names)
+    visible = set(api.selected_functions()) - api._prompt_hidden
+    assert "get_tactile_data" in visible and "get_ee_pose" in visible
+    assert not visible & {"get_tactile_image", "get_tactile_depth", "detect_slip", "move_reflexive"}
+    if task == "blind_pick_balls":
+        assert not visible & {"get_object_pose", "sample_grasp_pose", "rotate_gripper"}
+        assert "0.118 m" in api.combined_doc()
+    library = TactileSkillLibrary.load(REPO_ROOT / env.cfg.tactile_skill_root)
+    for name in env.cfg.tactile_skills:
+        skill = library.get(name)
+        assert all(library.get(target) for target in LINK.findall(skill.body))
+        assert skill.body.count("```") % 2 == 0
+    full = yaml.safe_load((root / f"{alias}_bds.yaml").read_text())
+    current = yaml.safe_load(path.read_text())
+    for key in ("exec_alarm_seconds", "trial_timeout_seconds", "process_timeout_seconds",
+                "model", "reasoning_effort", "max_tokens", "seed_manifest", "record_video"):
+        assert current[key] == full[key]
+    assert current["env"]["cfg"]["api_functions"] == full["env"]["cfg"]["api_functions"]
+    prefix = "Available per-side scalar fields (left_/right_ prefixes):"
+    assert current["env"]["cfg"]["prompt"].split(prefix)[0] == full["env"]["cfg"]["prompt"].split(prefix)[0]
+    manifest = json.loads((root / "seeds30.json").read_text())
+    assert manifest["test_seeds"] == list(range(30))
+    key = "combined_match" if task == "tactile_memory_match" else task
+    assert set(manifest["requests"][key]) == {str(seed) for seed in range(30)}
+
+
+def test_leave_one_group_suite_requires_explicit_group_selection():
+    import json
+    root = REPO_ROOT / "env_configs/ablations/tactile_features"
+    suite = json.loads((root / "suite.json").read_text())
+    assert suite["select_one_group"] is True and suite["default_group"] is None
+    assert set(suite["groups"]) == {"BD", "BS", "DS", "BDS"}
+    for tasks in suite["groups"].values():
+        assert len(tasks) == 4
+        for task in tasks.values():
+            assert (REPO_ROOT / task["config"]).is_file()
+    code = (REPO_ROOT / "capx/serving/launch_univtac_server.py").read_text()
+    assert 'os.environ.get("UNIVTAC_COMPOSABLE_ROOT"' in code
+
+
+def test_leave_one_group_composable_path_comes_from_runtime(monkeypatch):
+    monkeypatch.setenv("UNIVTAC_COMPOSABLE_ROOT", "/other/server/composable")
+    ns = _native_submission_namespace()
+    assert ns["TASK_BACKING"]["tactile_memory_match"].root == Path("/other/server/composable")

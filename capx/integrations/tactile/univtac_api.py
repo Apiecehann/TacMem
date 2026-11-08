@@ -179,6 +179,17 @@ class UniVTACTactileApi(ApiBase):
             self._optional_functions += ("get_tactile_image", "get_tactile_depth")
 
     def _motion_feedback(self, data: dict) -> dict:
+        if getattr(self, "_tactile_feature_groups", None) == "DS":
+            return {k: v for k, v in _trim_motion_tactile(data.get("tactile", {})).items()
+                    if k not in {f"{side}_{field}" for side in ("left", "right")
+                                 for field in ("contact", "depth_mm", "marker_displacement_px")}}
+        if getattr(self, "_tactile_feature_groups", None) == "B":
+            return {k: v for k, v in data.get("tactile", {}).items()
+                    if k in {f"{side}_{field}" for side in ("left", "right")
+                             for field in ("contact", "depth_mm", "marker_displacement_px")}}
+        if getattr(self, "_tactile_feature_groups", None) == "BS":
+            return {k: v for k, v in _trim_motion_tactile(data.get("tactile", {})).items()
+                    if not k.endswith(("marker_shear_dx", "marker_shear_dy", "marker_coherence"))}
         if getattr(self, "_tactile_feature_groups", None) == "BD":
             return {k: v for k, v in data.get("tactile", {}).items()
                     if k in _MOTION_TACTILE_FIELDS and not k.endswith("height_roughness_mm")}
@@ -187,8 +198,8 @@ class UniVTACTactileApi(ApiBase):
         return {"ok": bool(data.get("success", True)), "step": data.get("step")}
 
     def configure_tactile_feature_groups(self, groups: str) -> None:
-        if groups not in {"BD", "BDS"} or getattr(self, "_observation_mode", "native") != "native":
-            raise ValueError("This feature view requires native observations and groups BD or BDS")
+        if groups not in {"B", "BD", "BS", "DS", "BDS"} or getattr(self, "_observation_mode", "native") != "native":
+            raise ValueError("This feature view requires native observations and groups B, BD, BS, DS or BDS")
         self._tactile_feature_groups = groups
         self._optional_functions = ("get_ee_pose", "submit_episode")
 
@@ -211,6 +222,54 @@ class UniVTACTactileApi(ApiBase):
         return self.close_gripper(position=position, adaptive=False)
 
     def _doc_text(self, fn) -> str:
+        if getattr(self, "_tactile_feature_groups", None) and fn.__name__ == "rotate_gripper":
+            text = super()._doc_text(fn).split("Returns:", 1)[0]
+            return text + ("Returns: the configured tactile scalar fields, as documented in get_tactile_data. "
+                           "With feed_lead_m, helix also contains completed, requested, feed_lead_m, "
+                           "grip_released, a boolean reached terminal indicator, a categorical aborted "
+                           "reason and trace entries containing only step and commanded angle_deg. "
+                           "Internal force, torque and task measurements are not exposed.")
+        if getattr(self, "_tactile_feature_groups", None) == "DS":
+            text = super()._doc_text(fn)
+            if fn.__name__ == "close_gripper":
+                return ("Close using the unchanged native gripper controller. Args: force_threshold is "
+                        "an optional gel-deformation target in mm, not Newtons or a measured reading; "
+                        "lower commands request a firmer grip. position is an optional normalized "
+                        "opening, 0 fully closed and 1 fully open. adaptive=True uses the native servo; "
+                        "adaptive=False commands finger travel. Native limits and blocked-closure "
+                        "RuntimeError behavior remain. The command or exception alone does not verify "
+                        "a grasp. Returns only the configured D/S scalar readings, when available.")
+            if fn.__name__ == "get_tactile_data":
+                start = text.index("left_marker_coherence")
+                return ("Read the GelSight Mini scalar observations without moving. "
+                        "No raw images or arrays are returned. Missing or non-finite values "
+                        "are not measurements; a zero shear component or coherence does "
+                        "not establish contact or sensor validity. Returns step, "
+                        "time_seconds and, when available, the following per-side values:\n" + text[start:])
+            if fn.__name__ in {"goto_pose", "move_delta", "open_gripper", "close_gripper", "rotate_gripper"}:
+                return text.split("Returns:", 1)[0] + "Returns: left/right marker_shear_dx, marker_shear_dy, marker_coherence, marker_anisotropy and height_roughness_mm, when available."
+            return text
+        if getattr(self, "_tactile_feature_groups", None) == "B":
+            text = super()._doc_text(fn)
+            if fn.__name__ == "get_tactile_data":
+                text = text.split("left_marker_coherence", 1)[0].rstrip()
+                start = text.find("(marker_anisotropy")
+                if start >= 0:
+                    end = text.index(")", start) + 1
+                    text = text[:start] + text[end:]
+                return text
+            if fn.__name__ in {"goto_pose", "move_delta", "open_gripper", "close_gripper", "rotate_gripper"}:
+                return text.split("Returns:", 1)[0] + "Returns: left/right contact, depth_mm and marker_displacement_px, when available."
+            return text
+        if getattr(self, "_tactile_feature_groups", None) == "BS":
+            text = super()._doc_text(fn)
+            if fn.__name__ == "get_tactile_data":
+                start = text.index("left_marker_coherence")
+                end = text.index("left_marker_anisotropy", start)
+                return text[:start] + text[end:]
+            if fn.__name__ in {"goto_pose", "move_delta", "open_gripper", "close_gripper", "rotate_gripper"}:
+                return text.split("Returns:", 1)[0] + "Returns: left/right contact, depth_mm, marker_displacement_px, marker_anisotropy and height_roughness_mm, when available."
+            return text
         if getattr(self, "_tactile_feature_groups", None) == "BD":
             text = super()._doc_text(fn)
             if fn.__name__ == "get_tactile_data":
@@ -801,6 +860,11 @@ class UniVTACTactileApi(ApiBase):
         if mode == "raw":
             return self._read_raw_tactile()
         data = self._get("/tactile")
+        if getattr(self, "_tactile_feature_groups", None) in {"B", "BS", "DS"}:
+            data = {**self._motion_feedback({"tactile": data}),
+                    **{k: data[k] for k in ("step", "time_seconds") if k in data}}
+            print(f"Tactile: {data}")
+            return data
         if getattr(self, "_tactile_feature_groups", None) == "BD":
             data = {k: v for k, v in data.items()
                     if (k in _MOTION_TACTILE_FIELDS and not k.endswith("height_roughness_mm"))

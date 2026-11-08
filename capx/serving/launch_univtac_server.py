@@ -164,7 +164,7 @@ TASK_BACKING: dict[str, TaskBacking] = {
     "arm_shadow_piano": TaskBacking(UNIVTAC_ROOT, None),
     "grasp_classify": TaskBacking(UNIVTAC_ROOT, "gelsight.yml"),
     "tactile_memory_match": TaskBacking(
-        Path("/mnt/data/ljz/opentacbench/UniVTAC-composable-tactile-slots"),
+        Path(os.environ.get("UNIVTAC_COMPOSABLE_ROOT", str(_REPO_ROOT.parent / "UniVTAC-composable-tactile-slots"))),
         "tactile_memory_match_smoke.yml",
         (("record_tactile_timeline", False),),
     ),
@@ -501,10 +501,27 @@ def _feature_view(data):
     if not isinstance(data, dict):
         return data
     allowed = {"contact", "depth_mm", "marker_displacement_px", "marker_shear_dx", "marker_shear_dy", "marker_coherence"}
-    if _TACTILE_FEATURE_GROUPS == "BDS":
+    if _TACTILE_FEATURE_GROUPS in {"B", "BS"}:
+        allowed -= {"marker_shear_dx", "marker_shear_dy", "marker_coherence"}
+    if _TACTILE_FEATURE_GROUPS == "DS":
+        allowed -= {"contact", "depth_mm", "marker_displacement_px"}
+    if _TACTILE_FEATURE_GROUPS in {"BS", "DS", "BDS"}:
         allowed |= {"marker_anisotropy", "height_roughness_mm"}
-    return {key: _feature_view(value) for key, value in data.items()
-            if not key.startswith(("left_", "right_")) or key.split("_", 1)[1] in allowed}
+    public = {}
+    for key, value in data.items():
+        if key.startswith(("left_", "right_")) and key.split("_", 1)[1] not in allowed:
+            continue
+        if key == "trace" and isinstance(value, list):
+            public[key] = [{k: row[k] for k in ("step", "angle_deg") if k in row}
+                           for row in value if isinstance(row, dict)]
+        elif key == "reached":
+            public[key] = bool(value)
+        elif key in {"message", "aborted"} and isinstance(value, str) and any(
+                token in value.lower() for token in ("pad force", "seat force", "torque", "loaded on its seat")):
+            public[key] = "Native terminal condition reached" if data.get("reached") else "Native safety limit reached"
+        else:
+            public[key] = _feature_view(value)
+    return public
 
 
 def _public_response(model, data: dict):
@@ -538,7 +555,7 @@ def _agent0_action(name, args, timeout, fn, fargs, detail_prefix):
         action_log.log_action(name, args, ok=False, msg=f"{detail_prefix}: {type(exc).__name__}",
                               dur_s=_time.perf_counter()-started,
                               extra={"action_id": action_id, **span})
-        detail = str(exc) if _TACTILE_FEATURE_GROUPS else "native action did not complete"
+        detail = _feature_view({"message": str(exc)})["message"] if _TACTILE_FEATURE_GROUPS else "native action did not complete"
         raise HTTPException(status_code=500, detail=f"{detail_prefix}: {detail}") from None
     clean = {key: result[key] for key in ("success", "seed", "step_limit", "completed", "requested", "feed_lead_m", "grip_released", "native_done") if key in result}
     clean["step"] = span.get("physics_end")
@@ -4188,7 +4205,7 @@ def main() -> None:
                         help="Scene-randomization seed for the startup reset "
                              "(drives pre_move noise, e.g. grasp offset)")
     parser.add_argument("--observation-mode", choices=["native", "raw", "none"], default="native")
-    parser.add_argument("--tactile-feature-groups", choices=["BD", "BDS"], default=None)
+    parser.add_argument("--tactile-feature-groups", choices=["B", "BD", "BS", "DS", "BDS"], default=None)
     parser.add_argument("--run-dir", default=None)
     parser.add_argument("--episode-request-file", default=None)
     parser.add_argument("--cfg-override", action="append", default=[], metavar="KEY=VALUE",

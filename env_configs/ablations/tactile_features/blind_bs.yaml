@@ -1,0 +1,177 @@
+agent0_mode: native
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  device: cuda:0
+  headless: true
+  host: 127.0.0.1
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+  observation_mode: native
+  port: ${oc.decode:${oc.env:UNIVTAC_PORT,8132}}
+  python: ${oc.env:CAPX_SIM_PYTHON}
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+  tactile_feature_groups: BS
+  task: blind_pick_balls
+env:
+  _target_: capx.envs.tasks.tactile.univtac_blind_pick_balls.UniVTACBlindPickBallsCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    api_functions:
+      UniVTACBallApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_tactile_data
+    apis:
+    - UniVTACBallApi
+    low_level: env_configs/univtac/blind_pick_balls/low_level_blind_pick_balls.yaml
+    multi_turn_prompt: ''
+    observation_mode: native
+    privileged: false
+    prompt: '
+
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+
+      on both fingertips. The API is described below.
+
+
+      Goal: an open-topped box stands in front of the robot holding twelve balls of
+
+      three kinds -- hard, soft and textured, four of each -- resting on its floor
+
+      below the rim. Take one textured ball out of the box and release it in the
+
+      bowl beside it.
+
+
+      The box and the bowl are fixed. Inside, the box measures 0.36 m along x by
+
+      0.48 m along y, centred on x = 0.51, y = 0.00; the rim top is at z = 0.19 m and
+
+      the floor inside at z = 0.016 m. Every ball is a sphere of 30 mm base radius,
+
+      so a resting ball''s centre is at z = 0.050 m. Balls sit on three rows at
+
+      y = -0.115, 0.000 and 0.115 m. Nothing says which ball is where: no camera
+
+      sees into the box and no API reading reports a ball''s position, so the pads
+
+      are the only sensor. The bowl is centred on x = 0.49, y = -0.34 m with a
+
+      radius of 75 mm, its wall rising to z = 0.051 m.
+
+
+      The episode ends by itself after about four minutes of simulated time, and
+
+      motion is what spends it: every move and every close costs, a pad read on a
+
+      still arm does not. Sweeping all three rows is affordable; sweeping them
+
+      several times over is not.
+
+
+      A ball counts only if both pads are holding it while it is lifted clear of the
+
+      box and if it comes to rest inside the bowl. Releasing one in the bowl that is
+
+      not the right kind, or that the robot never actually lifted, ends the run.
+
+      Balls that turn out to be the wrong kind are better put back in the box.
+
+
+
+
+      Attempt bounded search and equivalent sampling at reachable sites before delivery.
+
+      Use informative measurements to identify the requested material. If remaining valid
+
+      measurements cannot distinguish material, keep that uncertainty explicit and attempt
+
+      delivery of one grasped candidate without claiming identification. Do not abandon
+
+      physical execution solely because a material channel is unavailable.
+
+
+      Experimental execution contract:
+
+      Use only functions and per-side scalar fields documented for this configuration.
+
+      Skills referring to unavailable helpers do not register those helpers: implement
+
+      any retained comparison with the documented primitive actions and observations.
+
+      Keep unavailable or invalid measurements unknown; never replace them with zeros
+
+      or invent a calibrated conversion. Do not stop solely because an attribute is
+
+      unavailable. Make a bounded physical attempt using the observations that remain.
+
+      The task requirements and native termination still apply. An ended episode means
+
+      no further motion or gripper calls, including an otherwise planned retreat.
+
+      Return one complete executable Python program; no subsequent regeneration occurs.
+
+
+      Available per-side scalar fields (left_/right_ prefixes):
+
+      contact, depth_mm, marker_displacement_px, marker_anisotropy, height_roughness_mm.
+
+      Readings include physical step and time where reported. Missing channels remain
+
+      unknown on tasks that do not supply them. Raw sensor
+
+      arrays and unlisted derived estimates are not available. Native actuator control
+
+      is identical across groups; commanded controller targets are not sensor readings.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+      '
+    tactile_feature_groups: BS
+    tactile_skill_root: env_configs/ablations/tactile_features/skills/bs
+    tactile_skills:
+    - one-call-approach
+    - preserve-existing-grasp
+    - orientation-fix-high
+    - pass-ball-with-wide-pads
+    - reach-band-at-ball-height
+    - world-frame-transport
+    - lift-before-lateral
+    - descend-until-supported
+    - unload-before-open
+    - settle-after-release
+    - keep-closed-if-task-allows
+    - bowl-descent-stops-short
+    - differential-across-states
+    - regrasp-after-slip
+    - cruise-height
+    - grasp-verification
+    - search-continues-after-miss
+    - depth-grip-scale
+    - shear-vs-displacement
+    - texture-in-relief
+    - wide-pads-see-nothing
+exec_alarm_seconds: 2400
+max_tokens: 8192
+model: gpt-6-astra
+num_workers: 1
+output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/bs
+process_timeout_seconds: 4200
+reasoning_effort: high
+record_video: true
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+seed_manifest: env_configs/ablations/tactile_features/seeds30.json
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+task_name: blind_pick_balls
+temperature: 1.0
+trial_timeout_seconds: 3600
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+use_img_differencing: false
+use_multimodel: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_video_differencing: false
+use_visual_feedback: true
+use_wrist_camera: false

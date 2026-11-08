@@ -1,0 +1,807 @@
+{
+  "schema": "paired_ablation_seeds.v1",
+  "test_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29
+  ],
+  "development_seeds": [
+    42000,
+    42001
+  ],
+  "task_order": [
+    "tactile_memory_match",
+    "tension_strap",
+    "bulb_tightening",
+    "blind_pick_balls"
+  ],
+  "requests": {
+    "combined_match": {
+      "0": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "1": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "2": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "3": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "4": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "5": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "6": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "7": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "8": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "9": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "10": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "11": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "12": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "13": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "14": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "15": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "16": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "17": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "18": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "19": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "20": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "21": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "22": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "23": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "24": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "25": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "26": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "27": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "28": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "29": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "tension_strap": {
+      "0": {
+        "force_time_sequence": [
+          17.02,
+          1.75,
+          14.16,
+          1.96
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "1": {
+        "force_time_sequence": [
+          10.25,
+          1.32,
+          12.89,
+          1.38
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "2": {
+        "force_time_sequence": [
+          15.47,
+          1.78,
+          14.29,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "3": {
+        "force_time_sequence": [
+          12.24,
+          1.56,
+          14.4,
+          1.69
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "4": {
+        "force_time_sequence": [
+          11.94,
+          1.49,
+          11.84,
+          1.5
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "5": {
+        "force_time_sequence": [
+          17.99,
+          1.79,
+          10.91,
+          1.33
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "6": {
+        "force_time_sequence": [
+          12.88,
+          1.32,
+          14.01,
+          1.7
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "7": {
+        "force_time_sequence": [
+          14.0,
+          1.98,
+          16.16,
+          1.68
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "8": {
+        "force_time_sequence": [
+          10.16,
+          1.8,
+          13.65,
+          1.73
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "9": {
+        "force_time_sequence": [
+          13.72,
+          1.41,
+          10.3,
+          1.97
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "10": {
+        "force_time_sequence": [
+          12.71,
+          1.95,
+          11.37,
+          1.51
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "11": {
+        "force_time_sequence": [
+          10.94,
+          1.39,
+          16.59,
+          1.64
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "12": {
+        "force_time_sequence": [
+          14.6,
+          1.59,
+          17.21,
+          1.45
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "13": {
+        "force_time_sequence": [
+          17.05,
+          1.73,
+          16.12,
+          1.55
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "14": {
+        "force_time_sequence": [
+          12.45,
+          1.61,
+          10.65,
+          1.51
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "15": {
+        "force_time_sequence": [
+          13.02,
+          1.61,
+          12.6,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "16": {
+        "force_time_sequence": [
+          11.98,
+          1.64,
+          14.75,
+          1.99
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "17": {
+        "force_time_sequence": [
+          13.61,
+          1.3,
+          14.45,
+          1.44
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "18": {
+        "force_time_sequence": [
+          10.58,
+          1.83,
+          15.65,
+          1.81
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "19": {
+        "force_time_sequence": [
+          17.8,
+          1.72,
+          15.62,
+          1.9
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "20": {
+        "force_time_sequence": [
+          12.02,
+          1.84,
+          17.92,
+          1.68
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "21": {
+        "force_time_sequence": [
+          13.99,
+          1.5,
+          17.24,
+          1.43
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "22": {
+        "force_time_sequence": [
+          10.68,
+          1.4,
+          13.35,
+          1.39
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "23": {
+        "force_time_sequence": [
+          10.83,
+          1.83,
+          17.45,
+          1.53
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "24": {
+        "force_time_sequence": [
+          16.68,
+          1.81,
+          13.92,
+          1.5
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "25": {
+        "force_time_sequence": [
+          12.74,
+          1.7,
+          10.78,
+          1.95
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "26": {
+        "force_time_sequence": [
+          16.65,
+          1.6,
+          15.43,
+          1.4
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "27": {
+        "force_time_sequence": [
+          13.9,
+          1.64,
+          12.04,
+          1.98
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "28": {
+        "force_time_sequence": [
+          14.83,
+          1.97,
+          11.3,
+          1.83
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "29": {
+        "force_time_sequence": [
+          15.46,
+          1.74,
+          16.18,
+          1.4
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      }
+    },
+    "bulb_tightening": {
+      "0": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "1": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "2": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "3": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "4": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "5": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "6": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "7": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "8": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "9": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "10": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "11": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "12": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "13": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "14": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "15": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "16": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "17": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "18": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "19": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "20": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "21": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "22": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "23": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "24": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "25": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "26": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "27": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "28": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "29": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      }
+    },
+    "blind_pick_balls": {
+      "0": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "1": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "2": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "3": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "4": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "5": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "6": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "7": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "8": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "9": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "10": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "11": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "12": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "13": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "14": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "15": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "16": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "17": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "18": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "19": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "20": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "21": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "22": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "23": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "24": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "25": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "26": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "27": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "28": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "29": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      }
+    }
+  },
+  "smoke_requests": {
+    "combined_match": {
+      "42000": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "42001": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "tension_strap": {
+      "42000": {
+        "force_time_sequence": [
+          10.0,
+          1.42,
+          13.18,
+          2.0
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "42001": {
+        "force_time_sequence": [
+          14.16,
+          1.34,
+          17.15,
+          1.8
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      }
+    },
+    "bulb_tightening": {
+      "42000": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "42001": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      }
+    },
+    "blind_pick_balls": {
+      "42000": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "42001": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      }
+    }
+  },
+  "split_status": "Paired seeds 0-29, selected before this ablation; 42000 and 42001 are development only. Each group is independently selectable.",
+  "strap_color_mode": "tricolor",
+  "request_source": {
+    "path": "env_configs/ablations/seeds40.json",
+    "sha256": "e3381cddaf0c0b819133a43517e95a8027a067fbf9a9e9c338d6261bdfd98288",
+    "mapping": {
+      "0": 41000,
+      "1": 41001,
+      "2": 41002,
+      "3": 41003,
+      "4": 41004,
+      "5": 41005,
+      "6": 41006,
+      "7": 41007,
+      "8": 41008,
+      "9": 41009,
+      "10": 41010,
+      "11": 41011,
+      "12": 41012,
+      "13": 41013,
+      "14": 41014,
+      "15": 41015,
+      "16": 41016,
+      "17": 41017,
+      "18": 41018,
+      "19": 41019,
+      "20": 41020,
+      "21": 41021,
+      "22": 41022,
+      "23": 41023,
+      "24": 41024,
+      "25": 41025,
+      "26": 41026,
+      "27": 41027,
+      "28": 41028,
+      "29": 41029
+    }
+  }
+}

@@ -1,0 +1,114 @@
+agent0_mode: native
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  device: cuda:0
+  headless: true
+  host: 127.0.0.1
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1 --/renderer/multiGpu/autoEnable=false
+  observation_mode: native
+  port: ${oc.decode:${oc.env:UNIVTAC_PORT,8132}}
+  python: ${oc.env:CAPX_SIM_PYTHON}
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+  task: bulb_tightening
+  tactile_feature_groups: BS
+env:
+  _target_: capx.envs.tasks.tactile.univtac_bulb_tightening.UniVTACBulbTighteningCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+    apis:
+    - UniVTACTactileApi
+    low_level: env_configs/univtac/bulb_tightening/low_level_bulb_tightening.yaml
+    multi_turn_prompt: ''
+    observation_mode: native
+    privileged: false
+    prompt: "\nYou are controlling a Franka Emika robot with GelSight Mini tactile sensors\non both fingertips.\
+      \ The API is described below.\n\nGoal: screw the light_bulb into its socket until it is all the way in. In\
+      \ the\nscene the bulb is named \"light_bulb\" - use that exact name with the pose and\ngrasp helpers.\n\n\
+      The bulb starts already threaded into its socket, and it is a thread: turning\nis the only thing that takes\
+      \ it deeper. Pushing it down does not move it - the\npush is taken by the glass and the pads instead, and\
+      \ it stays there.\n\nThe fingertips are the instrument, not a safety net. The bulb is smooth glass\nand the\
+      \ pads are the only thing that touches it, so every question this task\nasks is answerable from them, and\
+      \ that is where the answers should come from:\n\n- Which way is in. Take the direction from separate legs;\
+      \ how long each leg\n  must be, and how far apart they have to come before you believe them, are in\n  the\
+      \ tactile skills at the end of this prompt.\n- How fast to descend. The lead is not given either, and it varies\
+      \ with the\n  bulb, so it has to be measured rather than assumed - and the pads are what\n  measure it. The\
+      \ skills below give the method.\n- Whether it is in. The seat is a reading, not a count of turns, and the\
+      \ skills\n  below say when it can be believed.\n\nThe wrist runs out of range soon after a third of a turn,\
+      \ so a full insertion\nis several segments with the hand re-set in between. Going past that range is\nrefused\
+      \ outright and is not recoverable within the episode, so keep the\nsegments well short of it; the skills below\
+      \ give the reset sequence and say\nwhen to stop re-setting.\n\nThe job is done the moment the bulb is all\
+      \ the way in: there is nothing to\nsubmit and nothing to hold at the end, so stop turning there and let the\n\
+      episode be scored on the bulb.\n\nExperimental execution contract:\nUse only functions and per-side scalar\
+      \ fields documented for this configuration.\nSkills referring to unavailable helpers do not register those\
+      \ helpers: implement\nany retained comparison with the documented primitive actions and observations.\nKeep\
+      \ unavailable or invalid measurements unknown; never replace them with zeros\nor invent a calibrated conversion.\
+      \ Do not stop solely because an attribute is\nunavailable. Make a bounded physical attempt using the observations\
+      \ that remain.\nThe task requirements and native termination still apply. An ended episode means\nno further\
+      \ motion or gripper calls, including an otherwise planned retreat.\nReturn one complete executable Python\
+      \ program; no subsequent regeneration occurs.\n\nAvailable per-side scalar fields (left_/right_ prefixes):\n\
+      contact, depth_mm, marker_displacement_px, marker_anisotropy, height_roughness_mm.\nReadings include physical\
+      \ step and time where reported. Missing channels remain\nunknown on tasks that do not supply them. Raw sensor\n\
+      arrays and unlisted derived estimates are not available. Native actuator control\nis identical across groups;\
+      \ commanded controller targets are not sensor readings.\nWrite ONLY executable Python code (no code fences).\
+      \ Import numpy if needed.\n"
+    tactile_skills:
+    - reflex-stop-on-events
+    - descent-until-contact
+    - one-call-approach
+    - small-step-insertion
+    - preserve-existing-grasp
+    - thread-direction-by-legs
+    - lead-by-overshoot
+    - feed-must-match-lead
+    - seat-by-slide-collapse
+    - mirrored-shear-slide
+    - lattice-pitch-budget
+    - wrist-limit-segmentation
+    - bulb-close-force
+    - bulb-grasp-pose
+    - differential-across-states
+    - no-absolute-without-reference
+    - regrasp-after-slip
+    - tactile-cannot-locate
+    - grasp-verification
+    - channel-selection
+    - depth-grip-scale
+    - shear-vs-displacement
+    - slip-pair-baseline
+    - contact-flag-is-range
+    - confidence-gate
+    tactile_feature_groups: BS
+    tactile_skill_root: env_configs/ablations/tactile_features/skills/bs
+exec_alarm_seconds: 2400
+max_tokens: 8192
+model: gpt-6-astra
+num_workers: 1
+output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/bs
+process_timeout_seconds: 4200
+reasoning_effort: high
+record_video: true
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+seed_manifest: env_configs/ablations/tactile_features/seeds30.json
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+task_name: bulb_tightening
+temperature: 1.0
+trial_timeout_seconds: 3600
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+use_img_differencing: false
+use_multimodel: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_video_differencing: false
+use_visual_feedback: true
+use_wrist_camera: false

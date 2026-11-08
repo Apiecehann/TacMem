@@ -1,0 +1,2146 @@
+{
+  "source_commit": "05adffb8ecc57436a514bf4cb6e8d6d2a242e08e",
+  "scope": [
+    "tactile_memory_match",
+    "tension_strap",
+    "bulb_tightening",
+    "blind_pick_balls"
+  ],
+  "initial_filtered_rules": [
+    {
+      "group": "bs",
+      "skill": "settle-after-release",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "bowl-descent-stops-short",
+      "removed_blocks": 0
+    },
+    {
+      "group": "bs",
+      "skill": "search-refine-around-contact",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "preserve-existing-grasp",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "lattice-pitch-budget",
+      "removed_blocks": 3
+    },
+    {
+      "group": "bs",
+      "skill": "search-close-default",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "reach-band-at-ball-height",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "thread-direction-by-legs",
+      "removed_blocks": 7
+    },
+    {
+      "group": "bs",
+      "skill": "lead-by-overshoot",
+      "removed_blocks": 8
+    },
+    {
+      "group": "bs",
+      "skill": "reflex-stop-on-events",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "seat-by-slide-collapse",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "mirrored-shear-slide",
+      "removed_blocks": 3
+    },
+    {
+      "group": "bs",
+      "skill": "grasp-verification",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "channel-selection",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "strap-hold-creeps",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "one-grasp-multi-property",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "differential-across-states",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "slip-pair-baseline",
+      "removed_blocks": 0
+    },
+    {
+      "group": "bs",
+      "skill": "strap-load-is-shear-difference",
+      "removed_blocks": 6
+    },
+    {
+      "group": "bs",
+      "skill": "texture-slope-two-grips",
+      "removed_blocks": 0
+    },
+    {
+      "group": "bs",
+      "skill": "confidence-gate",
+      "removed_blocks": 5
+    },
+    {
+      "group": "bs",
+      "skill": "gel-shear-weight",
+      "removed_blocks": 2
+    },
+    {
+      "group": "bs",
+      "skill": "lift-follow-height",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "grip-force-by-mass",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "depth-grip-scale",
+      "removed_blocks": 1
+    },
+    {
+      "group": "bs",
+      "skill": "shear-vs-displacement",
+      "removed_blocks": 4
+    },
+    {
+      "group": "ds",
+      "skill": "unload-before-open",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "descend-until-supported",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "settle-after-release",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "bowl-descent-stops-short",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "search-refine-around-contact",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "small-step-insertion",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "preserve-existing-grasp",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "search-past-first-contact",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "bulb-close-force",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "asymmetry-means-misaligned",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "search-close-default",
+      "removed_blocks": 6
+    },
+    {
+      "group": "ds",
+      "skill": "stall-means-jam",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "pass-ball-with-wide-pads",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "reach-band-at-ball-height",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "reflex-stop-on-events",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "mirrored-shear-slide",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "descent-until-contact",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "grasp-verification",
+      "removed_blocks": 6
+    },
+    {
+      "group": "ds",
+      "skill": "channel-selection",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "one-grasp-multi-property",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "tactile-cannot-locate",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "memory-match-one-grasp",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "regrasp-after-slip",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "search-continues-after-miss",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "differential-across-states",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "slip-pair-baseline",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "strap-load-is-shear-difference",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "can-texture-difference",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "finger-position-grip",
+      "removed_blocks": 0
+    },
+    {
+      "group": "ds",
+      "skill": "texture-slope-two-grips",
+      "removed_blocks": 0
+    },
+    {
+      "group": "ds",
+      "skill": "follow-is-signal",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "confidence-gate",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "gel-shear-weight",
+      "removed_blocks": 0
+    },
+    {
+      "group": "ds",
+      "skill": "close-lands-on-target",
+      "removed_blocks": 0
+    },
+    {
+      "group": "ds",
+      "skill": "contact-flag-is-range",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "grip-force-by-mass",
+      "removed_blocks": 1
+    },
+    {
+      "group": "ds",
+      "skill": "texture-in-relief",
+      "removed_blocks": 4
+    },
+    {
+      "group": "ds",
+      "skill": "hardness-two-closes",
+      "removed_blocks": 2
+    },
+    {
+      "group": "ds",
+      "skill": "depth-grip-scale",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "shear-vs-displacement",
+      "removed_blocks": 3
+    },
+    {
+      "group": "ds",
+      "skill": "wide-pads-see-nothing",
+      "removed_blocks": 4
+    }
+  ],
+  "final_rule_policy": {
+    "DS": "Remove B measurements and dependent validity/hardness/grasp rules; retain D/S and motion-only clauses. Do not infer contact from zero shear.",
+    "BS": "Remove D measurements and shear force/weight/slide/seat rules; retain B/S and motion-only clauses. No replacement force conversion.",
+    "BD": "Use previously curated B+D library, omitting S and dependent texture rules.",
+    "BDS": "Unchanged frozen full source library."
+  },
+  "final_files": [
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/asymmetry-means-misaligned.md",
+      "sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "same_path_source_sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/bulb-close-force.md",
+      "sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "same_path_source_sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/bulb-grasp-pose.md",
+      "sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "same_path_source_sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/descent-until-contact.md",
+      "sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "same_path_source_sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/feed-must-match-lead.md",
+      "sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "same_path_source_sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/grasp-pose-from-offset.md",
+      "sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "same_path_source_sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/lateral-only-align.md",
+      "sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "same_path_source_sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/lattice-pitch-budget.md",
+      "sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "same_path_source_sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/lead-by-overshoot.md",
+      "sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "same_path_source_sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/mirrored-shear-slide.md",
+      "sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "same_path_source_sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/one-call-approach.md",
+      "sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "same_path_source_sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/orientation-fix-high.md",
+      "sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "same_path_source_sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/pass-ball-with-wide-pads.md",
+      "sha256": "2bc85b1305096932da11987d7de14b90ef9b48b4e18f49bbb1c01d52a1bec25a",
+      "same_path_source_sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/preserve-existing-grasp.md",
+      "sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "same_path_source_sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/reach-band-at-ball-height.md",
+      "sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "same_path_source_sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/reflex-stop-on-events.md",
+      "sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "same_path_source_sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/search-close-default.md",
+      "sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "same_path_source_sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/search-past-first-contact.md",
+      "sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "same_path_source_sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/search-refine-around-contact.md",
+      "sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "same_path_source_sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/seat-by-slide-collapse.md",
+      "sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "same_path_source_sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/small-step-insertion.md",
+      "sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "same_path_source_sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/stall-means-jam.md",
+      "sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "same_path_source_sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/thread-direction-by-legs.md",
+      "sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "same_path_source_sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/act/wrist-limit-segmentation.md",
+      "sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "same_path_source_sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/bowl-descent-stops-short.md",
+      "sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "same_path_source_sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/descend-until-supported.md",
+      "sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "same_path_source_sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/keep-closed-if-task-allows.md",
+      "sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "same_path_source_sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/lift-before-lateral.md",
+      "sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "same_path_source_sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/seat-height-from-plate.md",
+      "sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "same_path_source_sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/settle-after-release.md",
+      "sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "same_path_source_sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/unload-before-open.md",
+      "sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "same_path_source_sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/place/world-frame-transport.md",
+      "sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "same_path_source_sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/channel-selection.md",
+      "sha256": "7440c367fb4acb94d9a36ea807a91aa76bb79758e32ebfa1b7f34f12cd4006a3",
+      "same_path_source_sha256": "820ddbbc09bac65da7fc47caf598d505807bdba9c106605e9a9eea7bbdd9523a",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/cruise-height.md",
+      "sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "same_path_source_sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/differential-across-states.md",
+      "sha256": "0acb9f201a2d1f0528d8280a8d75da9149f6255802be7ab111b6a7f64b077833",
+      "same_path_source_sha256": "2cc242d649101794db74812bffb5c6b558aa60180a872d7f78735de81203f8e3",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/grasp-verification.md",
+      "sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "same_path_source_sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/memory-match-one-grasp.md",
+      "sha256": "8423aea0735c37aa105fc21863e0f4845ec6c6f6bf6c790555c804fe7ad6cc0c",
+      "same_path_source_sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/no-absolute-without-reference.md",
+      "sha256": "e900d4f0221d05c39af1ed3d48f47bcf2cca94064bc2ca9593336cab2bdf8b50",
+      "same_path_source_sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/one-grasp-multi-property.md",
+      "sha256": "9e00b6269caaadc99e7c3ed236ba6be8d078490d21b2bc649177dc0d99d8a091",
+      "same_path_source_sha256": "d5b4a75bd2e8078f6ed99deede4f2a79889efc7e1de0dc6743b77c22c8880772",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/readability-not-identity.md",
+      "sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "same_path_source_sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/regrasp-after-slip.md",
+      "sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "same_path_source_sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/search-continues-after-miss.md",
+      "sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "same_path_source_sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/strap-hold-creeps.md",
+      "sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "same_path_source_sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/protocol/tactile-cannot-locate.md",
+      "sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "same_path_source_sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/can-close-depth-limit.md",
+      "sha256": "c277d17e44779d2a863367d4b8fca8e487b71232f9f6958c58edaa9dc01852c4",
+      "same_path_source_sha256": null,
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/close-lands-on-target.md",
+      "sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "same_path_source_sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/confidence-gate.md",
+      "sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "same_path_source_sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/contact-flag-is-range.md",
+      "sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "same_path_source_sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/depth-grip-scale.md",
+      "sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "same_path_source_sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/finger-position-grip.md",
+      "sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "same_path_source_sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/follow-is-signal.md",
+      "sha256": "7300aab1f01e8f51b28f57dd35081936db1961026724b2049a972f0b86b10e28",
+      "same_path_source_sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/gel-shear-weight.md",
+      "sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "same_path_source_sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/grip-force-by-mass.md",
+      "sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "same_path_source_sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/hardness-two-closes.md",
+      "sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "same_path_source_sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/lift-follow-height.md",
+      "sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "same_path_source_sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/no-calibration-transfer.md",
+      "sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "same_path_source_sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/position-mode-for-yield.md",
+      "sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "same_path_source_sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/shear-vs-displacement.md",
+      "sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "same_path_source_sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/slip-pair-baseline.md",
+      "sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "same_path_source_sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/strap-load-is-shear-difference.md",
+      "sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "same_path_source_sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/travel-controlled-ball-seat.md",
+      "sha256": "771c88d4cd4934a33fcbf1f73e8baae204dba7fd17b8472fd4d543a7910a497c",
+      "same_path_source_sha256": null,
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/two-commanded-grip-readings.md",
+      "sha256": "3b6a8e41d779ecd53fc4b77ab2e7c1a222340bef6cf0fb3ac3347b00737902b8",
+      "same_path_source_sha256": null,
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/skills/sense/wide-pads-see-nothing.md",
+      "sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "same_path_source_sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BD",
+      "path": "env_configs/ablations/tactile_features/skills/bd/taxonomy.yaml",
+      "sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "same_path_source_sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/asymmetry-means-misaligned.md",
+      "sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "same_path_source_sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/bulb-close-force.md",
+      "sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "same_path_source_sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/bulb-grasp-pose.md",
+      "sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "same_path_source_sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/descent-until-contact.md",
+      "sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "same_path_source_sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/feed-must-match-lead.md",
+      "sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "same_path_source_sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/grasp-pose-from-offset.md",
+      "sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "same_path_source_sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/lateral-only-align.md",
+      "sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "same_path_source_sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/lattice-pitch-budget.md",
+      "sha256": "5e1532402fae377a5ebc07910739802183920c1ba50a749fb73387c93bff5bdb",
+      "same_path_source_sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/lead-by-overshoot.md",
+      "sha256": "13440ca75780aafc7ac3a1b254d26e106c41c37932ce1ff36d4bfc3dc9bbd37e",
+      "same_path_source_sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/mirrored-shear-slide.md",
+      "sha256": "f80518f1e6a82650023552f8d2b4d193a722b57722f8813ba5ed784434b0d97a",
+      "same_path_source_sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/one-call-approach.md",
+      "sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "same_path_source_sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/orientation-fix-high.md",
+      "sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "same_path_source_sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/pass-ball-with-wide-pads.md",
+      "sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "same_path_source_sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/preserve-existing-grasp.md",
+      "sha256": "db94e394165a34b7571dcff0ebcaf418a4e848227c362037052fc364039e750f",
+      "same_path_source_sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/reach-band-at-ball-height.md",
+      "sha256": "27efbd50b1de7d69385db8a83b0e8d7677d4b3ce69703cef35a823921fdbc02e",
+      "same_path_source_sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/reflex-stop-on-events.md",
+      "sha256": "50216f710acb3389fc3898e21c0ccf69dfdcb2ba584c962dc4ab818f13488451",
+      "same_path_source_sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/search-close-default.md",
+      "sha256": "d58fdd80b1a1e3167cb3f86b7cd1ec3ce75e2b0f4189fb7f2a2fa2770fc9bb49",
+      "same_path_source_sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/search-past-first-contact.md",
+      "sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "same_path_source_sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/search-refine-around-contact.md",
+      "sha256": "cb6ed665343edb093f9c2f41abf076162af9b016a717c1f3a35c775b20711dc6",
+      "same_path_source_sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/seat-by-slide-collapse.md",
+      "sha256": "9f1e82f2d80ccaa63b3b5d700781fe908420826619f5b631fbd5508b941436bf",
+      "same_path_source_sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/small-step-insertion.md",
+      "sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "same_path_source_sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/stall-means-jam.md",
+      "sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "same_path_source_sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/thread-direction-by-legs.md",
+      "sha256": "6a9fb640196ade65ad379c3143d6a531e600070e857f678d108f25014fba8b43",
+      "same_path_source_sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/act/wrist-limit-segmentation.md",
+      "sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "same_path_source_sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/bowl-descent-stops-short.md",
+      "sha256": "58d95c9d657d5b9bb04915acf6e00c63339b48788b2f561be588817cd2ababb8",
+      "same_path_source_sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/descend-until-supported.md",
+      "sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "same_path_source_sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/keep-closed-if-task-allows.md",
+      "sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "same_path_source_sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/lift-before-lateral.md",
+      "sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "same_path_source_sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/seat-height-from-plate.md",
+      "sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "same_path_source_sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/settle-after-release.md",
+      "sha256": "b285312e6e565f51caef888d02dfcbe241df488bb1f6f20cf2fbcf65a75889df",
+      "same_path_source_sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/unload-before-open.md",
+      "sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "same_path_source_sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/place/world-frame-transport.md",
+      "sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "same_path_source_sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/channel-selection.md",
+      "sha256": "d4db76bd902b815e91c0092be29cb7157ca4e1f68517917483293feb237c1f0c",
+      "same_path_source_sha256": "820ddbbc09bac65da7fc47caf598d505807bdba9c106605e9a9eea7bbdd9523a",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/cruise-height.md",
+      "sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "same_path_source_sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/differential-across-states.md",
+      "sha256": "4fad40ff98b1f2237d65ca88b9b6f44a136a14f9039dfba4eaa479348df4ce57",
+      "same_path_source_sha256": "2cc242d649101794db74812bffb5c6b558aa60180a872d7f78735de81203f8e3",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/grasp-verification.md",
+      "sha256": "fbaa168029b70152224d377f1a8ede4d4c88c90dae5e9486d68e8b931d7f583d",
+      "same_path_source_sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/memory-match-one-grasp.md",
+      "sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "same_path_source_sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/no-absolute-without-reference.md",
+      "sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "same_path_source_sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/one-grasp-multi-property.md",
+      "sha256": "ccc715e47adb3e31be8e2d7ab96ebcc9443769ae49f5c0ac9223eef3cdd2c9cd",
+      "same_path_source_sha256": "d5b4a75bd2e8078f6ed99deede4f2a79889efc7e1de0dc6743b77c22c8880772",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/readability-not-identity.md",
+      "sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "same_path_source_sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/regrasp-after-slip.md",
+      "sha256": "1fe5ee4b5d824c1f2fd35b765f26c2b9cadf3018c123e0ec5cd3378cfebd6064",
+      "same_path_source_sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/search-continues-after-miss.md",
+      "sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "same_path_source_sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/strap-hold-creeps.md",
+      "sha256": "344e928146400fa687437247d6ddbcc0b3b3ec4e474930897025a56c63c99376",
+      "same_path_source_sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/protocol/tactile-cannot-locate.md",
+      "sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "same_path_source_sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/can-texture-difference.md",
+      "sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "same_path_source_sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/close-lands-on-target.md",
+      "sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "same_path_source_sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/confidence-gate.md",
+      "sha256": "60f6a2e9ddf9fb592fc4856ba4d20a440c6b34223ea139f8778501c252d855d1",
+      "same_path_source_sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/contact-flag-is-range.md",
+      "sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "same_path_source_sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/depth-grip-scale.md",
+      "sha256": "9df79a61c7d3029d8f0cf58cb6f6a23dd26e0d28703c755986a6edaf0af49921",
+      "same_path_source_sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/finger-position-grip.md",
+      "sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "same_path_source_sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/follow-is-signal.md",
+      "sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "same_path_source_sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/gel-shear-weight.md",
+      "sha256": "9c6a4885504e6c2d54051da16a8dfb5961924ec60b82d49a0d5209825d81b0d2",
+      "same_path_source_sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/grip-force-by-mass.md",
+      "sha256": "55dd2280e203f933f558a302884d953fe0b2461122da3d59143792b3926406c3",
+      "same_path_source_sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/hardness-two-closes.md",
+      "sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "same_path_source_sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/lift-follow-height.md",
+      "sha256": "f2e36f2e906884ba5b7db99de56cc8b5182a213f6bb489bf43ef30fc254b355e",
+      "same_path_source_sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/no-calibration-transfer.md",
+      "sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "same_path_source_sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/position-mode-for-yield.md",
+      "sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "same_path_source_sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/shear-vs-displacement.md",
+      "sha256": "dc75b726b316025059b734c637584605558246e15e19809943b11f93f8180b85",
+      "same_path_source_sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/slip-pair-baseline.md",
+      "sha256": "d06a7ff1917de4dfdf7c8070eb788675e8f5ddb7f32ecffed45500f4d0913dba",
+      "same_path_source_sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/strap-load-is-shear-difference.md",
+      "sha256": "9679480a9b11c8ee3216191ff6af0af4f0558012cdac3ba23ca65d8f33bce189",
+      "same_path_source_sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/texture-in-relief.md",
+      "sha256": "c57007c6b36b84bca817abfb5189e30f57bf89a763e4d169dfd7cdc21b33bffd",
+      "same_path_source_sha256": "c57007c6b36b84bca817abfb5189e30f57bf89a763e4d169dfd7cdc21b33bffd",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/texture-slope-two-grips.md",
+      "sha256": "2f10b9257a7a04c71d64fddd96ffb9a8ac2aa2ab338354c7dd80c890c797d8c3",
+      "same_path_source_sha256": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/skills/sense/wide-pads-see-nothing.md",
+      "sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "same_path_source_sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BS",
+      "path": "env_configs/ablations/tactile_features/skills/bs/taxonomy.yaml",
+      "sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "same_path_source_sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/asymmetry-means-misaligned.md",
+      "sha256": "24115e16c02cb5e9d9d47f4bc954956f5067c936582ca6cab3eb4fd0db8862cf",
+      "same_path_source_sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/bulb-close-force.md",
+      "sha256": "7cff935a765f5f267561e6ae22e37769231b7cf8011ba14183fb8d34bc2ff74f",
+      "same_path_source_sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/bulb-grasp-pose.md",
+      "sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "same_path_source_sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/descent-until-contact.md",
+      "sha256": "cf4e935844cf84c5b18e511c8d697565312fbbc486659cc1f55a165b77e71d55",
+      "same_path_source_sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/feed-must-match-lead.md",
+      "sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "same_path_source_sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/grasp-pose-from-offset.md",
+      "sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "same_path_source_sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/lateral-only-align.md",
+      "sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "same_path_source_sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/lattice-pitch-budget.md",
+      "sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "same_path_source_sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/lead-by-overshoot.md",
+      "sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "same_path_source_sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/mirrored-shear-slide.md",
+      "sha256": "f49735731120132c0e2e0f42d1edffd8bdafa0ccaefb5caa2dd832f2791d09bd",
+      "same_path_source_sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/one-call-approach.md",
+      "sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "same_path_source_sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/orientation-fix-high.md",
+      "sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "same_path_source_sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/pass-ball-with-wide-pads.md",
+      "sha256": "c98b4d150b0dd94c88db12ab1f5bcb0fdbd19fbefa37ddc8f01126d62d31a6d4",
+      "same_path_source_sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/preserve-existing-grasp.md",
+      "sha256": "db94e394165a34b7571dcff0ebcaf418a4e848227c362037052fc364039e750f",
+      "same_path_source_sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/reach-band-at-ball-height.md",
+      "sha256": "48dcf7606feaec2607457fb0c7fdca2593ecb3dc9c1ec614d8d5cf6e015dbbb7",
+      "same_path_source_sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/reflex-stop-on-events.md",
+      "sha256": "e5d225688a845d8a0fa31280f90a1dfcb547a018ca2866d5335493d0f1be1fa9",
+      "same_path_source_sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/search-close-default.md",
+      "sha256": "9f9d7c44766115683a8dc370e200d1d4b2156b20f058126e1fcb37fa704381ea",
+      "same_path_source_sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/search-past-first-contact.md",
+      "sha256": "28dc537d25f123284e133f62b62141516334900363e38ee7b662d916bfa276ec",
+      "same_path_source_sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/search-refine-around-contact.md",
+      "sha256": "13efba90b62c3025ca190c45c1e240efc379c2be692a6b7e5f9ab0cf05a7dc3b",
+      "same_path_source_sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/seat-by-slide-collapse.md",
+      "sha256": "41e0078b90c32ec0c7e9734a61583402c6a423ee6be9d1527bf352fefb36ea3f",
+      "same_path_source_sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/small-step-insertion.md",
+      "sha256": "66b7a48ab41642296c066892134bdef86b74de0037d2b16c1a4088111ed96fad",
+      "same_path_source_sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/stall-means-jam.md",
+      "sha256": "548dcd4e72bef6bec8b85fe3ca3850781321518295a6c9e15889896aefe5c7d3",
+      "same_path_source_sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/thread-direction-by-legs.md",
+      "sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "same_path_source_sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/act/wrist-limit-segmentation.md",
+      "sha256": "4c01f074f9a6cb56381cfb624c63e26b2b2f7f62db57d8200b72c3369d0eb112",
+      "same_path_source_sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/bowl-descent-stops-short.md",
+      "sha256": "7449df318060a4f6de05618e12068705033c31d3632dc4d7bcc864fcdb2db01f",
+      "same_path_source_sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/descend-until-supported.md",
+      "sha256": "62e53c793a5430afc8c278f62d3fe70889e334d7544e01d45edca147f2aab7ef",
+      "same_path_source_sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/keep-closed-if-task-allows.md",
+      "sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "same_path_source_sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/lift-before-lateral.md",
+      "sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "same_path_source_sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/seat-height-from-plate.md",
+      "sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "same_path_source_sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/settle-after-release.md",
+      "sha256": "b285312e6e565f51caef888d02dfcbe241df488bb1f6f20cf2fbcf65a75889df",
+      "same_path_source_sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/unload-before-open.md",
+      "sha256": "05ad7fa9835693aa239df65cb6ff274cd44205c31c859f73649f18f0a887298d",
+      "same_path_source_sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/place/world-frame-transport.md",
+      "sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "same_path_source_sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/channel-selection.md",
+      "sha256": "af5180818ec85b67a57e8a63dcb7baad88b8e8a76eb02b626e26019e44ef4e88",
+      "same_path_source_sha256": "820ddbbc09bac65da7fc47caf598d505807bdba9c106605e9a9eea7bbdd9523a",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/cruise-height.md",
+      "sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "same_path_source_sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/differential-across-states.md",
+      "sha256": "797b340230fb6dbcde8d04f130f857196759bb1e49ac2968dff5b725b5bac231",
+      "same_path_source_sha256": "2cc242d649101794db74812bffb5c6b558aa60180a872d7f78735de81203f8e3",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/grasp-verification.md",
+      "sha256": "47438371a60086d8c955bc8521466b8b75617d03394c0bb4f65485154725f781",
+      "same_path_source_sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/memory-match-one-grasp.md",
+      "sha256": "8fa28903a9ae2de382b471d5f6f4dc4b05490b0f9838127baf372205c7cb7a28",
+      "same_path_source_sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/no-absolute-without-reference.md",
+      "sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "same_path_source_sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/one-grasp-multi-property.md",
+      "sha256": "ac657b3430b6b56367486865015bdabfefb92d510cc76fbf154c515f873b9d39",
+      "same_path_source_sha256": "d5b4a75bd2e8078f6ed99deede4f2a79889efc7e1de0dc6743b77c22c8880772",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/readability-not-identity.md",
+      "sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "same_path_source_sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/regrasp-after-slip.md",
+      "sha256": "0d6efbcde6af4904afc85e8e4411129e5bffd6784d2fc29aea0cda3ed41c5651",
+      "same_path_source_sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/search-continues-after-miss.md",
+      "sha256": "b2afd392234961fc17a3c695b4fcfffb1365a5a4301c92139a6af280c6850ae0",
+      "same_path_source_sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/strap-hold-creeps.md",
+      "sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "same_path_source_sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/protocol/tactile-cannot-locate.md",
+      "sha256": "ea218b724d58c20524f5e7b1fa5c0609656ec4156a97eb6943d1b8c8527f9ba6",
+      "same_path_source_sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/can-texture-difference.md",
+      "sha256": "7676f3069a16f77305a329fe3fbb43fe3825e4da5c98da49974fe7511823c4cc",
+      "same_path_source_sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/close-lands-on-target.md",
+      "sha256": "c5528c62165b978fab777553b65887ce0db6a6eb5681da179084330aee525f15",
+      "same_path_source_sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/confidence-gate.md",
+      "sha256": "c75979802ba1798c359c1f271159de9f1967061e187c47f7cf9a0e408398c51d",
+      "same_path_source_sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/contact-flag-is-range.md",
+      "sha256": "71dfc3b4838dbfe836b2ef745aef4283800e8cf5655bac2c17ee2575fe8ae599",
+      "same_path_source_sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/depth-grip-scale.md",
+      "sha256": "784234cd81235d4e3b78c0e9844ba43f07e2960c02c78b6cd2f139735fa70694",
+      "same_path_source_sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/finger-position-grip.md",
+      "sha256": "742a7c0520c262a81950a6c6f4b4fee12461e44415766ae05b94c3dffce3e55b",
+      "same_path_source_sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/follow-is-signal.md",
+      "sha256": "fdcd991714fb6f04d69002b7145972b5cd4233d1202989251a76a5f636cb309d",
+      "same_path_source_sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/gel-shear-weight.md",
+      "sha256": "a25a60868fff52e9af86d74c46860a640601a032b283bca4b7a12382c6163507",
+      "same_path_source_sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/grip-force-by-mass.md",
+      "sha256": "e846ccfb1685654a44d9e990f25bcc53e717abcf4fa4254a5b0344c3183a8a7e",
+      "same_path_source_sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/hardness-two-closes.md",
+      "sha256": "bbd35817313f144084f77f7dc462cdfd79b8b836ebdae3ac6089b8791afce1c0",
+      "same_path_source_sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/lift-follow-height.md",
+      "sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "same_path_source_sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/no-calibration-transfer.md",
+      "sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "same_path_source_sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/position-mode-for-yield.md",
+      "sha256": "9f4ad169fde0f341a377808376aae663a1cc55ba7842a6a289e8a73d56e49c35",
+      "same_path_source_sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/shear-vs-displacement.md",
+      "sha256": "c950a696b94b47408ac374b802be3e7927bdc5c193c67ca1111c455a550637bc",
+      "same_path_source_sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/slip-pair-baseline.md",
+      "sha256": "8a8fbaed021080290baab4c357abc4a553f3d6b771cd0dc5aecfd34c14eddba9",
+      "same_path_source_sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/strap-load-is-shear-difference.md",
+      "sha256": "b980db5f8d247dca8bf361e09c0be6125822268e9aa5ee34ba4a8676127e0c61",
+      "same_path_source_sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/texture-in-relief.md",
+      "sha256": "7cc4a9cf0b8b09e18cf36ba44ad720f8a785ccaa91dca47b7e12fe10156a66d1",
+      "same_path_source_sha256": "c57007c6b36b84bca817abfb5189e30f57bf89a763e4d169dfd7cdc21b33bffd",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/texture-slope-two-grips.md",
+      "sha256": "20479160d3320ef58a9220efbcce374816b6b96f87c37ee5a9f806e0b7ffbefa",
+      "same_path_source_sha256": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/skills/sense/wide-pads-see-nothing.md",
+      "sha256": "48e4c39b5d98e9fc00eacc3e006a08e98af25fb118d42948c98b93b9af20ec19",
+      "same_path_source_sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "identical_to_same_path_source": false
+    },
+    {
+      "group": "DS",
+      "path": "env_configs/ablations/tactile_features/skills/ds/taxonomy.yaml",
+      "sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "same_path_source_sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/asymmetry-means-misaligned.md",
+      "sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "same_path_source_sha256": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/bulb-close-force.md",
+      "sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "same_path_source_sha256": "0bb78256b47406f394293f353000546d0d2b01ce81fb618f9aa1539f41156801",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/bulb-grasp-pose.md",
+      "sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "same_path_source_sha256": "fdbc530b23fa7bd66bb9010a47cee6213c139bb536f4698223a20cb387afb856",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/descent-until-contact.md",
+      "sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "same_path_source_sha256": "377418bb1a4072389a5262b65c491c0b74cb6abb306b420b5234aeb19b1bab1d",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/feed-must-match-lead.md",
+      "sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "same_path_source_sha256": "d2f3e448f095c401a68f04367c54cd26d26235d6cb2cdaf42705396b6517005e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/grasp-pose-from-offset.md",
+      "sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "same_path_source_sha256": "2910315e6898a4c3b4833f0612654c789a42d9ff3d207609b329b9a2f0af9279",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/lateral-only-align.md",
+      "sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "same_path_source_sha256": "b29ca6a7d22bc319ba835132914fcbe54de081a120543313f2c2ee32492c73ed",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/lattice-pitch-budget.md",
+      "sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "same_path_source_sha256": "90f846331664da6afb2c844e8db1ec44fff6f4709cb8d71ebeb52e20a8a5200c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/lead-by-overshoot.md",
+      "sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "same_path_source_sha256": "81e89602f66dd1feb1b35bc05e392cb74d0fbc450133ab26a6a3c2d18290f50a",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/mirrored-shear-slide.md",
+      "sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "same_path_source_sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/one-call-approach.md",
+      "sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "same_path_source_sha256": "1bf619b6d053b10a2f9f8dd8425d2ff869192946aae1e27a550634fa676de121",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/orientation-fix-high.md",
+      "sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "same_path_source_sha256": "c1a2676ac5381ba19dee8359a07145662bf6bffaeaacb2c4eb726f4684b6d6d5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/pass-ball-with-wide-pads.md",
+      "sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "same_path_source_sha256": "fd4acf813f0094ec26679ce9260319ec530349645d069ac6111359e88381c525",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/preserve-existing-grasp.md",
+      "sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "same_path_source_sha256": "ee1841e2d2eb26d55128cc7766c4f5fcbf227928385edc1dbf7859b16423f405",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/reach-band-at-ball-height.md",
+      "sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "same_path_source_sha256": "7ecdfa7e8eefb0dc33ec4269d51e32b628da14c9c3a3340d721bb7af02b0b358",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/reflex-stop-on-events.md",
+      "sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "same_path_source_sha256": "4e8eb662ace38934296fe06495f02d8f041058e40ee823cc312826448058503e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/search-close-default.md",
+      "sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "same_path_source_sha256": "36ba5b689c72fd9f02412bdc8d4906378e580ab52cdc2af8a8b480fe00864a4f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/search-past-first-contact.md",
+      "sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "same_path_source_sha256": "1a834dd969c6641c4998b928075975f9c7a02ed9dac5e13fde79396fe1c03df4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/search-refine-around-contact.md",
+      "sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "same_path_source_sha256": "43ce2ade030716500c11e5dae95d82b903a32b2fc5f04c71d70cb30074543610",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/seat-by-slide-collapse.md",
+      "sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "same_path_source_sha256": "e741a0413be4f0b04a0556579aee3b0191fc2d5919de5d3d5f73637e96216ca4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/small-step-insertion.md",
+      "sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "same_path_source_sha256": "b0b09cab7fe151d684a8a76d620468117972881316190b1d60da3f58c8cd41e5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/stall-means-jam.md",
+      "sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "same_path_source_sha256": "00d27d50c9367a2c8e93efca31cff5771a764607e7613d892dc2d88196437f06",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/thread-direction-by-legs.md",
+      "sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "same_path_source_sha256": "c330bab69fe023eac1a346212cd6fef91fa20ccb4e2503e17b00e411912e4f52",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/act/wrist-limit-segmentation.md",
+      "sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "same_path_source_sha256": "b4569e3c12595777dcec64cc7768c4589a8fa93a3ef35e0306cc9f8d3f1920e0",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/bowl-descent-stops-short.md",
+      "sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "same_path_source_sha256": "f4fd02ad2b510c583398330f89370cc0258f37b45f2772adaa3ded9a3eb9f6c0",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/descend-until-supported.md",
+      "sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "same_path_source_sha256": "34a422ab12557886151a1c3e0102f586bd2d5bb63e5e5a2586c7e4d965e83ca9",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/keep-closed-if-task-allows.md",
+      "sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "same_path_source_sha256": "17f34344f29aa4363eb8fe429294ef175299585e0bc15fd4cf0e39300051569e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/lift-before-lateral.md",
+      "sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "same_path_source_sha256": "6b6d425ce3f2040b13539af911b1a693463f81be7b051c9591b3e650a4723d2c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/seat-height-from-plate.md",
+      "sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "same_path_source_sha256": "af6bc08a7236ed236e518dfd5cc7021d765437a5e44ee37adb9ef9e29c8b7d3c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/settle-after-release.md",
+      "sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "same_path_source_sha256": "1d061a54c9b6c06157a8f7d52170aa3a5316073dc3eca3d815112c6d3aa21868",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/unload-before-open.md",
+      "sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "same_path_source_sha256": "7e7d992bc18a88ec0e04a9cf9a567f0b5ac1c583e3166a435a9c704ee1eba45f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/place/world-frame-transport.md",
+      "sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "same_path_source_sha256": "6d18d3e8b14ce11d6fb23fa07b0051397b41d858b42df48317997e292d16a559",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/channel-selection.md",
+      "sha256": "820ddbbc09bac65da7fc47caf598d505807bdba9c106605e9a9eea7bbdd9523a",
+      "same_path_source_sha256": "820ddbbc09bac65da7fc47caf598d505807bdba9c106605e9a9eea7bbdd9523a",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/cruise-height.md",
+      "sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "same_path_source_sha256": "4d6a4e6811f5c8ebfbad2cc021fdee5f9c710d4fe1635b01b13edde891e5d5db",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/differential-across-states.md",
+      "sha256": "2cc242d649101794db74812bffb5c6b558aa60180a872d7f78735de81203f8e3",
+      "same_path_source_sha256": "2cc242d649101794db74812bffb5c6b558aa60180a872d7f78735de81203f8e3",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/grasp-verification.md",
+      "sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "same_path_source_sha256": "346e9b389a87790020e94bcc5cd86002a6ee907eea3ac004b8c0c5a5d58f8dd3",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/memory-match-one-grasp.md",
+      "sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "same_path_source_sha256": "ea4c7f9e7a76bfd04bb0bd1d1a53a4b2fd788457e44976d79f8d73aa8575003e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/no-absolute-without-reference.md",
+      "sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "same_path_source_sha256": "1854f4f74dc8fe1344c39062bf0bdc6a342ba7fbe326a26cbf13e858e2a12a92",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/one-grasp-multi-property.md",
+      "sha256": "d5b4a75bd2e8078f6ed99deede4f2a79889efc7e1de0dc6743b77c22c8880772",
+      "same_path_source_sha256": "d5b4a75bd2e8078f6ed99deede4f2a79889efc7e1de0dc6743b77c22c8880772",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/readability-not-identity.md",
+      "sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "same_path_source_sha256": "9c27518271656cfd5b3a1d4d2ac4c77231c75914ef2256d4273bcfc564bc409c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/regrasp-after-slip.md",
+      "sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "same_path_source_sha256": "5d1224049e8dbfda40a1d96c901f2602646abc9ee5dcc65142bf61e20ae24829",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/search-continues-after-miss.md",
+      "sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "same_path_source_sha256": "7f69e2fc557ba4b12b9b99b945d1cd53213fd2c84ec05b536a2d952c171fa278",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/strap-hold-creeps.md",
+      "sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "same_path_source_sha256": "2622e861f36359224e4a73e9c47fa008efad57190c23c3751db7d06b60c228a5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/protocol/tactile-cannot-locate.md",
+      "sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "same_path_source_sha256": "65d2045524855167ae46b3419bc13c5559c0d3d7c9a1c24c5f89b5b562ca1f23",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/can-texture-difference.md",
+      "sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "same_path_source_sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/close-lands-on-target.md",
+      "sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "same_path_source_sha256": "fc28adcd14665d93e3b4f20e7e1430483c7487230aa0225048092cd59bf45162",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/confidence-gate.md",
+      "sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "same_path_source_sha256": "7fe1d785acef95e73f85318963cde2d1b109367a146885632320f37bfea81b23",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/contact-flag-is-range.md",
+      "sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "same_path_source_sha256": "ca8d140714896fa2891c81392b632d660267f898c370a5493f75383dc8c5abe4",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/depth-grip-scale.md",
+      "sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "same_path_source_sha256": "94afa832a519ea806e74ec1ed76f34a11ef514e12ab28944fe60cd3915ab2c83",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/finger-position-grip.md",
+      "sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "same_path_source_sha256": "4ac92a3fc0b0b8f14724dacc278624983881c8a76d50dae936ad93e320a1d34c",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/follow-is-signal.md",
+      "sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "same_path_source_sha256": "e35a632b53a7b6544c0e0f8b9aaa346499dbb09bf4011061a03e17816918f229",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/gel-shear-weight.md",
+      "sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "same_path_source_sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/grip-force-by-mass.md",
+      "sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "same_path_source_sha256": "aace8b80519b44a5b2615c7865345245f0ed926315beaed5dd92de0eb230832d",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/hardness-two-closes.md",
+      "sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "same_path_source_sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/lift-follow-height.md",
+      "sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "same_path_source_sha256": "d5674658e2e2631015512a494a22298df5dc91e0896db3a4eca5008ca1bcfd3e",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/no-calibration-transfer.md",
+      "sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "same_path_source_sha256": "38cfe195286e482db5bd22218f72f6e9660f7fbacf036f8caf8c59043be2b0fb",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/position-mode-for-yield.md",
+      "sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "same_path_source_sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/shear-vs-displacement.md",
+      "sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "same_path_source_sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/slip-pair-baseline.md",
+      "sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "same_path_source_sha256": "cc63ed70fa3e9cb46254c84f9f30dd1268d84c4d027dd92f8db7174a1809def2",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/strap-load-is-shear-difference.md",
+      "sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "same_path_source_sha256": "1e6a17adedc357b102a13d1f2941aa73beae8e66f1297d0d0faf9c3a909f2baf",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/texture-in-relief.md",
+      "sha256": "c57007c6b36b84bca817abfb5189e30f57bf89a763e4d169dfd7cdc21b33bffd",
+      "same_path_source_sha256": "c57007c6b36b84bca817abfb5189e30f57bf89a763e4d169dfd7cdc21b33bffd",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/texture-slope-two-grips.md",
+      "sha256": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
+      "same_path_source_sha256": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/skills/sense/wide-pads-see-nothing.md",
+      "sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "same_path_source_sha256": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
+      "identical_to_same_path_source": true
+    },
+    {
+      "group": "BDS",
+      "path": "env_configs/ablations/tactile_features/skills/full/taxonomy.yaml",
+      "sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "same_path_source_sha256": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
+      "identical_to_same_path_source": true
+    }
+  ]
+}
