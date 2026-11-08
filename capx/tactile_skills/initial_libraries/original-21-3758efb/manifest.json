@@ -1,0 +1,741 @@
+{
+  "schema_version": 1,
+  "snapshot": "original-21-3758efb",
+  "created_at_utc": "2026-11-07T14:35:47.836121+00:00",
+  "source": {
+    "repository": "https://github.com/SMF-an/cap-tac",
+    "commit": "3758efb4c5609c026ae4963c661d30e4556297d4",
+    "skill_root": "capx/tactile_skills/skills",
+    "license": "MIT"
+  },
+  "frozen_source": true,
+  "freeze_method": "pinned_commit_and_byte_checksums",
+  "skill_count": 21,
+  "family_counts": {
+    "sense": 13,
+    "protocol": 3,
+    "act": 5
+  },
+  "files": [
+    {
+      "review_number": 1,
+      "id": "S1",
+      "name": "depth-grip-scale",
+      "family": "sense",
+      "path": "skills/sense/depth-grip-scale.md",
+      "source_path": "capx/tactile_skills/skills/sense/depth-grip-scale.md",
+      "git_blob_sha1": "b40e28f46af0e26c8d54bd57171fc9d0fd8461a6",
+      "sha256": "94801dd00f9262f60cc5e8f397a6011f1f08c591cfbc20e0709fc370443124c5",
+      "size_bytes": 4394,
+      "scope": {
+        "task_types": [
+          "classify",
+          "force",
+          "insert",
+          "manipulate",
+          "screw",
+          "wipe"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "depth"
+        ]
+      },
+      "objects": "any",
+      "external_document_references": [
+        "grasp-verification"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 2,
+      "id": "S13",
+      "name": "shear-vs-displacement",
+      "family": "sense",
+      "path": "skills/sense/shear-vs-displacement.md",
+      "source_path": "capx/tactile_skills/skills/sense/shear-vs-displacement.md",
+      "git_blob_sha1": "3a81dd4d3a00538986bc425cccb9fd19227e32f9",
+      "sha256": "a88976466539bec7d4f8e332e9c98fb63c1c37d2a430ae44007e61eb6ba278a7",
+      "size_bytes": 1697,
+      "scope": {
+        "task_types": [
+          "classify",
+          "force",
+          "insert",
+          "manipulate",
+          "screw",
+          "wipe"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear",
+          "displacement",
+          "coherence"
+        ]
+      },
+      "objects": "any",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 3,
+      "id": "S2",
+      "name": "gel-shear-weight",
+      "family": "sense",
+      "path": "skills/sense/gel-shear-weight.md",
+      "source_path": "capx/tactile_skills/skills/sense/gel-shear-weight.md",
+      "git_blob_sha1": "19dfdff5d075002a7fafd7cc3a96edad61f6f6e1",
+      "sha256": "8d25697f538ae5e20c02c1d190181e34f7b80807516189e2de61557451a6914f",
+      "size_bytes": 2455,
+      "scope": {
+        "task_types": [
+          "classify"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "blocks of a few grams to a few hundred; the grip number changes with mass",
+      "external_document_references": [
+        "lift-follow-height",
+        "one-call-approach",
+        "one-grasp-multi-property"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 4,
+      "id": "S4",
+      "name": "grip-force-by-mass",
+      "family": "sense",
+      "path": "skills/sense/grip-force-by-mass.md",
+      "source_path": "capx/tactile_skills/skills/sense/grip-force-by-mass.md",
+      "git_blob_sha1": "880681fcbc363d02d54427fa287f19840f7c845a",
+      "sha256": "aac3e4d5c2847c0d12f0495ada592d7edde44935177ff6782f6acd5fc1ae46c3",
+      "size_bytes": 1614,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "weight_classify"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "rigid objects; the two published figures are for the 15 mm block and for a can of 300 g or more",
+      "external_document_references": [
+        "no-calibration-transfer"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 5,
+      "id": "R16",
+      "name": "weigh-grasp-by-lift",
+      "family": "protocol",
+      "path": "skills/protocol/weigh-grasp-by-lift.md",
+      "source_path": "capx/tactile_skills/skills/protocol/weigh-grasp-by-lift.md",
+      "git_blob_sha1": "320fdbe7b7475149fec01e4ee6927a5602645b50",
+      "sha256": "62acc3c76c154bfeaada223111e6edbcbdac9df5bf6c67e7e93fe60065253df8",
+      "size_bytes": 1853,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "weight_classify"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "depth",
+          "coincidence"
+        ]
+      },
+      "objects": "the 15 mm block",
+      "external_document_references": [
+        "keep-closed-if-task-allows"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 6,
+      "id": "S7",
+      "name": "hardness-two-closes",
+      "family": "sense",
+      "path": "skills/sense/hardness-two-closes.md",
+      "source_path": "capx/tactile_skills/skills/sense/hardness-two-closes.md",
+      "git_blob_sha1": "969c022c552c14e5f1315df8f41a6961ac5ea6b7",
+      "sha256": "4e05820eeca0f5265f039d44813d0c55926ed12b311830374db9b3a51d27a18f",
+      "size_bytes": 1720,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "hardness_classify"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "depth"
+        ]
+      },
+      "objects": "blocks on this rig; the two positions bracket the object width",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 7,
+      "id": "S8",
+      "name": "position-mode-for-yield",
+      "family": "sense",
+      "path": "skills/sense/position-mode-for-yield.md",
+      "source_path": "capx/tactile_skills/skills/sense/position-mode-for-yield.md",
+      "git_blob_sha1": "05b2cc41fc2d72847cceaab62deafee7c69353b8",
+      "sha256": "08e14c58e025305b233162afae7253a8cda266ce90a2a63a644e14b721d0dd65",
+      "size_bytes": 1510,
+      "scope": {
+        "task_types": [
+          "classify"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "depth"
+        ]
+      },
+      "objects": "compliant objects, whose jaws bottom out at ~26.5 mm",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 8,
+      "id": "S11",
+      "name": "texture-slope-two-grips",
+      "family": "sense",
+      "path": "skills/sense/texture-slope-two-grips.md",
+      "source_path": "capx/tactile_skills/skills/sense/texture-slope-two-grips.md",
+      "git_blob_sha1": "541a438915f5fdcac164d59ea152f1014a4393b5",
+      "sha256": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
+      "size_bytes": 1387,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "grasp_classify"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "anisotropy",
+          "depth"
+        ]
+      },
+      "objects": "the textured blocks on this rig",
+      "external_document_references": [
+        "channel-selection"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 9,
+      "id": "R11",
+      "name": "memory-match-one-grasp",
+      "family": "protocol",
+      "path": "skills/protocol/memory-match-one-grasp.md",
+      "source_path": "capx/tactile_skills/skills/protocol/memory-match-one-grasp.md",
+      "git_blob_sha1": "d8153c1bd5cfe4001b66df73c0ccfc0180de098a",
+      "sha256": "03613bbd96a565d48e416a91fc6047a5ea98bdf55b36b5e5b5ba1e8c7f75b856",
+      "size_bytes": 2624,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "tactile_memory_match"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "depth",
+          "anisotropy",
+          "coincidence"
+        ]
+      },
+      "objects": "the 4 cm orange cans, rigid and compliant",
+      "external_document_references": [
+        "no-calibration-transfer"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 10,
+      "id": "S12",
+      "name": "can-texture-difference",
+      "family": "sense",
+      "path": "skills/sense/can-texture-difference.md",
+      "source_path": "capx/tactile_skills/skills/sense/can-texture-difference.md",
+      "git_blob_sha1": "2ddf698c6c1ecde3f887df5b1ebdef88084d75d4",
+      "sha256": "0e693be7e8bd451aa0bafc748741a526c8c30e38ff34520d92a86a6292a15eb5",
+      "size_bytes": 1613,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "tactile_memory_match"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "anisotropy",
+          "depth"
+        ]
+      },
+      "objects": "rigid cans; on a compliant can the same contrast measured 0.002-0.016, at or under the line",
+      "external_document_references": [
+        "differential-across-states",
+        "no-calibration-transfer"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 11,
+      "id": "S20",
+      "name": "follow-is-signal",
+      "family": "sense",
+      "path": "skills/sense/follow-is-signal.md",
+      "source_path": "capx/tactile_skills/skills/sense/follow-is-signal.md",
+      "git_blob_sha1": "62a639bd5a2cf39a75785b7546aa8ad67c1bac17",
+      "sha256": "78c924d9f0b02155c941f57c10854ed24baa8fba03b6ea8abfc4ae4833cd19b4",
+      "size_bytes": 1316,
+      "scope": {
+        "task_types": [
+          "classify"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "depth"
+        ]
+      },
+      "objects": "the memory-match cans",
+      "external_document_references": [
+        "grasp-verification",
+        "one-grasp-multi-property"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 12,
+      "id": "A26",
+      "name": "strap-load-is-shear-difference",
+      "family": "sense",
+      "path": "skills/sense/strap-load-is-shear-difference.md",
+      "source_path": "capx/tactile_skills/skills/sense/strap-load-is-shear-difference.md",
+      "git_blob_sha1": "b5fc248c6b83a1ce4a49d02ee2096dabc8a5979f",
+      "sha256": "8cad9ad91d5fde14f47a5e484805f064e3c39ebedd10e3ab3829a86b67c430b6",
+      "size_bytes": 2362,
+      "scope": {
+        "task_types": [
+          "force"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "the elastic strap, gripped by the tab at its top",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 13,
+      "id": "A30",
+      "name": "strap-grasp-and-ramp",
+      "family": "act",
+      "path": "skills/act/strap-grasp-and-ramp.md",
+      "source_path": "capx/tactile_skills/skills/act/strap-grasp-and-ramp.md",
+      "git_blob_sha1": "8a5a22130cdac16dd1d3f69c7af0fda70e24fd5e",
+      "sha256": "dd9a2bbb29a6b618f5a47dab7f6bcc0d0ca17b9d01b1116c09e31dfc18c9ff60",
+      "size_bytes": 3459,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "tension_strap"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "the elastic strap's tab",
+      "external_document_references": [
+        "one-call-approach"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 14,
+      "id": "R15",
+      "name": "strap-hold-creeps",
+      "family": "protocol",
+      "path": "skills/protocol/strap-hold-creeps.md",
+      "source_path": "capx/tactile_skills/skills/protocol/strap-hold-creeps.md",
+      "git_blob_sha1": "659927e9619f14d8473d93a650b7eb9f733981b5",
+      "sha256": "8a2c25fbf06875f664481c18898e50605cb01fc41ab21ac2655fbbd92eaaa221",
+      "size_bytes": 1087,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "tension_strap"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "the elastic strap",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 15,
+      "id": "A14",
+      "name": "mirrored-shear-slide",
+      "family": "act",
+      "path": "skills/act/mirrored-shear-slide.md",
+      "source_path": "capx/tactile_skills/skills/act/mirrored-shear-slide.md",
+      "git_blob_sha1": "1c49557e706dc7f75787d1cd52d76decd1a18371",
+      "sha256": "f2cc09db23345e3684a212a53ea51e3413bfa1358c133d1c117dea353aecc1b7",
+      "size_bytes": 3719,
+      "scope": {
+        "task_types": [
+          "screw"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear",
+          "coincidence"
+        ]
+      },
+      "objects": "light_bulb (gain calibrated on this rig)",
+      "external_document_references": [],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 16,
+      "id": "A10",
+      "name": "thread-direction-by-legs",
+      "family": "act",
+      "path": "skills/act/thread-direction-by-legs.md",
+      "source_path": "capx/tactile_skills/skills/act/thread-direction-by-legs.md",
+      "git_blob_sha1": "1768c8819ffc456cd806675093373ef1e7aa34bd",
+      "sha256": "5d83252b44688eb542036f1205bb7dad072d21f66883f05e763e5df9dd7bbbff",
+      "size_bytes": 14155,
+      "scope": {
+        "task_types": [
+          "screw"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "light_bulb",
+      "external_document_references": [
+        "confidence-gate",
+        "lattice-pitch-budget",
+        "regrasp-after-slip"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 17,
+      "id": "A11",
+      "name": "lead-by-overshoot",
+      "family": "act",
+      "path": "skills/act/lead-by-overshoot.md",
+      "source_path": "capx/tactile_skills/skills/act/lead-by-overshoot.md",
+      "git_blob_sha1": "b0d33fa71f664196d04cfa606b3e4fc8eeac0aaa",
+      "sha256": "3d17ac24be43842139b5980d982e00603342c13174f6f0bc308ff379768825e9",
+      "size_bytes": 10684,
+      "scope": {
+        "task_types": [
+          "screw"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear"
+        ]
+      },
+      "objects": "light_bulb",
+      "external_document_references": [
+        "confidence-gate",
+        "lattice-pitch-budget"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 18,
+      "id": "A13",
+      "name": "seat-by-slide-collapse",
+      "family": "act",
+      "path": "skills/act/seat-by-slide-collapse.md",
+      "source_path": "capx/tactile_skills/skills/act/seat-by-slide-collapse.md",
+      "git_blob_sha1": "23571ff233f63c3e6ef9ae5203087fac8004add5",
+      "sha256": "0f60a826b350b5b0492b603bd74922b457466a2c4e4e85acec3f236d88dee76c",
+      "size_bytes": 7071,
+      "scope": {
+        "task_types": [
+          "screw"
+        ],
+        "tasks": [],
+        "not_tasks": [],
+        "channels": [
+          "shear",
+          "coincidence"
+        ]
+      },
+      "objects": "light_bulb",
+      "external_document_references": [
+        "confidence-gate",
+        "feed-must-match-lead",
+        "wrist-limit-segmentation"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 19,
+      "id": "S23",
+      "name": "texture-in-relief",
+      "family": "sense",
+      "path": "skills/sense/texture-in-relief.md",
+      "source_path": "capx/tactile_skills/skills/sense/texture-in-relief.md",
+      "git_blob_sha1": "90ee3db4427d89d0dc75d5c26e8d746672d5b776",
+      "sha256": "5dae33d1edd51bcb0ff7b6f9b7766bd2dc06b0c3f1d3c4a99cc76ff368b40e9f",
+      "size_bytes": 7366,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "blind_pick_balls"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "relief",
+          "depth"
+        ]
+      },
+      "objects": "the twelve balls in the blind box, measured at a 48 mm seat between the pad faces",
+      "external_document_references": [
+        "pass-ball-with-wide-pads"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 20,
+      "id": "S24",
+      "name": "wide-pads-see-nothing",
+      "family": "sense",
+      "path": "skills/sense/wide-pads-see-nothing.md",
+      "source_path": "capx/tactile_skills/skills/sense/wide-pads-see-nothing.md",
+      "git_blob_sha1": "ce19194b600d0d382df8476b66050c8c9ab8ad36",
+      "sha256": "df0a40e81bce1e1680af01ed306af174e6d0395ec0a730f701c02e3da8a02450",
+      "size_bytes": 4915,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "blind_pick_balls"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "depth"
+        ]
+      },
+      "objects": "the 60 mm balls of the blind box; the clearance is half the jaw opening minus the ball's radius",
+      "external_document_references": [
+        "contact-flag-is-range",
+        "no-calibration-transfer",
+        "reach-band-at-ball-height"
+      ],
+      "current_runtime_status": "source_only_not_activated"
+    },
+    {
+      "review_number": 21,
+      "id": "S25",
+      "name": "piano-gel-force-band",
+      "family": "sense",
+      "path": "skills/sense/piano-gel-force-band.md",
+      "source_path": "capx/tactile_skills/skills/sense/piano-gel-force-band.md",
+      "git_blob_sha1": "68d7a98e828b21905b9c687c47b46fcb7e0229f8",
+      "sha256": "90a100cab9342f01b5b2d83b606a81511cd0e9b435c5ba8d57ef73f45f492784",
+      "size_bytes": 3658,
+      "scope": {
+        "task_types": [],
+        "tasks": [
+          "arm_shadow_piano"
+        ],
+        "not_tasks": [],
+        "channels": [
+          "force",
+          "depth"
+        ]
+      },
+      "objects": "the white keys of this piano rig, under the index GelSight Mini",
+      "external_document_references": [],
+      "current_runtime_status": "archive_only_incompatible_with_current_digit"
+    }
+  ],
+  "supporting_files": [
+    {
+      "path": "taxonomy.yaml",
+      "source_path": "capx/tactile_skills/taxonomy.yaml",
+      "git_blob_sha1": "5073223eeb7f745f633b5861a86d62cd1bc6fff6",
+      "sha256": "5919ad7ae460d9034fa0a90868a514eb8907c1bd0f7dbfe4b53a5b16dd2de9e2",
+      "size_bytes": 10658
+    },
+    {
+      "path": "LICENSE",
+      "source_path": "LICENSE",
+      "git_blob_sha1": "fd84283b90f899e01a36b94d24d90525312cfe91",
+      "sha256": "ad82ce2e6eb6e594af189655ae2f1592d0c91649d2745ad715c65850126cc6cc",
+      "size_bytes": 1062
+    }
+  ],
+  "source_content_sha256": "8a44c9b170c4a975f536d6385ea08ae53223b709668d460c957a450a86713c66",
+  "source_content_hash_algorithm": "SHA256 over sorted UTF-8 relative path + NUL + file bytes; skills, taxonomy.yaml and LICENSE",
+  "external_document_references": [
+    {
+      "name": "channel-selection",
+      "referenced_by": [
+        "texture-slope-two-grips"
+      ],
+      "included": false
+    },
+    {
+      "name": "confidence-gate",
+      "referenced_by": [
+        "lead-by-overshoot",
+        "seat-by-slide-collapse",
+        "thread-direction-by-legs"
+      ],
+      "included": false
+    },
+    {
+      "name": "contact-flag-is-range",
+      "referenced_by": [
+        "wide-pads-see-nothing"
+      ],
+      "included": false
+    },
+    {
+      "name": "differential-across-states",
+      "referenced_by": [
+        "can-texture-difference"
+      ],
+      "included": false
+    },
+    {
+      "name": "feed-must-match-lead",
+      "referenced_by": [
+        "seat-by-slide-collapse"
+      ],
+      "included": false
+    },
+    {
+      "name": "grasp-verification",
+      "referenced_by": [
+        "depth-grip-scale",
+        "follow-is-signal"
+      ],
+      "included": false
+    },
+    {
+      "name": "keep-closed-if-task-allows",
+      "referenced_by": [
+        "weigh-grasp-by-lift"
+      ],
+      "included": false
+    },
+    {
+      "name": "lattice-pitch-budget",
+      "referenced_by": [
+        "lead-by-overshoot",
+        "thread-direction-by-legs"
+      ],
+      "included": false
+    },
+    {
+      "name": "lift-follow-height",
+      "referenced_by": [
+        "gel-shear-weight"
+      ],
+      "included": false
+    },
+    {
+      "name": "no-calibration-transfer",
+      "referenced_by": [
+        "can-texture-difference",
+        "grip-force-by-mass",
+        "memory-match-one-grasp",
+        "wide-pads-see-nothing"
+      ],
+      "included": false
+    },
+    {
+      "name": "one-call-approach",
+      "referenced_by": [
+        "gel-shear-weight",
+        "strap-grasp-and-ramp"
+      ],
+      "included": false
+    },
+    {
+      "name": "one-grasp-multi-property",
+      "referenced_by": [
+        "follow-is-signal",
+        "gel-shear-weight"
+      ],
+      "included": false
+    },
+    {
+      "name": "pass-ball-with-wide-pads",
+      "referenced_by": [
+        "texture-in-relief"
+      ],
+      "included": false
+    },
+    {
+      "name": "reach-band-at-ball-height",
+      "referenced_by": [
+        "wide-pads-see-nothing"
+      ],
+      "included": false
+    },
+    {
+      "name": "regrasp-after-slip",
+      "referenced_by": [
+        "thread-direction-by-legs"
+      ],
+      "included": false
+    },
+    {
+      "name": "wrist-limit-segmentation",
+      "referenced_by": [
+        "seat-by-slide-collapse"
+      ],
+      "included": false
+    }
+  ],
+  "runtime": {
+    "adopted": false,
+    "shared_source_for": [
+      "auto_cc",
+      "skillopt"
+    ],
+    "existing_active_libraries_modified": false,
+    "excluded_from_current_digit_delivery": [
+      "piano-gel-force-band"
+    ],
+    "piano_source_sensor": "GelSight Mini / UIPC",
+    "piano_incompatibility_reason": "Upstream skill uses left_force_N and close_gripper(press_force_N=...). The current DIGIT runtime uses a different calibration and control interface; no automatic transfer is authorized.",
+    "delivery_policy_enforcement": "Not activated. Future consumers must honor the recorded DIGIT exclusion.",
+    "framework_changes": false
+  }
+}

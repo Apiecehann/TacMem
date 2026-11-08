@@ -1,0 +1,44 @@
+base_commit: e1703a7e396caa9654fa68b692999b530d32ad99
+backend: cc
+output_root: /mnt/data/ljz/opentacbench/logger2skill-initial21-roughness/cc
+smoke: true
+budget:
+  rounds: 3
+  seconds: null
+seeds:
+- 44000
+- 44001
+- 44002
+initial_library_path: capx/tactile_skills/initial_libraries/original-21-3758efb
+memory_max_chars: 12000
+gpu: 1
+gpu_uuid: null
+require_idle_gpu: true
+allow_auxiliary_graphics: true
+stop_on_infrastructure_error: true
+opentac_root: /mnt/a/ljz/cap/OpenTacBench
+skillopt_source: /mnt/data/ljz/opentacbench/references/SkillOpt
+execution:
+  client_python: /mnt/data/ljz/opentacbench/cap-agent0-baselines/client-env/bin/python
+  sim_python: /mnt/data/ljz/opentacbench/conda-envs/UniVTAC/bin/python
+  model: gpt-6.1-sol
+  api_url_env: CAPX_API_BASE_URL
+  api_key_env: CAPX_API_KEY
+  max_output_tokens: 8192
+  temperature: 1.0
+  reasoning_effort: medium
+  timeout_s: 4200
+  startup_timeout_s: 900
+  port: 8120
+  server_dependency_path: /mnt/data/ljz/opentacbench/logger2skill-server-http
+curator:
+  command: /mnt/a/ljz/.npm-global/bin/claude
+  model: claude-sonnet-4-6
+  credential_settings: /mnt/a/ljz/.claude/settings.json
+  timeout_s: 300
+  max_output_tokens: 4096
+  max_responses: 12
+tasks:
+  grasp_classify:
+    config: env_configs/univtac/grasp_classify/univtac_grasp_classify.yaml
+    environment_root: /mnt/a/ljz/cap/OpenTacBench

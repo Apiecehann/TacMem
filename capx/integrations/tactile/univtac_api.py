@@ -100,6 +100,8 @@ def _trim_motion_tactile(data: dict) -> dict:
             value = None
         if value is not None:
             out[key] = value
+    if os.environ.get("CAPX_LOGGER2SKILL"):
+        print("Tactile scalars:", out)
     return out
 
 
@@ -673,6 +675,8 @@ class UniVTACTactileApi(ApiBase):
               f"R_disp={data['right_marker_displacement_px']:.2f}px "
               f"L_coh={data['left_marker_coherence']:.2f} "
               f"R_coh={data['right_marker_coherence']:.2f}{relief}")
+        if os.environ.get("CAPX_LOGGER2SKILL"):
+            _trim_motion_tactile(data)
         # Strip images before returning to avoid huge logs
         return {k: v for k, v in data.items() if "base64" not in k}
 
@@ -755,9 +759,18 @@ class UniVTACTactileApi(ApiBase):
     def sample_grasp_pose(
         self, object_name: str
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Sample a grasp pose for an object resting on the table.
+        """Sample a final end-effector grasp pose for an object on the table.
 
-        The pose is the object's pose in the simulator's ground-truth scene
+        This is a computed wrist target, not the object's origin returned by
+        get_object_pose and not the hover pose left by pre_move. Move to this
+        target with goto_pose before closing the gripper.
+        For weight_classify's block, it is recomputed from the current object
+        pose, a grasp centre 0.04 m above its local origin, and the robot's
+        gripper-centre-to-wrist transform. Reset leaves the open gripper above
+        the block; this query does not move it or close it.
+
+        For other objects without a task-specific rule, the pose is the object's
+        pose in the simulator's ground-truth scene
         plus a hand-relative offset, both read on the FIRST call for that
         object and cached from then on.  A task that would rather not take the
         cached offset has its own rule, which the API applies instead: where a

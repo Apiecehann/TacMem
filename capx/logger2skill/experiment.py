@@ -4,11 +4,14 @@ import copy
 import difflib
 import fcntl
 import hashlib
+import json
 import os
+import re
 import shutil
 import socket
 import subprocess
 import time
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import requests
@@ -18,7 +21,8 @@ from . import BASE_COMMIT
 from .claude import summarize_calls
 from .evidence import action_counts, coding_usage, make_case
 from .processes import run_process, stop_owned_process, without_proxy
-from .storage import LibraryStore, pack_library, read_json, write_json
+from .initial_library import verify_source
+from .storage import render_memory, LibraryStore, pack_library, read_json, write_json
 
 REPO = Path(__file__).resolve().parents[2]
 TASKS = {"weight_classify", "grasp_classify", "hardness_classify", "tactile_memory_match",
@@ -53,13 +57,16 @@ def load_suite(path: Path) -> dict:
         if not task_file.is_file() or not Path(item["environment_root"]).is_dir():
             raise ValueError(f"Missing task config or environment root: {task}")
         item["config_sha256"] = hashlib.sha256(task_file.read_bytes()).hexdigest()
+    if config.get("initial_library_path"):
+        verify_source(Path(config["initial_library_path"]))
     return config
 
 
 def episode_config(task: str, item: dict, seed: int, output: Path, memory: Path, max_chars: int) -> dict:
     cfg = yaml.safe_load((REPO / item["config"]).read_text(encoding="utf-8"))
     cfg = copy.deepcopy(cfg)
-    cfg.update(api_servers=[], trials=1, num_workers=1, output_dir=str(output), record_video=False,
+    cfg.update(api_servers=[], trials=1, num_workers=1, output_dir=str(output),
+               record_video=bool(cfg.get("record_video", False)),
                use_visual_feedback=True, use_img_differencing=False, use_video_differencing=False,
                use_parallel_ensemble=False, use_multimodel=False, use_oracle_code=False, web_ui=False,
                evolve_skill_library=False, single_program=True, logger2skill_episode=True,
@@ -93,6 +100,23 @@ def wait_ready(proc, url: str, task: str, deadline: float) -> None:
     raise TimeoutError("Simulator startup exceeded the episode budget")
 
 
+def verify_gpu_process(pid: int, expected_uuid: str, output: Path,
+                       allow_auxiliary_graphics: bool = False) -> None:
+    xml = subprocess.check_output(["nvidia-smi", "-q", "-x"], text=True)
+    report = []
+    for gpu in ET.fromstring(xml).findall("gpu"):
+        for process in gpu.findall("./processes/process_info"):
+            if process.findtext("pid") == str(pid):
+                report.append({"gpu_uuid": gpu.findtext("uuid"), "pid": pid,
+                               "type": process.findtext("type"),
+                               "used_memory": process.findtext("used_memory")})
+    write_json(output / "gpu_process_check.json", report)
+    unexpected = [row for row in report if row["gpu_uuid"] != expected_uuid
+                  and not (allow_auxiliary_graphics and row["type"] == "G")]
+    if not any(row["gpu_uuid"] == expected_uuid for row in report) or unexpected:
+        raise RuntimeError("GPU isolation check failed: simulator has an unexpected compute or graphics context")
+
+
 def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Path, timeout: float) -> dict:
     gpu = os.environ.get("GPU", "")
     if not gpu.isdecimal():
@@ -101,11 +125,29 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
         ["nvidia-smi", "-i", gpu, "--query-gpu=uuid", "--format=csv,noheader"], text=True).strip()
     if not gpu_uuid.startswith("GPU-") or "\n" in gpu_uuid:
         raise ValueError("GPU must resolve to exactly one NVIDIA device UUID")
+    if suite.get("gpu") is not None and gpu != str(suite["gpu"]):
+        raise ValueError("The selected GPU differs from the frozen experiment")
+    if suite.get("gpu_uuid") and gpu_uuid != suite["gpu_uuid"]:
+        raise ValueError("The selected GPU UUID differs from the frozen experiment")
+    gpu_check = {"index": int(gpu), "uuid": gpu_uuid}
+    if suite.get("require_idle_gpu"):
+        values = subprocess.check_output(
+            ["nvidia-smi", "-i", gpu, "--query-gpu=memory.used,utilization.gpu",
+             "--format=csv,noheader,nounits"], text=True).strip().split(",")
+        gpu_check.update(memory_MiB=int(values[0]), utilization_percent=int(values[1]))
+        if gpu_check["memory_MiB"] > 256 or gpu_check["utilization_percent"] > 5:
+            raise RuntimeError("Selected GPU is busy; no fallback GPU is allowed")
     execution = suite["execution"]
     port = int(execution.get("port", 8120))
     with socket.socket() as check:
         check.bind(("127.0.0.1", port))
     output.mkdir(parents=True, exist_ok=False)
+    write_json(output / "gpu_isolation.json", gpu_check)
+    delivered = render_memory(memory, task, suite["memory_max_chars"])
+    (output / "skill_delivery.txt").write_text(delivered, encoding="utf-8")
+    write_json(output / "skill_delivery.json", {
+        "library_path": str(memory), "characters": len(delivered),
+        "sha256": hashlib.sha256(delivered.encode()).hexdigest(), "runtime_confirmed": False})
     started = time.monotonic()
     deadline = started + timeout
     url = f"http://127.0.0.1:{port}"
@@ -143,6 +185,9 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
                                 start_new_session=True)
         try:
             wait_ready(proc, url, task, min(deadline, started + execution["startup_timeout_s"]))
+            if suite.get("require_idle_gpu"):
+                verify_gpu_process(proc.pid, gpu_uuid, output,
+                                   suite.get("allow_auxiliary_graphics", False))
             base_url = os.environ.get(execution["api_url_env"], "").rstrip("/")
             if not base_url:
                 raise ValueError(f"Set {execution['api_url_env']} before starting an experiment")
@@ -172,6 +217,14 @@ def execute_episode(suite: dict, task: str, seed: int, output: Path, memory: Pat
         case = make_case(f"{task}_{seed}", task, seed, "", "", "", "No completed public case was exported.", None, None)
         result.setdefault("infrastructure_error", "No completed public case; inspect local logs")
         result['public_case_exported'] = False
+    loaded_path = output / "client/loaded_memory.json"
+    if loaded_path.exists():
+        loaded = read_json(loaded_path)["text"]
+        delivery_record = read_json(output / "skill_delivery.json")
+        delivery_record["runtime_confirmed"] = loaded == delivered
+        write_json(output / "skill_delivery.json", delivery_record)
+        if loaded != delivered:
+            result["infrastructure_error"] = "Actual delivered memory differs from the frozen version"
     usage_path = output / 'client/coding_usage.json'
     raw_path = output / 'client/raw_model_response.json'
     if not usage_path.exists() and raw_path.exists():
@@ -211,6 +264,16 @@ def curate_episode(suite: dict, folder: Path, case: dict, store: LibraryStore,
             result.update(status="rejected", error=str(exc))
     else:
         result.update(status="failed", error=worker_result.get("error", "No successful curator result"))
+        for stream in work.glob("calls/*/response.jsonl"):
+            for line in stream.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("type") == "result" and event.get("is_error") and re.search(
+                        r"authentication|unauthorized|invalid.{0,10}key|credit|quota|rate.limit|overloaded",
+                        str(event.get("result", "")), re.I):
+                    result["infrastructure_error"] = "Curator credential, quota or service failure"
     try:
         from .storage import digest
         digest(work / "candidate")
@@ -233,8 +296,11 @@ def _token_totals(rows: list[dict]) -> dict:
 
 
 def _episode_metrics(episodes: list[dict]) -> dict:
-    successes = sum(e["case"]["final_success"] is True for e in episodes)
-    known = sum(type(e["case"]["final_success"]) is bool for e in episodes)
+    eligible = [e for e in episodes if not e.get("infrastructure_error")]
+    successes = sum(e["case"]["final_success"] is True for e in eligible)
+    known = sum(type(e["case"]["final_success"]) is bool for e in eligible)
+    successful_actions = [e["action_requests"] for e in eligible
+                          if e["case"]["final_success"] is True and e.get("action_requests") is not None]
     actions = [e["action_requests"] for e in episodes if e.get("action_requests") is not None]
     completed = [e["completed_actions"] for e in episodes if e.get("completed_actions") is not None]
     coding = [e.get("coding_usage", {}) for e in episodes]
@@ -256,8 +322,9 @@ def _episode_metrics(episodes: list[dict]) -> dict:
     execution_seconds = sum(execution_times)
     curation_seconds = sum(curation_times)
     return {"attempts": len(episodes), "native_outcomes_known": known, "successes": successes,
-            "native_failures": known - successes, "native_outcomes_unknown": len(episodes) - known,
-            "sr_all_attempts": successes / len(episodes) if episodes else None,
+            "task_attempts": len(eligible),
+            "native_failures": known - successes, "native_outcomes_unknown": len(eligible) - known,
+            "sr_all_attempts": successes / len(eligible) if eligible else None,
             "sr_known_outcomes": successes / known if known else None,
             "infrastructure_failures": sum(bool(e.get("infrastructure_error")) for e in episodes),
             "public_execution_failures": sum(e["case"].get("execution_ok") is False for e in episodes),
@@ -265,13 +332,23 @@ def _episode_metrics(episodes: list[dict]) -> dict:
             "total_execute_steps": sum(actions), "total_completed_actions": sum(completed),
             "action_counts_complete": len(actions) == len(completed) == len(episodes),
             "mean_execute_steps": sum(actions) / len(actions) if actions else None,
+            "mean_successful_execute_steps": (sum(successful_actions) / len(successful_actions)
+                                              if successful_actions else None),
             "execute_step_unit": "native_server_action_requests_not_physics_steps",
             "coding_tokens": _token_totals(coding), "curation_tokens": curation_tokens,
             "total_tokens": total_tokens,
             "curations_attempted": len(curation_runs), "curation_status_counts": statuses,
             "pending_curations": pending,
-            "curation_model_calls": sum(c.get("usage", {}).get("calls") or 0 for c in curations),
-            "curation_model_calls_complete": not pending and all(c.get("usage", {}).get("calls") is not None for c in curations),
+            "curation_model_calls": sum(
+                c.get("usage", {}).get("model_responses", c.get("usage", {}).get("calls")) or 0
+                for c in curations),
+            "curation_invocations": sum(c.get("usage", {}).get("calls") or 0 for c in curations),
+            "curation_format_repair_calls": sum(c.get("usage", {}).get("format_repair_calls") or 0 for c in curations),
+            "curation_content_review_calls": sum(c.get("usage", {}).get("content_review_calls") or 0 for c in curations),
+            "curation_content_repair_calls": sum(c.get("usage", {}).get("content_repair_calls") or 0 for c in curations),
+            "curation_model_calls_complete": not pending and all(
+                c.get("usage", {}).get("model_responses", c.get("usage", {}).get("calls")) is not None
+                for c in curations),
             "curation_timeouts": sum(bool(c.get("timed_out")) for c in curations),
             "execution_seconds": execution_seconds, "curation_seconds": curation_seconds,
             "total_seconds": execution_seconds + curation_seconds,
@@ -293,14 +370,15 @@ def metrics(rounds: list[dict]) -> dict:
         task_result["history"] = [dict(
             task_iteration=i + 1, execution_index=e.get("execution_index"),
             case_id=e["case"]["case_id"], seed=e["case"].get("seed"),
-            final_success=e["case"]["final_success"],
+            final_success=e["case"]["final_success"] if not e.get("infrastructure_error") else None,
+            excluded_infrastructure=bool(e.get("infrastructure_error")),
             execution_elapsed_experiment_s=e.get("execution_elapsed_experiment_s"),
             elapsed_experiment_s=e.get("elapsed_experiment_s"),
             library_before=e.get("library_before"), library_after=e.get("library_after"),
             curation_status=e.get("curation", {}).get("status", "pending"),
             cumulative=_episode_metrics(subset[:i + 1])) for i, e in enumerate(subset)]
         result["per_task"][task] = task_result
-    rates = [r["sr_all_attempts"] for r in result["per_task"].values() if r["attempts"]]
+    rates = [r["sr_all_attempts"] for r in result["per_task"].values() if r["sr_all_attempts"] is not None]
     result["macro_sr_observed_tasks"] = sum(rates) / len(rates) if rates else None
     result["observed_task_count"] = len(rates)
     result["round_history"] = []
@@ -310,6 +388,7 @@ def metrics(rounds: list[dict]) -> dict:
         previous = [e for r in rounds[:i + 1] for e in r.get("episodes", [])]
         rates = {task: _episode_metrics([e for e in previous if e["case"]["task"] == task])["sr_all_attempts"]
                  for task in sorted({e["case"]["task"] for e in previous})}
+        rates = {task: rate for task, rate in rates.items() if rate is not None}
         result["round_history"].append({"round_index": row["index"], "seed": row["seed"],
             "per_task_sr": rates, "macro_sr": sum(rates.values()) / len(rates) if rates else None})
     return result
@@ -323,7 +402,7 @@ def run_loop(suite: dict, root: Path, execute=execute_episode, curate=curate_epi
     if state.get("schema") != STATE_SCHEMA or any(r.get("schema") != STATE_SCHEMA for r in previous):
         raise RuntimeError("Old batch experiment records are read-only; use a new output directory")
     store = LibraryStore(root / "library")
-    store.initialize()
+    store.initialize(suite.get("initial_library_path"), tuple(suite["tasks"]))
 
     def persist(record=None, path=None):
         if record is not None:
@@ -334,6 +413,8 @@ def run_loop(suite: dict, root: Path, execute=execute_episode, curate=curate_epi
         write_json(state_path, state)
         write_json(root / "metrics.json", state["metrics"])
 
+    if state.get("status") == "infrastructure_error":
+        raise RuntimeError("Experiment stopped on infrastructure failure; no automatic retry")
     persist()
     budget = suite["budget"]
     deadline = state["started_at"] + budget["seconds"] if budget.get("seconds") is not None else float("inf")
@@ -365,8 +446,17 @@ def run_loop(suite: dict, root: Path, execute=execute_episode, curate=curate_epi
                                       "library_before": pointer}
                 persist(record, record_path)
                 started = clock()
-                episode = execute(suite, task, seed, output, store.path(pointer),
-                                  min(suite["execution"]["timeout_s"], deadline - clock()))
+                try:
+                    episode = execute(suite, task, seed, output, store.path(pointer),
+                                      min(suite["execution"]["timeout_s"], deadline - clock()))
+                except Exception as exc:
+                    if not suite.get("stop_on_infrastructure_error"):
+                        raise
+                    record["infrastructure_error"] = str(exc)
+                    record["status"] = state["status"] = "infrastructure_error"
+                    record.pop("inflight")
+                    persist(record, record_path)
+                    return state
                 episode.setdefault("elapsed_s", max(0, clock() - started))
                 if episode["case"]["task"] != task or episode["case"].get("seed") != seed:
                     raise ValueError("Execution result does not match the scheduled task and seed")
@@ -376,6 +466,16 @@ def run_loop(suite: dict, root: Path, execute=execute_episode, curate=curate_epi
                 record["episodes"].append(episode)
                 record.pop("inflight")
                 persist(record, record_path)
+            if suite.get("stop_on_infrastructure_error") and episode.get("infrastructure_error"):
+                episode["curation"] = {
+                    "status": "skipped_infrastructure_error", "elapsed_s": 0,
+                    "usage": {"total_tokens": 0, "calls": 0, "complete": True},
+                    "library_before": episode["library_before"], "library_after": episode["library_before"]}
+                episode["library_after"] = episode["library_before"]
+                write_json(output / "episode_record.json", episode)
+                record["status"] = state["status"] = "infrastructure_error"
+                persist(record, record_path)
+                return state
             if "curation" in episode:
                 continue
             pointer = episode["library_before"]
@@ -402,6 +502,10 @@ def run_loop(suite: dict, root: Path, execute=execute_episode, curate=curate_epi
                            elapsed_experiment_s=max(0, clock() - state["started_at"]))
             write_json(output / "episode_record.json", episode)
             persist(record, record_path)
+            if suite.get("stop_on_infrastructure_error") and curation.get("infrastructure_error"):
+                record["status"] = state["status"] = "infrastructure_error"
+                persist(record, record_path)
+                return state
         record["status"] = "complete" if (len(record["episodes"]) == len(suite["tasks"])
             and all("curation" in e for e in record["episodes"])) else "budget_exhausted"
         record["elapsed_s"] = sum(e.get("elapsed_s", 0) + e.get("curation", {}).get("elapsed_s", 0)

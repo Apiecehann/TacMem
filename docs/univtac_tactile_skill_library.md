@@ -134,7 +134,7 @@ frontmatter 字段：
 | `taxonomy.yaml` | 任务名 → 类型的表；测试拿它和 `env_configs/` 对账 |
 | `library.py` | 加载、校验、路由、渲染；格式的机械定义 |
 | **`DESIGN.md`**（本文） | 为什么这么设计、边界在哪 |
-| `MAINTENANCE.md` | 加/合/删一条时要过什么闸、多久检查一次、基线数字 |
+| `MAINTENANCE.md` / [历史原文归档](tactile_skill_maintenance_history.md) | 加/合/删一条时要过什么闸、多久检查一次、基线数字 |
 
 ---
 
@@ -173,4 +173,4 @@ frontmatter 字段：
 历史（为什么是现在这样）住 `docs/univtac_tactile_skill_inventory.md`（**2026-10-06 的存档**）：
 §4.5 那 11 条已证伪、§6.5 落地形态、§6.6 用法从 docstring 搬进库、§6.7 合并 60 → 52、
 §6.8 任务 prompt 瘦身、§6.9 路由从未生效这个 bug、§6.10 修复后的第一轮真实 eval。
-再往后的逐轮经过（第六轮起）住 `capx/tactile_skills/MAINTENANCE.md` §五末尾的"第 N 组"。
+再往后的逐轮经过（第六轮起）住 `docs/tactile_skill_maintenance_history.md` §五末尾的"第 N 组"。

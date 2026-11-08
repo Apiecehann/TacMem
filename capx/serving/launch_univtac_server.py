@@ -158,6 +158,7 @@ DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
 # the task, not of the invocation, so it lives here rather than in a CLI flag —
 # an unsupported task/root combination is then unrepresentable.
 TASK_BACKING: dict[str, TaskBacking] = {
+    "grasp_classify": TaskBacking(VITAFORGE_ROOT, "gelsight.yml"),
     "tension_strap": TaskBacking(VITAFORGE_ROOT, "tension_strap.yml", vitforge_tacex=True),
     "weight_classify": TaskBacking(
         VITAFORGE_ROOT,
@@ -380,6 +381,8 @@ _GRASP_OFFSET: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 _GT_GRASP_RULES: dict[str, dict[str, str]] = {
     "bulb_tightening": {"light_bulb": "GRASP_LOCAL_Z"},
 }
+_WEIGHT_GRASP_LOCAL_Z_M = 0.04
+_WEIGHT_PRE_MOVE_CLEARANCE_M = 0.04
 # Tasks that must NOT take the precise-landing close (grasp_servo).  The
 # 2026-10-19 ViTaForge port charges 5 mm per sim step up to first touch and
 # then adds accumulated 1.95 mm rungs without re-anchoring.  On a bulb that
@@ -858,6 +861,60 @@ def _record_frame(label: str) -> str:
     b64 = _capture_frame()
     _RECORDER.record(b64, label)
     return b64
+
+
+def _weight_grasp_pose(object_data: dict):
+    from envs.utils.transforms import Pose, construct_grasp_pose
+
+    if not object_data.get("found"):
+        raise RuntimeError("weight_classify: block pose unavailable")
+    position = np.asarray(object_data["position"], dtype=np.float64)
+    quaternion = np.asarray(object_data["quaternion_wxyz"], dtype=np.float64)
+    if (position.shape != (3,) or quaternion.shape != (4,)
+            or not np.all(np.isfinite(position))
+            or not np.all(np.isfinite(quaternion))
+            or np.linalg.norm(quaternion) < 1e-8):
+        raise ValueError("weight_classify: invalid block pose")
+    object_pose = Pose(position, quaternion / np.linalg.norm(quaternion))
+    centre = object_pose.add_bias([0.0, 0.0, _WEIGHT_GRASP_LOCAL_Z_M])
+    rotation = object_pose.to_transformation_matrix()[:3, :3]
+    grasp = construct_grasp_pose(centre.p, rotation[:, 2], rotation[:, 0])
+    return _TASK._robot_manager.gripper_center_to_ee(grasp)
+
+
+def _install_weight_pre_move(task) -> None:
+    native_pre_move = task.pre_move
+
+    def pre_move():
+        from envs.utils.atom import Action
+        from envs.utils.transforms import Pose
+
+        native_pre_move()
+        if not task.plan_success:
+            raise RuntimeError("weight_classify: native pre_move failed")
+        object_data = _sim_get_object_pose("block", return_bbox_extent=True)
+        grasp = _weight_grasp_pose(object_data)
+        extent = np.asarray(object_data.get("bbox_extent"), dtype=np.float64)
+        if (extent.shape != (3,) or not np.all(np.isfinite(extent))
+                or np.any(extent <= 0)):
+            raise RuntimeError("weight_classify: block extent unavailable")
+        object_position = np.asarray(object_data["position"], dtype=np.float64)
+        hover_centre = Pose(
+            object_position + [0.0, 0.0, extent[2] + _WEIGHT_PRE_MOVE_CLEARANCE_M],
+            grasp.q,
+        )
+        hover = task._robot_manager.gripper_center_to_ee(hover_centre)
+        if not task.move([Action("move", target_pose=hover)],
+                         tag="weight_pre_move", is_save=False):
+            raise RuntimeError("weight_classify: move above block failed")
+        _GRASP_OFFSET["block"] = (grasp.p - object_position, grasp.q.copy())
+        logger.info(
+            "Weight pre_move: object=%s hover_ee=%s grasp_ee=%s current_ee=%s",
+            object_position, hover.p, grasp.p,
+            task._robot_manager.get_ee_pose().p,
+        )
+
+    task.pre_move = pre_move
 
 
 def _sim_reset(seed: int, *, log: bool = True) -> dict:
@@ -2473,6 +2530,16 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
 
     object_pos = np.asarray(obj_data["position"], dtype=np.float64)
 
+    if _TASK_NAME == "weight_classify" and object_name == "block":
+        if allow_ground_truth:
+            pose = _weight_grasp_pose(obj_data)
+            return {
+                "position": np.asarray(pose.p, dtype=np.float64).tolist(),
+                "quaternion_wxyz": np.asarray(pose.q, dtype=np.float64).tolist(),
+            }
+        if object_name not in _GRASP_OFFSET:
+            raise RuntimeError("weight_classify: no prepared grasp offset")
+
     if allow_ground_truth:
         # The task's own module — the one its class was defined in, so the
         # constant read here cannot come from a different fork of the env.
@@ -3581,6 +3648,8 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # that makes "eval" mode unusably slow (~2 FPS vs ~25 FPS).
     _TASK = task_module.Task(env_cfg, mode="collect")
     _TASK_NAME = task_name
+    if task_name == "weight_classify":
+        _install_weight_pre_move(_TASK)
     logger.info("Task '%s' initialized successfully.", task_name)
 
     # Startup reset.  Agents have no reset() (see robo.py), so the scene must

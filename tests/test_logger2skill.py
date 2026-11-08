@@ -51,11 +51,30 @@ def case(seed=44000, outcome=False):
                      "wait completed", "", outcome, True)
 
 
+def accept_review(root):
+    return json.dumps({
+        "candidate_sha256": digest(root / "candidate"), "verdict": "accept",
+        "checks": [{"path": path, "assessment": "CPU fixture review"} for path in
+                   ["proposal.json"] + [change["path"] for change in read_json(root / "proposal.json")["changes"]]],
+        "issues": []})
+
+
 def test_clean_suite_is_eight_tasks_with_explicit_budget(suite):
     assert suite["base_commit"] == BASE_COMMIT
     assert set(suite["tasks"]) == TASKS
     assert suite["budget"] == {"rounds": 10, "seconds": None}
     assert len(suite["seeds"]) == len(set(suite["seeds"])) == 10
+
+
+def test_cc_configs_bound_responses_without_a_dollar_stop_threshold():
+    for name in ("eight_tasks", "seven_tasks", "piano_smoke", "weight_initial21_pilot", "roughness_initial21_pilot"):
+        cfg = load_suite(REPO / f"env_configs/logger2skill/{name}.yaml")
+        assert cfg["backend"] == "cc"
+        assert cfg["curator"]["max_responses"] == 12
+        assert "max_budget_usd" not in cfg["curator"]
+        assert cfg["curator"]["max_output_tokens"] == 4096
+        assert "read_max_turns" not in cfg["curator"] and "edit_max_turns" not in cfg["curator"]
+        assert cfg["execution"]["max_output_tokens"] == 8192
 
 
 def test_cold_start_is_empty_and_does_not_fall_back(store):
@@ -560,7 +579,7 @@ def test_cc_rejects_unexpected_tool_use_or_extra_turns(monkeypatch, tmp_path, vi
     assert len(calls) == 1
 
 
-def test_cc_preloads_rules_cases_and_existing_skills_in_one_request(store, tmp_path):
+def test_cc_reads_public_files_and_existing_skills(store, tmp_path):
     import shutil
     work = tmp_path / "curation"
     candidate = work / "candidate"
@@ -570,20 +589,55 @@ def test_cc_preloads_rules_cases_and_existing_skills_in_one_request(store, tmp_p
     changes = [{"op": "upsert", "path": "skills/act/release-observation.md", "content": changed}]
     calls = []
     class FakeSession:
-        def ask(self, prompt, *, stage):
-            calls.append((prompt, stage))
-            return json.dumps({"summary": "Clarify uncertainty", "changes": changes}, ensure_ascii=False)
+        def ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+            calls.append((prompt, stage, read_root))
+            if stage == "review":
+                assert (candidate / "skills/act/release-observation.md").read_text() == skill_text()
+                return accept_review(read_root)
+            assert write_root == read_root / "working"
+            (write_root / changes[0]["path"]).write_text(changed, encoding="utf-8")
+            return "Clarify uncertainty"
     session = FakeSession()
     session.work = work
     report = curate_cc(session, [case()], candidate, REPO)
     assert len(calls) == 1 and calls[0][1] == "maintenance"
+    assert report["independent_reviews"] == 0 and report["review_verdict"] == "not_run"
     prompt = calls[0][0]
-    assert skill_text().strip() in prompt and "触觉技能库维护规则" in prompt
-    assert json.dumps([case()], ensure_ascii=False) in prompt
-    assert "Tools are disabled" in prompt
+    inputs = calls[0][2]
+    assert inputs == (work / "public_inputs").resolve()
+    assert skill_text().strip() not in prompt
+    assert (inputs / "library/skills/act/release-observation.md").read_text() == skill_text()
+    rules = (REPO / "capx/tactile_skills/MAINTENANCE.md").read_text(encoding="utf-8")
+    assert rules not in prompt
+    assert (inputs / "maintenance.txt").read_bytes() == (REPO / "capx/tactile_skills/MAINTENANCE.md").read_bytes()
+    assert read_json(work / "maintenance_snapshot.json")["rules"] == rules
+    assert "## 五、基线数字" not in prompt
+    assert "第二十九组把灯泡块带到 654 词" not in prompt
+    assert json.dumps([case()], ensure_ascii=False) not in prompt
+    assert (inputs / "executed_code.py").read_text() == case()["code"]
+    assert (inputs / "public_stdout.txt").read_text() == case()["stdout"]
+    assert read_json(inputs / "result.json")["final_success"] is False
+    task_context = read_json(inputs / "task_context.json")
+    assert task_context["task_prompt"] == case()["task_prompt"] and task_context["final_success"] is False
+    assert case()["stdout"] in (inputs / "execution_log.txt").read_text()
+    index = read_json(inputs / "library_index.json")
+    assert index["skills"][0]["path"] == str(inputs / "working/skills/act/release-observation.md")
+    assert index["skills"][0]["applicable_to_current_task"] is True
+    assert str(inputs / "library") + "/" not in prompt
+    assert read_json(work / "public_input_context.json")["task_type"] == "manipulate"
+    assert str(inputs / "maintenance.txt") in prompt
+    assert "请按照 maintenance.txt 的现行维护规则，依次完成四个阶段" in prompt
+    assert "3. 编辑技能：读取索引中的相关 Markdown，按维护规则直接新增、修改或保持不变。" in prompt
+    assert "4. 复核修改：对照维护规则复核已编辑的 Markdown。" in prompt
+    assert "简要说明修改" not in prompt and "Finish with a brief summary" not in prompt
+    assert "Return exactly one JSON object" not in prompt
+    assert "essential numbers/units/limits" not in prompt
+    assert "An unsuccessful episode can still provide local observations" not in prompt
+    assert "line numbers separately from simulation step numbers" not in prompt
     assert (candidate / "skills/act/release-observation.md").read_text(encoding="utf-8") == changed
     assert read_json(work / "cc_edits.json") == report
     assert report["before_sha256"] != report["after_sha256"]
+    assert report["format_feedback_used"] is False
 
 
 def test_cc_can_delete_add_or_leave_library_unchanged(store, tmp_path):
@@ -652,14 +706,17 @@ def test_cc_rejects_entire_invalid_batch_without_partial_writes(store, tmp_path,
 
 
 @pytest.mark.parametrize("backend", ["cc", "skillopt"])
-def test_curator_invalid_response_keeps_active_without_retry(monkeypatch, suite, store, tmp_path, backend):
+def test_curator_invalid_response_keeps_active_with_bounded_format_feedback(monkeypatch, suite, store, tmp_path, backend):
     from capx.logger2skill import experiment, worker
     suite = copy.deepcopy(suite)
     suite["backend"] = backend
     calls = []
-    def fake_ask(self, prompt, *, stage):
-        assert self.max_calls == 1
-        calls.append(prompt)
+    def fake_ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+        assert self.max_calls == (2 if backend == "cc" else 1)
+        calls.append((prompt, stage, read_root))
+        if write_root is not None:
+            add_skill(write_root)
+            (write_root / "skills/act/release-observation.md").write_text("invalid Markdown skill")
         return "Not valid JSON"
     def run_worker(command, *args):
         return {"exit_code": worker.main(Path(command[-1])), "timed_out": False}
@@ -669,10 +726,503 @@ def test_curator_invalid_response_keeps_active_without_retry(monkeypatch, suite,
     folder.mkdir()
     before = store.active()
     result = experiment.curate_episode(suite, folder, case(), store, before, 300)
-    assert result["status"] == "failed" and len(calls) == 1
+    assert result["status"] == "failed" and len(calls) == (2 if backend == "cc" else 1)
+    if backend == "cc":
+        assert calls[0][2] is not None and calls[1][2] is not None
+        assert calls[1][1] == "format_repair"
+        assert "candidate files failed format validation" in calls[1][0]
     assert result["library_after"] == before == store.active()
     assert (folder / f"curation/{backend}_response.txt").read_text() == "Not valid JSON"
     assert read_json(folder / "curation/job.json")["cases"] == [case()]
+
+
+@pytest.mark.parametrize("prefix,suffix", [("```json\n", "\n```"), ("Analysis complete.\n", "")])
+def test_cc_accepts_unambiguous_json_envelopes_without_changing_values(store, tmp_path, prefix, suffix):
+    import shutil
+    candidate = tmp_path / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    payload = {"summary": 'Only an estimate: "0.5 N"; unverified.', "changes": [
+        {"op": "upsert", "path": "skills/act/release-observation.md", "content": skill_text()}]}
+    report = apply_cc_changes(prefix + json.dumps(payload) + suffix, candidate)
+    assert report["envelope_removed"] is True
+    assert report["summary"] == payload["summary"]
+    assert (candidate / "skills/act/release-observation.md").read_text() == skill_text()
+
+
+def test_cc_ambiguous_json_objects_do_not_mutate_candidate(store, tmp_path):
+    import shutil
+    candidate = tmp_path / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    before = digest(candidate)
+    response = '{"summary":"first","changes":[]}\n{"summary":"second","changes":[]}'
+    with pytest.raises(ValueError, match="Invalid JSON"):
+        apply_cc_changes(response, candidate)
+    assert digest(candidate) == before
+
+
+@pytest.mark.parametrize("defect", ["yaml", "missing_field", "field_type"])
+def test_cc_repairs_format_once_without_reloading_case_or_mutating_before_validation(store, tmp_path, defect):
+    import shutil
+    work = tmp_path / "curation"
+    candidate = work / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    original = digest(candidate)
+    content = skill_text()
+    good = {"summary": 'Preserve "8 intervals"; proposed only.', "changes": [
+        {"op": "upsert", "path": "skills/act/release-observation.md", "content": content}]}
+    if defect == "yaml":
+        bad = content.replace("task_types: []", "task_types: [broken")
+    elif defect == "field_type":
+        bad = content.replace("task_types: []", "task_types: 42")
+    else:
+        bad = content.replace("family: act\n", "")
+    calls = []
+    class FakeSession:
+        def ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+            calls.append((prompt, stage, read_root))
+            assert digest(candidate) == original
+            if stage == "review":
+                return accept_review(read_root)
+            if len(calls) == 1:
+                assert read_root is not None
+                add_skill(write_root)
+                (write_root / "skills/act/release-observation.md").write_text(bad)
+                return "Edited candidate"
+            assert len(calls) == 2 and stage == "format_repair" and read_root is not None
+            assert "public_stdout.txt" not in prompt
+            assert "preserving the intended content" in prompt
+            (write_root / "skills/act/release-observation.md").write_text(content)
+            return good["summary"]
+    session = FakeSession()
+    session.work = work
+    report = curate_cc(session, [case()], candidate, REPO)
+    assert len(calls) == 2 and report["format_feedback_used"] is True
+    assert (candidate / "skills/act/release-observation.md").read_text() == content
+    assert read_json(work / "cc_accepted_response.json") == good
+    assert [x["ok"] for x in read_json(work / "cc_validation.json")] == [False, True]
+    assert (work / "cc_response.txt").read_text() == "Edited candidate"
+    assert len(validate_library(store.path(store.active()))) == 0
+
+
+def test_cc_transport_failure_does_not_trigger_format_feedback(store, tmp_path):
+    import shutil
+    candidate = tmp_path / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    calls = []
+    class FakeSession:
+        work = tmp_path
+        def ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+            calls.append(stage)
+            raise RuntimeError("API unavailable")
+    with pytest.raises(RuntimeError, match="API unavailable"):
+        curate_cc(FakeSession(), [case()], candidate, REPO)
+    assert calls == ["maintenance"]
+    assert not (tmp_path / "cc_format_feedback.json").exists()
+
+
+
+
+
+
+
+
+
+
+
+
+def test_cc_read_guard_blocks_private_changed_and_symlinked_files(tmp_path):
+    import hashlib
+    import subprocess
+    from capx.logger2skill import read_guard
+    root = tmp_path / "public"
+    root.mkdir()
+    public = root / "log.txt"
+    public.write_text("public")
+    private = tmp_path / "private.txt"
+    private.write_text("private content must not be read")
+    (root / "alias.txt").symlink_to(private)
+    manifest = tmp_path / "manifest.json"
+    write_json(manifest, {"root": str(root), "files": {
+        str(public): hashlib.sha256(public.read_bytes()).hexdigest()}})
+    audit = tmp_path / "access.jsonl"
+    def check(path, allowed):
+        result = subprocess.run([sys.executable, str(Path(read_guard.__file__)), str(manifest), str(audit)],
+            input=json.dumps({"tool_name": "Read", "tool_input": {"file_path": str(path)}}),
+            capture_output=True, text=True, check=True)
+        assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == ("allow" if allowed else "deny")
+    check(public, True)
+    check(private, False)
+    check(root / "alias.txt", False)
+    check(root / "missing", False)
+    public.write_text("changed")
+    check(public, False)
+    assert len(audit.read_text().splitlines()) == 5
+    assert "private content" not in audit.read_text()
+
+
+def test_local_cc_and_format_feedback_usage_is_charged_to_the_task(monkeypatch, tmp_path, store):
+    import shutil
+    import capx.logger2skill.claude as module
+    work = tmp_path / "curation"
+    candidate = work / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    seen = []
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            self.command, self.kwargs = command, kwargs
+            seen.append((command, kwargs))
+        def communicate(self, input, timeout):
+            toolset = set(self.command[self.command.index("--tools") + 1].split(","))
+            reading = "Read" in toolset
+            editing = "Write" in toolset
+            review = self.command[self.command.index("--name") + 1] == "logger2skill-review"
+            if editing:
+                target = self.kwargs["cwd"] / "working"
+                add_skill(target)
+                if len(seen) == 1:
+                    (target / "skills/act/release-observation.md").write_text("invalid Markdown skill")
+            required = json.loads(input.split("Required files: ")[-1]) if review else []
+            count = 3 if reading else 1
+            for i in range(count):
+                content = [{"type": "tool_use", "name": "Read", "input": {"file_path": "maintenance.txt"}}] if reading and i == 0 else []
+                if review and i == 0:
+                    content = [{"type": "tool_use", "name": "Read", "id": f"read{j}",
+                                "input": {"file_path": path}} for j, path in enumerate(required)]
+                self.kwargs["stdout"].write(json.dumps({"type": "assistant", "message": {
+                    "id": f"msg{i}", "content": content}}) + "\n")
+            if review:
+                self.kwargs["stdout"].write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": f"read{j}", "content": "public evidence"}
+                    for j in range(len(required))]}}) + "\n")
+            self.kwargs["stdout"].write(json.dumps({"type": "result", "is_error": False,
+                "result": accept_review(self.kwargs["cwd"]) if review else "Edited candidate",
+                "num_turns": 9 if reading else 1,
+                "usage": {"input_tokens": 100 if reading else 40, "output_tokens": 20 if reading else 10,
+                          "cache_read_input_tokens": 50 if reading else 0}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(work, {"model": "test", "credential_settings": str(tmp_path / "absent")},
+                            time.monotonic() + 30, max_calls=2)
+    report = curate_cc(session, [case()], candidate, REPO)
+    assert report["format_feedback_used"] is True and len(seen) == 2
+    first, options = seen[0]
+    assert options["cwd"] == work / "public_inputs"
+    assert "brief summary" not in first[first.index("--system-prompt") + 1]
+    assert first[first.index("--max-turns") + 1] == "6"
+    settings = json.loads(first[first.index("--settings") + 1])
+    assert settings["disableAllHooks"] is False
+    assert settings["permissions"]["allow"] == [f"Read(/{options['cwd']}/**)",
+        f"Edit(/{options['cwd']}/working/skills/**)", f"Write(/{options['cwd']}/working/skills/**)"]
+    assert settings["hooks"]["PreToolUse"][0]["matcher"] == "Bash|Edit|Read|Write"
+    assert "Write" in seen[1][0][seen[1][0].index("--tools") + 1]
+    assert seen[1][0][seen[1][0].index("--max-turns") + 1] == "3"
+    usage = summarize_calls(work)
+    assert usage["calls"] == 2 and usage["model_responses"] == 6 and usage["format_repair_calls"] == 1
+    assert usage["content_review_calls"] == 0 and usage["content_repair_calls"] == 0
+    assert usage["total_tokens"] == 340
+    assert len({options["env"]["CLAUDE_CONFIG_DIR"] for _, options in seen}) == 2
+    stats = metrics([{"episodes": [{"case": case(), "coding_usage": {},
+        "curation": {"usage": usage, "status": "unchanged"}}]}])
+    task_stats = stats["per_task"]["tension_strap"]
+    assert task_stats["curation_tokens"]["reported_total_tokens"] == 340
+    assert task_stats["curation_model_calls"] == 6 and task_stats["curation_invocations"] == 2
+    assert task_stats["curation_format_repair_calls"] == 1
+    assert task_stats["curation_content_review_calls"] == 0
+    assert stats["per_task"]["arm_shadow_piano"]["curation_tokens"]["reported_total_tokens"] == 0
+    incomplete = metrics([{"episodes": [{"case": case(), "coding_usage": {},
+        "curation": {"usage": {"calls": 1, "model_responses": None}, "status": "failed"}}]}])
+    assert incomplete["curation_model_calls"] == 0
+    assert incomplete["curation_model_calls_complete"] is False
+    assert incomplete["curation_invocations"] == 1
+    with pytest.raises(RuntimeError, match="request limit"):
+        session.ask("unexpected third request", stage="format_repair")
+
+
+@pytest.mark.parametrize("read_outcome", ["success", "error", "not_read"])
+def test_read_only_requests_require_successful_evidence_reads(monkeypatch, tmp_path, read_outcome):
+    import capx.logger2skill.claude as module
+    root = tmp_path / "inputs"
+    root.mkdir()
+    (root / "executed_code.py").write_text("wait(3)")
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            self.output = kwargs["stdout"]
+        def communicate(self, input, timeout):
+            if read_outcome != "not_read":
+                self.output.write(json.dumps({"type": "assistant", "message": {"id": "read_msg", "content": [
+                    {"type": "tool_use", "name": "Read", "id": "read_code",
+                     "input": {"file_path": str(root / "executed_code.py")}}]}}) + "\n")
+                self.output.write(json.dumps({"type": "user", "message": {"content": [{"type": "tool_result",
+                    "tool_use_id": "read_code", "is_error": read_outcome == "error", "content": "wait(3)"}]}}) + "\n")
+            self.output.write(json.dumps({"type": "assistant", "message": {"id": "final", "content": []}}) + "\n")
+            self.output.write(json.dumps({"type": "result", "is_error": False, "result": "review",
+                "usage": {"input_tokens": 10, "output_tokens": 5}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(tmp_path, {"model": "test", "credential_settings": str(tmp_path / "absent")},
+                            time.monotonic() + 5)
+    if read_outcome == "success":
+        assert session.ask("review", stage="review", read_root=root,
+                           required_reads=("executed_code.py",)) == "review"
+    else:
+        with pytest.raises(RuntimeError, match="not successfully read"):
+            session.ask("review", stage="review", read_root=root, required_reads=("executed_code.py",))
+    assert session.calls[0]["missing_required_reads"] == ([] if read_outcome == "success" else ["executed_code.py"])
+
+
+def test_candidate_edit_tools_cannot_change_originals_or_run_other_shell_commands(tmp_path):
+    import hashlib
+    from capx.logger2skill.read_guard import check_read
+    root = tmp_path / "inputs"
+    original = root / "library"
+    edited = root / "working"
+    add_skill(original)
+    add_skill(edited)
+    rules = root / "maintenance.txt"
+    rules.write_text("unchanged rules")
+    taxonomy = edited / "taxonomy.yaml"
+    taxonomy.write_text("frozen taxonomy")
+    original_skill = original / "skills/act/release-observation.md"
+    current = edited / "skills/act/release-observation.md"
+    manifest = {"root": str(root), "write_root": str(edited), "files": {
+        str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in (rules, taxonomy, original_skill)}}
+    def allowed(tool, path):
+        return check_read({"tool_name": tool, "tool_input": {"file_path": str(path)}}, manifest)["allowed"]
+    assert allowed("Read", original_skill) and allowed("Read", taxonomy)
+    for target in (original_skill, taxonomy, rules, edited / "skills/act/../../escape.md"):
+        assert not allowed("Write", target)
+        assert not allowed("Edit", target)
+    assert allowed("Write", edited / "skills/act/new.md") and allowed("Edit", current)
+    current.write_text("edited candidate")
+    assert allowed("Read", current)
+    link = edited / "skills/act/link.md"
+    link.symlink_to(original_skill)
+    assert not allowed("Write", link)
+    hard = edited / "skills/act/hard.md"
+    os.link(original_skill, hard)
+    assert not allowed("Write", hard)
+    for command in (f"rm -- {current}", f"rm -- {original_skill}", f"rm -rf {edited}",
+                    f"rm -- {current}; cat {rules}", "env", "python -c 'pass'"):
+        result = check_read({"tool_name": "Bash", "tool_input": {"command": command}}, manifest)
+        assert result["allowed"] == (command == f"rm -- {current}")
+    assert original_skill.read_text() == skill_text()
+
+
+def test_direct_edits_preserve_untouched_skills_and_previous_versions(store, tmp_path):
+    import shutil
+    initial = tmp_path / "initial"
+    shutil.copytree(store.path(store.active()), initial)
+    add_skill(initial)
+    kept = initial / "skills/act/kept.md"
+    kept.write_text(skill_text("kept").replace("id: A1", "id: A2"))
+    previous = store.adopt(initial, store.active(), "before_edit")
+    before_hash = digest(store.path(previous))
+    work = tmp_path / "curation"
+    candidate = work / "candidate"
+    shutil.copytree(store.path(previous), candidate)
+    class FakeSession:
+        def ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+            if stage == "maintenance":
+                old = write_root / "skills/act/release-observation.md"
+                old.unlink()
+                add_skill(write_root, "replacement")
+                return "Renamed one skill; retained the other."
+            assert "library/taxonomy.yaml" in required_reads
+            assert (read_root / "library/skills/act/release-observation.md").read_text() == skill_text()
+            return accept_review(read_root)
+    session = FakeSession()
+    session.work = work
+    report = curate_cc(session, [case()], candidate, REPO)
+    assert {c["op"] for c in report["changes"]} == {"upsert", "delete"}
+    assert (candidate / "skills/act/kept.md").read_bytes() == kept.read_bytes()
+    assert store.active() == previous
+    current = store.adopt(candidate, previous, "after_edit")
+    assert current != previous
+    assert digest(store.path(previous)) == before_hash
+    assert (store.path(previous) / "skills/act/release-observation.md").read_text() == skill_text()
+
+
+@pytest.mark.parametrize("response", ["", "[no content]"])
+@pytest.mark.parametrize("edit_file", [False, True])
+def test_empty_final_text_accepts_valid_file_result_without_another_model_call(store, tmp_path, response, edit_file):
+    import shutil
+    candidate = tmp_path / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    before = digest(candidate)
+    calls = []
+    class FakeSession:
+        work = tmp_path
+        def ask(self, prompt, *, stage, read_root=None, required_reads=(), write_root=None):
+            calls.append(stage)
+            if edit_file:
+                add_skill(write_root)
+            return response
+    report = curate_cc(FakeSession(), [case()], candidate, REPO)
+    assert calls == ["maintenance"]
+    assert (digest(candidate) != before) is edit_file
+    assert len(report["changes"]) == int(edit_file)
+    assert report["summary"] == f"{int(edit_file)} Markdown files changed."
+    assert report["format_feedback_used"] is False
+    assert store.active()["version"] == "empty"
+
+
+def test_direct_markdown_quotes_all_unambiguous_scalars_without_model_feedback(store, tmp_path):
+    import shutil
+    from capx.logger2skill.curators import cc_file_changes
+    original = store.path(store.active())
+    edited = tmp_path / "edited"
+    shutil.copytree(original, edited)
+    for i, name in enumerate(("first", "second")):
+        add_skill(edited, name)
+        path = edited / "skills/act" / f"{name}.md"
+        value = skill_text(name).replace("id: A1", f"id: A{i + 1}")
+        value = value.replace("summary: In a hold,", "summary: In a hold: first,")
+        path.write_text(value)
+    report = cc_file_changes(original, edited, "Two proposals")
+    assert len(report["format_repairs"]) == 2
+    assert {s.summary for s in validate_library(edited)} == {
+        "In a hold: first, use physical wait instead of wall-clock sleep; only the former advances the task."}
+    assert len(validate_library(original)) == 0
+
+
+def test_continued_json_response_is_reassembled_without_a_model_request(monkeypatch, tmp_path):
+    import capx.logger2skill.claude as module
+    root = tmp_path / "inputs"
+    root.mkdir()
+    (root / "maintenance.txt").write_text("rules")
+    chunks = ['{"verdict":"accept",', '"issues":[]}']
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            self.output = kwargs["stdout"]
+        def communicate(self, input, timeout):
+            for i, text in enumerate(chunks):
+                self.output.write(json.dumps({"type": "assistant", "message": {"id": f"msg{i}",
+                    "content": [{"type": "text", "text": text}]}}) + "\n")
+            self.output.write(json.dumps({"type": "result", "is_error": False, "result": chunks[-1],
+                "usage": {"input_tokens": 10, "output_tokens": 5}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(tmp_path, {"model": "test", "credential_settings": str(tmp_path / "absent")},
+                            time.monotonic() + 5)
+    assert json.loads(session.ask("review", stage="review", read_root=root)) == {"verdict": "accept", "issues": []}
+    assert len(session.calls) == 1 and session.calls[0]["response_assembled_from_stream"]
+
+
+def test_cc_response_budget_is_shared_and_counts_streamed_messages_once(monkeypatch, tmp_path):
+    import capx.logger2skill.claude as module
+    root = tmp_path / "inputs"
+    root.mkdir()
+    (root / "maintenance.txt").write_text("rules")
+    turns = []
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            turns.append(int(command[command.index("--max-turns") + 1]))
+            self.output = kwargs["stdout"]
+            assert kwargs["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "4096"
+        def communicate(self, input, timeout):
+            count = 4 if len(turns) == 1 else 2
+            for i in range(count):
+                event = {"type": "assistant", "message": {"id": f"m{i}", "content": []}}
+                self.output.write(json.dumps(event) + "\n")
+                self.output.write(json.dumps(event) + "\n")
+            self.output.write(json.dumps({"type": "result", "is_error": False, "result": "ok",
+                "num_turns": count, "usage": {"input_tokens": 10, "output_tokens": 5}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(tmp_path, {"model": "test", "credential_settings": str(tmp_path / "absent"),
+        "max_responses": 6, "max_output_tokens": 4096}, time.monotonic() + 5)
+    assert session.ask("first", stage="maintenance", read_root=root) == "ok"
+    assert session.ask("format", stage="format_repair", read_root=root) == "ok"
+    with pytest.raises(RuntimeError, match="total response budget exhausted"):
+        session.ask("extra", stage="format_repair", read_root=root)
+    assert turns == [6, 2]
+    assert session.calls[1]["responses_used_before"] == 4
+    assert summarize_calls(tmp_path)["model_responses"] == 6
+
+
+@pytest.mark.parametrize("settings,expected", [({"read_max_turns": 2}, 2),
+    ({"max_responses": 3, "edit_max_turns": 8}, 3)])
+def test_cc_legacy_turn_settings_cannot_bypass_total_budget(monkeypatch, tmp_path, settings, expected):
+    import capx.logger2skill.claude as module
+    root = tmp_path / "inputs"
+    edited = root / "working"
+    edited.mkdir(parents=True)
+    (root / "maintenance.txt").write_text("rules")
+    seen = []
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            seen.append(int(command[command.index("--max-turns") + 1]))
+            self.output = kwargs["stdout"]
+        def communicate(self, input, timeout):
+            self.output.write(json.dumps({"type": "assistant", "message": {"id": "final", "content": []}}) + "\n")
+            self.output.write(json.dumps({"type": "result", "is_error": False, "result": "ok"}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(tmp_path, {"model": "test", "credential_settings": str(tmp_path / "absent"),
+        **settings}, time.monotonic() + 5)
+    assert session.ask("first", stage="maintenance", read_root=root, write_root=edited) == "ok"
+    assert seen == [expected]
+
+
+def test_exhausted_cc_budget_does_not_launch_format_repair_or_adopt_candidate(monkeypatch, tmp_path, store):
+    import shutil
+    import capx.logger2skill.claude as module
+    work = tmp_path / "curation"
+    candidate = work / "candidate"
+    shutil.copytree(store.path(store.active()), candidate)
+    before = digest(candidate)
+    processes = []
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            processes.append(command)
+            self.options = kwargs
+        def communicate(self, input, timeout):
+            edited = self.options["cwd"] / "working"
+            add_skill(edited)
+            (edited / "skills/act/release-observation.md").write_text("invalid frontmatter")
+            for i in range(6):
+                self.options["stdout"].write(json.dumps({"type": "assistant", "message": {
+                    "id": f"msg{i}", "content": []}}) + "\n")
+            self.options["stdout"].write(json.dumps({"type": "result", "is_error": False, "result": "edited",
+                "num_turns": 6, "usage": {"input_tokens": 100, "output_tokens": 20}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(work, {"model": "test", "credential_settings": str(tmp_path / "absent"),
+        "max_responses": 6}, time.monotonic() + 5, max_calls=2)
+    with pytest.raises(RuntimeError, match="total response budget exhausted"):
+        curate_cc(session, [case()], candidate, REPO)
+    assert len(processes) == 1
+    assert digest(candidate) == before and store.active()["version"] == "empty"
+
+
+@pytest.mark.parametrize("limit", [0, -1, 13, True, 2.5, "6"])
+def test_invalid_total_response_budget_is_rejected(tmp_path, limit):
+    with pytest.raises(ValueError, match="max_responses"):
+        ClaudeSession(tmp_path, {"max_responses": limit}, time.monotonic() + 5)
+
+
+def test_curator_cost_budget_is_shared_across_requests(monkeypatch, tmp_path):
+    import capx.logger2skill.claude as module
+    budgets = []
+    class FakeProcess:
+        returncode = 0
+        def __init__(self, command, **kwargs):
+            budgets.append(float(command[command.index("--max-budget-usd") + 1]))
+            self.output = kwargs["stdout"]
+        def communicate(self, input, timeout):
+            cost = .05 if len(budgets) == 1 else .20
+            self.output.write(json.dumps({"type": "assistant", "message": {"id": "final", "content": []}}) + "\n")
+            self.output.write(json.dumps({"type": "result", "is_error": False, "result": "ok", "num_turns": 1,
+                "total_cost_usd": cost, "usage": {"input_tokens": 10, "output_tokens": 5}}) + "\n")
+    monkeypatch.setattr(module.subprocess, "Popen", FakeProcess)
+    session = ClaudeSession(tmp_path, {"model": "test", "credential_settings": str(tmp_path / "absent"),
+                                      "max_budget_usd": .25}, time.monotonic() + 5)
+    assert session.ask("first", stage="maintenance") == "ok"
+    assert session.ask("review", stage="review") == "ok"
+    with pytest.raises(RuntimeError, match="dollar budget exhausted"):
+        session.ask("extra", stage="content_repair")
+    assert budgets == pytest.approx([.25, .20])
+    assert summarize_calls(tmp_path)["reported_cost_usd"] == pytest.approx(.25)
 
 
 def test_single_case_worker_adoption_has_distinct_versions_across_seeds(monkeypatch, suite, store, tmp_path):
@@ -756,3 +1306,17 @@ def test_launch_dispatches_new_suite_without_starting_servers(monkeypatch):
     monkeypatch.setattr(runner, "_start_api_servers", lambda *args: pytest.fail("Unexpected simulator startup"))
     launch.main(launch.LaunchArgs(logger2skill_config="suite.yaml"))
     assert seen == [("suite.yaml", None)]
+
+
+def test_public_tactile_log_contains_anisotropy_without_images_or_private_fields(monkeypatch, capsys):
+    from capx.integrations.tactile.univtac_api import _trim_motion_tactile
+    monkeypatch.setenv("CAPX_LOGGER2SKILL", "1")
+    data = {"left_depth_mm": 27.1, "right_depth_mm": 27.2,
+            "left_marker_anisotropy": 1.23, "right_marker_anisotropy": 1.24,
+            "left_contact": True, "right_contact": True,
+            "left_rgb_base64": "private_image_payload", "native_score": 1}
+    result = _trim_motion_tactile(data)
+    log = capsys.readouterr().out
+    assert result["left_marker_anisotropy"] == 1.23
+    assert "left_marker_anisotropy" in log and "1.23" in log and "27.1" in log
+    assert "native_score" not in log and "private_image_payload" not in log

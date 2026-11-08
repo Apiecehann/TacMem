@@ -10,6 +10,9 @@ from pathlib import Path
 import yaml
 
 from capx.tactile_skills.library import FAMILIES, ROOT, TactileSkillLibrary
+from .initial_library import validate_calibration_bindings
+from .initial_library import (INITIAL_METADATA, allowed_external_references, build_initial,
+                              check_frozen_metadata, check_source_identity, common_view)
 
 
 def write_json(path: Path, value) -> None:
@@ -35,12 +38,13 @@ def digest(root: Path) -> str:
 
 def validate_library(root: Path, taxonomy: bytes | None = None) -> TactileSkillLibrary:
     digest(root)
+    validate_calibration_bindings(root)
     if taxonomy is not None and (root / "taxonomy.yaml").read_bytes() != taxonomy:
         raise ValueError("The curator changed the frozen task taxonomy")
     for path in root.rglob("*"):
         if path.is_file():
             rel = path.relative_to(root)
-            if rel.as_posix() != "taxonomy.yaml" and not (
+            if rel.as_posix() not in {"taxonomy.yaml", INITIAL_METADATA} and not (
                 len(rel.parts) == 3 and rel.parts[0] == "skills"
                 and rel.parts[1] in FAMILIES and rel.suffix == ".md"
             ):
@@ -56,13 +60,16 @@ def validate_library(root: Path, taxonomy: bytes | None = None) -> TactileSkillL
             raise ValueError(f"Unreachable skill: {skill.name}")
         ids.add(skill.id)
         for link in re.findall(r"\[\[([^\]]+)\]\]", skill.body + skill.summary):
-            if link not in library.skills:
+            if link not in library.skills and link not in allowed_external_references(root):
                 raise ValueError(f"Unresolved skill reference: {link}")
     return library
 
 
 def render_memory(root: Path, task: str, max_chars: int) -> str:
     library = validate_library(root)
+    initial_view = common_view(root, task, max_chars)
+    if initial_view is not None:
+        return initial_view
     if library.task_type_of(task) is None:
         raise ValueError(f"Unknown memory route: {task}")
     lines = []
@@ -81,9 +88,20 @@ class LibraryStore:
         self.root = root
         self.active_file = root / "active.json"
 
-    def initialize(self) -> dict:
+    def initialize(self, initial_library_path: str | Path | None = None,
+                   task_order: tuple[str, ...] = ()) -> dict:
         if self.active_file.exists():
-            return self.active()
+            pointer = self.active()
+            if initial_library_path:
+                check_source_identity(self.path(pointer), Path(initial_library_path))
+            return pointer
+        if initial_library_path:
+            initial = self.root / "versions" / "initial"
+            build_initial(Path(initial_library_path), initial, "capx", tuple(task_order))
+            validate_library(initial)
+            pointer = {"version": "initial", "sha256": digest(initial)}
+            write_json(self.active_file, pointer)
+            return pointer
         taxonomy = TactileSkillLibrary._load_taxonomy(ROOT / "taxonomy.yaml")
         initial = self.root / "versions" / "empty"
         if not initial.exists():
@@ -117,6 +135,7 @@ class LibraryStore:
         if self.active() != expected:
             raise ValueError("Active library changed during this round")
         parent = self.path(expected)
+        check_frozen_metadata(candidate, parent)
         validate_library(candidate, (parent / "taxonomy.yaml").read_bytes())
         sha = digest(candidate)
         if sha == expected["sha256"]:

@@ -6,7 +6,7 @@
 >
 > **这是存档，不是现状（最后更新 2026-10-06）**。活文档是
 > `docs/univtac_tactile_skill_library.md`（库长什么样、为什么）和
-> `capx/tactile_skills/MAINTENANCE.md`（怎么往里加）；基线数字以 MAINTENANCE §五 为准。
+> `capx/tactile_skills/MAINTENANCE.md`（怎么往里加）；基线数字以 [MAINTENANCE §五](tactile_skill_maintenance_history.md#五基线数字) 为准。
 > 本文留着两样别处没有的东西：**§4.5 那 11 条已证伪的负面知识**，和 **§6.5–§6.10 的
 > 逐轮经过**（哪一轮死在什么上）。§1–§5 是 2026-10-06 的盘点原文，条数停在 52 条。
 >

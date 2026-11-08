@@ -27,7 +27,8 @@ curator:
   model: claude-sonnet-4-6
   credential_settings: /mnt/a/ljz/.claude/settings.json
   timeout_s: 300
-  max_output_tokens: 8192
+  max_output_tokens: 4096
+  max_responses: 12
 tasks:
   arm_shadow_piano:
     config: env_configs/univtac/arm_shadow_piano/univtac_arm_shadow_piano.yaml

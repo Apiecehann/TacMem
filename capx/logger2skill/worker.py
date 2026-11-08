@@ -15,7 +15,7 @@ def main(job_path: Path) -> int:
     work = job_path.parent
     candidate = work / "candidate"
     session = ClaudeSession(work, job["curator"], time.monotonic() + job["timeout_s"],
-                            max_calls=1)
+                            max_calls=2 if job["backend"] == "cc" else 1)
     try:
         if job["backend"] == "cc":
             report = curate_cc(session, job["cases"], candidate, Path(job["repo"]))
