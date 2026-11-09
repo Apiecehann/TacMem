@@ -1,9 +1,9 @@
 {
   "schema": "tactile_feature_freeze.v2",
-  "base_commit": "53df7dc34ad77a61b98630b4c20883a7e04a2a44",
+  "base_commit": "0082ae904e11b5f29b6f5b7de004d70fa6f23af8",
   "sha256_files": {
     "capx/integrations/tactile/univtac_api.py": "2417e42816cf2a97dd1da7dfaa3a5ed5b5bd1c5e3e3aea6f48d67d60fb4e98ad",
-    "capx/serving/launch_univtac_server.py": "ce78fd129017f9c14823ddefbade853c7312684a463a26f969dc43465cb28d90",
+    "capx/serving/launch_univtac_server.py": "f1fb46855b2786491a1be18c26fd6ba57cf4be7337d7d1a149fd444158a7efb7",
     "env_configs/ablations/tactile_features/blind_bd.yaml": "f7cabc6ecd13908a356caf8f068732a286753d3cb36b0005168b8537b436113c",
     "env_configs/ablations/tactile_features/blind_bds.yaml": "9c37560e921bc6a7f01766b566b6a437acd0934817023b767251835d4d90154a",
     "env_configs/ablations/tactile_features/blind_bs.yaml": "b948f5bac0857b9748eecb3d9eb423b28a9bbf19aa9580afa35ca8892aa015f1",
@@ -284,7 +284,7 @@
     "env_configs/ablations/tactile_features/tension_strap_bds.yaml": "c8af350cf18bab6495dad7461f2a651753d1d0c5a17a3083df52abbc45846776",
     "env_configs/ablations/tactile_features/tension_strap_bs.yaml": "7fd1308c8ec622abeca8b25e93cfe8814aeb5470b1cfec5ccd4e58430902af8b",
     "env_configs/ablations/tactile_features/tension_strap_ds.yaml": "6598fc5cdec78c351f12524667ede8e10a2c2d0039eb660a9d89c1e2f69b1740",
-    "env_configs/ablations/tactile_features/validation.json": "1b53f2c83ac02442cbae24d5e583c9e69c2e223e399f21cd0654f91ca0c6d98f",
-    "tests/integrations/test_tactile_skills.py": "0fdd7b587f279f50ab3ee96f2386f3143d2cb9efaede68407957477fa1441cf3"
+    "env_configs/ablations/tactile_features/validation.json": "4bc7c64ac5ef96209b3483d934d7dd831e57a7a72d4049635856e38bbe6378a5",
+    "tests/integrations/test_tactile_skills.py": "67267afb6701f999e77b8fede905952f951df7282f76af3ebecd4bf47c48078a"
   }
 }

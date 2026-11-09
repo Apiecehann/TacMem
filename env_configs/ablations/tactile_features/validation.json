@@ -1,18 +1,28 @@
 {
-  "schema": "tactile_feature_cpu_validation.v1",
-  "base_commit": "53df7dc34ad77a61b98630b4c20883a7e04a2a44",
-  "test_command": "python -m pytest tests/integrations/test_tactile_skills.py -q",
-  "passed": 185,
-  "failed": 1,
-  "preexisting_failure": {
-    "test": "test_the_only_hook_override_is_the_perception_bulb_variant",
-    "cause": "Old default-library assertion excludes only bulb-grasp-pose, but default library already also has public-pose-queries outside the perception task list.",
-    "reproduced_on_base": true,
-    "affects_frozen_group_config_tests": false
+  "schema": "tactile_feature_cpu_validation.v2",
+  "base_commit": "0082ae904e11b5f29b6f5b7de004d70fa6f23af8",
+  "test_command": "python -m pytest tests/integrations/test_tactile_skills.py -q -k 'strap_pre_move or leave_one_group or strap_formal or strap_frozen'",
+  "passed": 54,
+  "failed": 0,
+  "deselected": 148,
+  "scope": "Strap pre_move registration in raw/none and all native feature groups; open/approach/arrival gates; frozen requests and all 16 group/task configs. No native task physics or prompt changes.",
+  "previous_full_suite": {
+    "schema": "tactile_feature_cpu_validation.v1",
+    "base_commit": "53df7dc34ad77a61b98630b4c20883a7e04a2a44",
+    "test_command": "python -m pytest tests/integrations/test_tactile_skills.py -q",
+    "passed": 185,
+    "failed": 1,
+    "preexisting_failure": {
+      "test": "test_the_only_hook_override_is_the_perception_bulb_variant",
+      "cause": "Old default-library assertion excludes only bulb-grasp-pose, but default library already also has public-pose-queries outside the perception task list.",
+      "reproduced_on_base": true,
+      "affects_frozen_group_config_tests": false
+    },
+    "all_16_frozen_configuration_tests_passed": true,
+    "all_group_filter_and_native_command_tests_passed": true,
+    "gpu_runs_performed": 0,
+    "new_group_gpu_behavior": "not validated",
+    "scope": "CPU loading/binding/filtering/skill-link/one-program contract only; not task success."
   },
-  "all_16_frozen_configuration_tests_passed": true,
-  "all_group_filter_and_native_command_tests_passed": true,
-  "gpu_runs_performed": 0,
-  "new_group_gpu_behavior": "not validated",
-  "scope": "CPU loading/binding/filtering/skill-link/one-program contract only; not task success."
+  "gpu_status": "CPU checks complete; resumed GPU batch audited separately."
 }

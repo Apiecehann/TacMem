@@ -2340,3 +2340,33 @@ def test_leave_one_group_composable_path_comes_from_runtime(monkeypatch):
     monkeypatch.setenv("UNIVTAC_COMPOSABLE_ROOT", "/other/server/composable")
     ns = _native_submission_namespace()
     assert ns["TASK_BACKING"]["tactile_memory_match"].root == Path("/other/server/composable")
+
+
+@pytest.mark.parametrize("mode,groups,enabled", [
+    ("raw", None, True), ("none", None, True),
+    ("native", "B", True), ("native", "BD", True),
+    ("native", "BS", True), ("native", "DS", True),
+    ("native", "BDS", True), ("native", None, False),
+])
+@pytest.mark.parametrize("task_name", ["tension_strap", "bulb_tightening"])
+def test_strap_pre_move_registration_matches_policy_start_contract(mode, groups, enabled, task_name):
+    import ast
+    from unittest.mock import Mock
+
+    path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
+    init = next(node for node in ast.parse(path.read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == "init_task")
+    block = next(node for node in init.body if isinstance(node, ast.If)
+                 and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                         and call.func.id == "_bind_tension_strap_pre_move"
+                         for call in ast.walk(node)))
+    task = object()
+    bind = Mock()
+    scope = {"task_name": task_name, "_OBSERVATION_MODE": mode,
+             "_TACTILE_FEATURE_GROUPS": groups, "_TASK": task,
+             "_bind_tension_strap_pre_move": bind}
+    exec(compile(ast.Module(body=[block], type_ignores=[]), str(path), "exec"), scope)
+    if task_name == "tension_strap" and enabled:
+        bind.assert_called_once_with(task)
+    else:
+        bind.assert_not_called()

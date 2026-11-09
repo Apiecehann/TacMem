@@ -4142,7 +4142,7 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     _TASK = (_create_compact_match(task_module, env_cfg, compact_selection)
              if compact_selection is not None else task_module.Task(env_cfg, mode="collect"))
     _TASK_NAME = task_name
-    if task_name == "tension_strap" and _OBSERVATION_MODE in ("raw", "none"):
+    if task_name == "tension_strap" and (_OBSERVATION_MODE in ("raw", "none") or _TACTILE_FEATURE_GROUPS):
         _bind_tension_strap_pre_move(_TASK)
     if compact_selection is not None:
         _bind_compact_match(_TASK, compact_selection)
