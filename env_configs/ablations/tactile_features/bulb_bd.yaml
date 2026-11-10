@@ -90,12 +90,12 @@ env:
     - confidence-gate
     tactile_feature_groups: BD
     tactile_skill_root: env_configs/ablations/tactile_features/skills/bd
-exec_alarm_seconds: 2400
+exec_alarm_seconds: 10500
 max_tokens: 8192
 model: gpt-6-astra
 num_workers: 1
 output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/bd
-process_timeout_seconds: 4200
+process_timeout_seconds: 12000
 reasoning_effort: high
 record_video: true
 resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}

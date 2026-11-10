@@ -154,12 +154,12 @@ env:
     - shear-vs-displacement
     - texture-in-relief
     - wide-pads-see-nothing
-exec_alarm_seconds: 2400
+exec_alarm_seconds: 7200
 max_tokens: 8192
 model: gpt-6-astra
 num_workers: 1
 output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/bds
-process_timeout_seconds: 4200
+process_timeout_seconds: 9000
 reasoning_effort: high
 record_video: true
 resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}

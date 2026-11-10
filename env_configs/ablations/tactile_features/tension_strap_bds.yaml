@@ -146,12 +146,12 @@ env:
     - strap-load-is-shear-difference
     tactile_feature_groups: BDS
     tactile_skill_root: env_configs/ablations/tactile_features/skills/full
-exec_alarm_seconds: 1800
+exec_alarm_seconds: 2400
 max_tokens: 8192
 model: gpt-6-astra
 num_workers: 1
 output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/bds
-process_timeout_seconds: 1800
+process_timeout_seconds: 4200
 reasoning_effort: high
 record_video: true
 resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
@@ -159,7 +159,7 @@ seed_manifest: env_configs/ablations/tactile_features/seeds30.json
 server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
 task_name: tension_strap
 temperature: 1.0
-trial_timeout_seconds: 1800
+trial_timeout_seconds: 3600
 trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
 use_img_differencing: false
 use_multimodel: false
