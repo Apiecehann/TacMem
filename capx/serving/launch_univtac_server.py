@@ -1016,81 +1016,57 @@ def _record_frame(label: str) -> str:
     return b64
 
 
-def _configure_compact_match(task_module, cfg, seed):
-    import copy
+def _build_compact_memory_task(task_module, cfg, seed: int):
     from types import SimpleNamespace
 
+    if not hasattr(cfg, "compact_fixed_pair_scene"):
+        raise RuntimeError("The memory task must support native compact_fixed_pair_scene")
     if cfg.random_texture:
-        raise ValueError("Compact seed resolution requires random_texture=False")
-    selection_cfg = copy.copy(cfg)
-    selection_cfg.compact_fixed_pair_scene = False
-    selection_cfg.seed = int(seed)
-    selector = SimpleNamespace(cfg=selection_cfg, rng=np.random.default_rng(seed))
-    pair = task_module.Task._choose_identity_pair(selector)
-    cfg.reference_class_key, cfg.distractor_class_key = pair
-    return {"seed": int(seed), "pair": pair,
-            "rng_state": copy.deepcopy(selector.rng.bit_generator.state)}
+        raise ValueError("Compact memory serving cannot preserve the seed draw with random textures")
+    if type(seed) is not int or seed < 0:
+        raise ValueError("Compact memory serving requires an explicit nonnegative seed")
+    native_task = task_module.Task
+    sampling_cfg = SimpleNamespace(
+        seed=seed,
+        compact_fixed_pair_scene=bool(cfg.compact_fixed_pair_scene),
+        identity_pair_schedule=cfg.identity_pair_schedule,
+        reference_class_key=cfg.reference_class_key,
+        distractor_class_key=cfg.distractor_class_key,
+    )
 
+    def choose_pair(rng):
+        context = SimpleNamespace(cfg=sampling_cfg, rng=rng)
+        context._fixed_pair_keys = lambda: native_task._fixed_pair_keys(context)
+        return native_task._choose_identity_pair(context)
 
-def _create_compact_match(task_module, cfg, selection):
-    import copy
+    selected_pair = choose_pair(np.random.default_rng(seed))
+    cfg.compact_fixed_pair_scene = True
+    cfg.reference_class_key, cfg.distractor_class_key = selected_pair
+    cfg.seed = seed
 
-    class PoseRecorder:
-        def set_pose(self, pose):
-            self.pose = pose
+    class CompactMemoryTask(native_task):
+        __module__ = native_task.__module__
 
-    preview = object.__new__(task_module.Task)
-    preview.cfg = cfg
-    preview.rng = np.random.default_rng(selection["seed"])
-    preview.rng.bit_generator.state = copy.deepcopy(selection["rng_state"])
-    preview._compact_reference_actor = PoseRecorder()
-    preview._compact_match_actor = PoseRecorder()
-    preview._compact_distractor_actor = PoseRecorder()
-    preview._reset_episode_state = lambda: None
-    task_module.Task._reset_actors(preview)
-    poses = [preview._compact_reference_actor.pose, preview._compact_match_actor.pose,
-             preview._compact_distractor_actor.pose]
-    selection["spawn_layout"] = {
-        name: {"position": np.asarray(pose.p).tolist(), "quaternion": np.asarray(pose.q).tolist()}
-        for name, pose in zip(("reference_active", "match_active", "distractor_active"), poses)
-    }
-    selection["match_on_left"] = bool(preview.match_on_left)
-    native_create = task_module.Task.create_actors
+        def _choose_identity_pair(self):
+            pair = choose_pair(self.rng)
+            if int(self.cfg.seed) != seed or pair != selected_pair:
+                raise RuntimeError("Compact scene does not match the native seed draw; rebuild this server")
+            return pair
 
-    def create_at_targets(task):
-        existed = "_stash_pose" in vars(task)
-        previous = vars(task).get("_stash_pose")
-        task._stash_pose = lambda index: poses[index]
-        try:
-            return native_create(task)
-        finally:
-            if existed:
-                task._stash_pose = previous
-            else:
-                delattr(task, "_stash_pose")
+        def reset(self, seed=-1, instructions=None, options=None):
+            if seed != sampling_cfg.seed:
+                raise ValueError("Compact memory scenes require a new server for a different seed")
+            return super().reset(seed=seed, instructions=instructions, options=options)
 
-    task_module.Task.create_actors = create_at_targets
-    try:
-        return task_module.Task(cfg, mode="collect")
-    finally:
-        task_module.Task.create_actors = native_create
+    task = CompactMemoryTask(cfg, mode="collect")
+    actors = task._actor_manager.actors
+    required = {"reference_active", "match_active", "distractor_active"}
+    if (not required <= actors.keys()
+            or any(name.startswith(("reference_variant_", "candidate_variant_")) for name in actors)):
+        raise RuntimeError("The memory task did not create its native compact three-object scene")
+    logger.info("Compact memory scene: seed=%s active_objects=3 total_actors=%s", seed, len(actors))
+    return task
 
-
-def _bind_compact_match(task, selection):
-    import copy
-
-    native_choose = task._choose_identity_pair
-
-    def choose():
-        if int(task.cfg.seed) != selection["seed"]:
-            raise RuntimeError("A different compact-scene seed requires a fresh process")
-        pair = native_choose()
-        if tuple(pair) != tuple(selection["pair"]):
-            raise RuntimeError("Compact scene does not match the seed's selected objects")
-        task.rng.bit_generator.state = copy.deepcopy(selection["rng_state"])
-        return pair
-
-    task._choose_identity_pair = choose
 
 
 def _bind_tension_strap_pre_move(task):
@@ -2831,6 +2807,24 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
 
     object_pos = np.asarray(obj_data["position"], dtype=np.float64)
 
+    if (_TASK_NAME == "tactile_memory_match" and allow_ground_truth
+            and os.environ.get("CAPX_MEMORY_MATCH_LIVE_GRASP", "1") == "1"):
+        actor = _find_public_role_actor(object_name)
+        if actor is None:
+            return {"position": None, "quaternion_wxyz": None}
+        centre = _TASK._lift_can_style_grasp_pose(actor)
+        wrist = _TASK._robot_manager.gripper_center_to_ee(centre)
+        position = np.asarray(wrist.p, dtype=np.float64)
+        quaternion = np.asarray(wrist.q, dtype=np.float64)
+        if (position.shape != (3,) or quaternion.shape != (4,)
+                or not np.isfinite(position).all() or not np.isfinite(quaternion).all()
+                or not np.isclose(np.linalg.norm(quaternion), 1.0, atol=1e-4)):
+            raise ValueError("Native memory-match grasp returned an invalid wrist pose")
+        logger.info("Live native grasp for '%s': object %s -> centre %s -> wrist %s",
+                    object_name, object_pos, np.asarray(centre.p), position)
+        return {"position": position.tolist(), "quaternion_wxyz": quaternion.tolist()}
+
+
     if allow_ground_truth and (
             (_TASK_NAME in {"weight_classify", "hardness_classify"} and object_name == "block")
             or (_TASK_NAME == "grasp_classify" and object_name == "prism")
@@ -2914,6 +2908,11 @@ def _find_actor(object_name: str):
     this is the one that was moved into the robot's reach during reset.
     """
     global _TASK
+    if (_TASK_NAME == "tactile_memory_match"
+            and getattr(_TASK.cfg, "compact_fixed_pair_scene", False)):
+        if object_name == "match_slot":
+            return _TASK.match_slot
+        return _find_public_role_actor(object_name)
     actors = _TASK._actor_manager.actors
     actor = actors.get(object_name)
     if actor is not None:
@@ -4134,25 +4133,14 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     for spec in cfg_overrides or ():
         _apply_cfg_override(env_cfg, spec)
 
-    compact_selection = None
-    if task_name == "tactile_memory_match" and env_cfg.compact_fixed_pair_scene:
-        compact_selection = _configure_compact_match(task_module, env_cfg, seed)
-
     logger.info("Creating task '%s' (sensor=%s, device=%s)...", task_name, sensor_type, device)
     # Use "collect" mode — avoids per-step _update_render() overhead
     # that makes "eval" mode unusably slow (~2 FPS vs ~25 FPS).
-    _TASK = (_create_compact_match(task_module, env_cfg, compact_selection)
-             if compact_selection is not None else task_module.Task(env_cfg, mode="collect"))
+    _TASK = (_build_compact_memory_task(task_module, env_cfg, seed)
+             if task_name == "tactile_memory_match" else task_module.Task(env_cfg, mode="collect"))
     _TASK_NAME = task_name
     if task_name == "tension_strap" and (_OBSERVATION_MODE in ("raw", "none") or _TACTILE_FEATURE_GROUPS):
         _bind_tension_strap_pre_move(_TASK)
-    if compact_selection is not None:
-        _bind_compact_match(_TASK, compact_selection)
-        private_dir = Path(os.environ["UNIVTAC_ACTION_LOG"]).parent / "private"
-        private_dir.mkdir(parents=True, exist_ok=True)
-        (private_dir / "compact_scene.json").write_text(
-            json.dumps(compact_selection, indent=2), encoding="utf-8")
-        logger.info("Compact scene enabled: three task objects at native seed positions; native seed RNG state preserved")
     logger.info("Task '%s' initialized successfully.", task_name)
 
     # Startup reset.  Agents have no reset() (see robo.py), so the scene must

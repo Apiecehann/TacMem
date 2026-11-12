@@ -1647,7 +1647,7 @@ def _reset_diagnostic_namespace():
     import numpy as np
 
     path = REPO_ROOT / "capx/serving/launch_univtac_server.py"
-    names = {"_configure_compact_match", "_create_compact_match", "_bind_compact_match",
+    names = {"_build_compact_memory_task",
              "_bind_tension_strap_pre_move", "_run_native_reset"}
     nodes = [n for n in ast.parse(path.read_text()).body
              if isinstance(n, ast.FunctionDef) and n.name in names]
@@ -1735,119 +1735,8 @@ def test_strap_pre_move_rejects_skipped_preparation(monkeypatch):
             SimpleNamespace(cfg=SimpleNamespace(skip_pre_move=True)))
 
 
-@pytest.mark.parametrize("seed", [41000, 41039, 42000])
-def test_compact_scene_preserves_pair_and_following_random_draw(seed):
-    import numpy as np
-    ns = _reset_diagnostic_namespace()
-
-    class Native:
-        def _choose_identity_pair(self):
-            return tuple(self.rng.choice(["a", "b", "c"], size=2, replace=False))
-
-    cfg = SimpleNamespace(random_texture=False, compact_fixed_pair_scene=True,
-                          reference_class_key="random", distractor_class_key="random", seed=seed)
-    expected_rng = np.random.default_rng(seed)
-    expected_pair = Native._choose_identity_pair(SimpleNamespace(rng=expected_rng))
-    expected_following = expected_rng.random(4)
-    selection = ns["_configure_compact_match"](SimpleNamespace(Task=Native), cfg, seed)
-    assert tuple(selection["pair"]) == expected_pair
-    assert cfg.compact_fixed_pair_scene
-    task = SimpleNamespace(cfg=cfg, rng=np.random.default_rng(seed),
-                           _choose_identity_pair=lambda: (cfg.reference_class_key, cfg.distractor_class_key))
-    ns["_bind_compact_match"](task, selection)
-    for _ in range(2):
-        task.rng = np.random.default_rng(seed)
-        assert task._choose_identity_pair() == expected_pair
-        np.testing.assert_array_equal(task.rng.random(4), expected_following)
-    task.cfg.seed += 1
-    with pytest.raises(RuntimeError, match="fresh process"):
-        task._choose_identity_pair()
 
 
-@pytest.mark.parametrize("seed", [0, 1, 2, 3, 29, 42000])
-@pytest.mark.parametrize("fail_create", [False, True])
-def test_compact_creation_uses_native_targets_and_restores_creation_method(seed, fail_create):
-    import copy
-    import numpy as np
-    ns = _reset_diagnostic_namespace()
-    constructed = []
-
-    class Actor:
-        def set_pose(self, pose):
-            self.pose = pose
-
-    class Native:
-        def __init__(self, cfg, mode):
-            assert mode == "collect"
-            self.cfg = cfg
-            self.rng = np.random.default_rng(seed)
-            constructed.append(self)
-            self.create_actors()
-
-        def _choose_identity_pair(self):
-            if self.cfg.compact_fixed_pair_scene:
-                return self.cfg.reference_class_key, self.cfg.distractor_class_key
-            return tuple(self.rng.choice(["a", "b", "c"], size=2, replace=False))
-
-        @staticmethod
-        def _stash_pose(index):
-            return SimpleNamespace(p=np.array([-2.0, -2.0 - index, 0.021]), q=np.array([1., 0., 0., 0.]))
-
-        def create_actors(self):
-            self.created = [self._stash_pose(i) for i in range(3)]
-            for name in ("_compact_reference_actor", "_compact_match_actor", "_compact_distractor_actor"):
-                setattr(self, name, Actor())
-            if self.cfg.fail_create:
-                raise RuntimeError("native constructor failed")
-
-        def _reset_episode_state(self):
-            self.reset_called = True
-
-        def _reset_actors(self):
-            self._choose_identity_pair()
-            self.match_on_left = bool(self.rng.random() < 0.5)
-            centers = [[0.68, 0.24], [0.60, -0.345], [0.60, -0.175]]
-            if not self.match_on_left:
-                centers[1], centers[2] = centers[2], centers[1]
-            actors = [self._compact_reference_actor, self._compact_match_actor, self._compact_distractor_actor]
-            for actor, center in zip(actors, centers):
-                xy = np.asarray(center) + self.rng.uniform(-0.002, 0.002, size=2)
-                actor.set_pose(SimpleNamespace(p=np.r_[xy, 0.021], q=np.array([1., 0., 0., 0.])))
-            self._reset_episode_state()
-
-    cfg = SimpleNamespace(random_texture=False, compact_fixed_pair_scene=True,
-                          reference_class_key="random", distractor_class_key="random", seed=seed,
-                          fail_create=False)
-    selection = ns["_configure_compact_match"](SimpleNamespace(Task=Native), cfg, seed)
-    control = Native(cfg, "collect")
-    ns["_bind_compact_match"](control, selection)
-    control._reset_actors()
-    expected = [control._compact_reference_actor.pose, control._compact_match_actor.pose,
-                control._compact_distractor_actor.pose]
-    following = control.rng.random(4)
-    cfg.fail_create = fail_create
-    original_create = Native.create_actors
-    original_reset = Native._reset_actors
-    rng_state = copy.deepcopy(selection["rng_state"])
-    if fail_create:
-        with pytest.raises(RuntimeError, match="native constructor failed"):
-            ns["_create_compact_match"](SimpleNamespace(Task=Native), cfg, selection)
-    else:
-        task = ns["_create_compact_match"](SimpleNamespace(Task=Native), cfg, selection)
-        ns["_bind_compact_match"](task, selection)
-        task._reset_actors()
-        np.testing.assert_array_equal(task.rng.random(4), following)
-        assert task.reset_called
-    created = constructed[-1]
-    for actual, target in zip(created.created, expected):
-        np.testing.assert_array_equal(actual.p, target.p)
-        np.testing.assert_array_equal(actual.q, target.q)
-    assert "_stash_pose" not in vars(created)
-    assert Native.create_actors is original_create
-    assert Native._reset_actors is original_reset
-    assert selection["rng_state"] == rng_state
-    assert selection["match_on_left"] == control.match_on_left
-    assert set(selection["spawn_layout"]) == {"reference_active", "match_active", "distractor_active"}
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -2419,3 +2308,276 @@ def test_strap_pre_move_registration_matches_policy_start_contract(mode, groups,
         bind.assert_called_once_with(task)
     else:
         bind.assert_not_called()
+
+
+import ast
+import copy
+import os
+import numpy as np
+from unittest.mock import Mock
+from capx.serving import launch_univtac_server as memory_server
+
+class memory_Pose:
+    def __init__(self, p, q):
+        self.p, self.q = np.asarray(p, dtype=float), np.asarray(q, dtype=float)
+
+
+class memory_Actor:
+    def __init__(self, **kwargs):
+        self.spec = kwargs
+        self.pose = kwargs["pose"]
+
+    def set_pose(self, pose):
+        self.pose = pose
+
+    def get_pose(self):
+        return self.pose
+
+
+class memory_ActorManager:
+    def __init__(self):
+        self.actors = {}
+
+    def add_from_usd_file(self, **kwargs):
+        actor = memory_Actor(**kwargs)
+        self.actors[kwargs["name"]] = actor
+        return actor
+
+
+class memory_BaseTask:
+    def __init__(self, cfg, mode="collect"):
+        self.cfg = cfg
+        self._actor_manager = memory_ActorManager()
+        self.reset_calls = 0
+        self.create_actors()
+
+    def _create_occlusion_box(self):
+        pass
+
+    def _reset_episode_state(self):
+        pass
+
+    def reset(self, seed=-1, instructions=None, options=None):
+        self.reset_calls += 1
+        self.cfg.seed = seed
+        self.rng = np.random.default_rng(seed)
+        self._reset_actors()
+        return {"seed": seed}
+
+
+@pytest.fixture
+def memory_native():
+    path = Path(os.environ.get("UNIVTAC_COMPOSABLE_ROOT", str(REPO_ROOT.parent / "UniVTAC-composable-tactile-slots"))) / "envs/tactile_memory_match.py"
+    if not path.is_file():
+        pytest.skip("Native composable memory task is not installed")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    task = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Task")
+    functions = {"create_actors", "_reset_actors", "_choose_identity_pair", "_fixed_pair_keys",
+                 "_stash_pose", "_constitution_for_variant", "_resting_z", "_variant_for_public_candidate",
+                 "_jitter_xy", "_resolve_public_object_name", "check_success", "pre_move"}
+    task.body = [n for n in task.body if isinstance(n, (ast.Assign, ast.AnnAssign))
+                 or isinstance(n, ast.FunctionDef) and n.name in functions]
+    code = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)]
+                      + [n for n in tree.body if isinstance(n, ast.Assign)] + [task], type_ignores=[])
+    namespace = {"np": np, "Pose": memory_Pose, "BaseTask": memory_BaseTask,
+                 "UipcObjectCfg": SimpleNamespace(StableNeoHookeanCfg=lambda **kwargs: SimpleNamespace(**kwargs))}
+    exec(compile(ast.fix_missing_locations(code), str(path), "exec"), namespace)
+    return SimpleNamespace(Task=namespace["Task"])
+
+
+def memory_config(**overrides):
+    values = dict(seed=0, compact_fixed_pair_scene=False, random_texture=False,
+                  identity_pair_schedule="random", reference_class_key="random", distractor_class_key="random")
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@pytest.mark.parametrize("overrides", [
+    {}, {"identity_pair_schedule": "balanced_ordered_pairs"},
+    {"reference_class_key": "light_smooth_rigid"},
+    {"compact_fixed_pair_scene": True, "reference_class_key": "heavy_rough_soft",
+     "distractor_class_key": "light_smooth_rigid"},
+])
+def test_compact_uses_three_objects_and_preserves_native_seed_draw(memory_native, overrides):
+    for seed in list(range(30)) + list(range(44000, 44030)):
+        original_cfg = memory_config(**overrides)
+        baseline = memory_native.Task(copy.deepcopy(original_cfg))
+        baseline.reset(seed=seed)
+        compact = memory_server._build_compact_memory_task(memory_native, copy.deepcopy(original_cfg), seed)
+        compact.reset(seed=seed)
+        assert set(compact._actor_manager.actors) == {
+            "match_slot", "reference_active", "match_active", "distractor_active"}
+        assert len(baseline._actor_manager.actors) == (4 if overrides.get("compact_fixed_pair_scene") else 17)
+        assert compact.reference_class_key == baseline.reference_class_key
+        assert compact.distractor_class_key == baseline.distractor_class_key
+        assert compact.match_on_left == baseline.match_on_left
+        assert compact.match_candidate_public_name == baseline.match_candidate_public_name
+        assert set(compact.public_actor_map) == set(baseline.public_actor_map)
+        for role, actor in compact.public_actor_map.items():
+            expected = baseline.public_actor_map[role]
+            for field in ("asset_path", "constitution_cfg", "density", "friction_ratio"):
+                assert actor.spec[field] == expected.spec[field]
+            np.testing.assert_allclose(actor.pose.p, expected.pose.p, atol=0, rtol=0)
+            np.testing.assert_allclose(actor.pose.q, expected.pose.q, atol=0, rtol=0)
+        np.testing.assert_array_equal(compact.rng.random(16), baseline.rng.random(16))
+        assert type(compact).check_success is memory_native.Task.check_success
+        assert type(compact).pre_move is memory_native.Task.pre_move
+
+
+def test_different_seed_rejected_before_reset_and_same_seed_repeatable(memory_native):
+    task = memory_server._build_compact_memory_task(memory_native, memory_config(), 44001)
+    task.reset(seed=44001)
+    first = task.reference_class_key, task.distractor_class_key, task.match_on_left
+    with pytest.raises(ValueError, match="new server"):
+        task.reset(seed=44002)
+    assert task.reset_calls == 1
+    task.reset(seed=44001)
+    assert (task.reference_class_key, task.distractor_class_key, task.match_on_left) == first
+
+
+def test_random_textures_not_silently_disabled(memory_native):
+    cfg = memory_config(random_texture=True)
+    with pytest.raises(ValueError, match="random textures"):
+        memory_server._build_compact_memory_task(memory_native, cfg, 44001)
+    assert cfg.random_texture is True and cfg.compact_fixed_pair_scene is False
+
+
+def test_compact_internal_actor_names_do_not_expose_match_identity(memory_native, monkeypatch):
+    task = memory_server._build_compact_memory_task(memory_native, memory_config(), 44001)
+    task.reset(seed=44001)
+    monkeypatch.setattr(memory_server, "_TASK", task)
+    monkeypatch.setattr(memory_server, "_TASK_NAME", "tactile_memory_match")
+    for name in ("match_active", "distractor_active", "reference_active", "candidate_variant_0"):
+        assert memory_server._sim_get_object_pose(name)["found"] is False
+    for name in ("reference_object", "candidate_left", "candidate_right", "match_slot"):
+        assert memory_server._sim_get_object_pose(name)["found"] is True
+
+
+def memory_pose(position, quaternion=(0.0, 1.0, 0.0, 0.0)):
+    return SimpleNamespace(p=np.asarray(position, dtype=float), q=np.asarray(quaternion, dtype=float))
+
+
+@pytest.fixture
+def memory_scene(monkeypatch):
+    actors = {
+        name: SimpleNamespace(get_pose=Mock(return_value=memory_pose(position)))
+        for name, position in {
+            "reference_object": [0.68, 0.24, 0.021],
+            "candidate_left": [0.60, -0.34, 0.021],
+            "candidate_right": [0.60, -0.18, 0.021],
+        }.items()
+    }
+    robot = SimpleNamespace(
+        get_ee_pose=Mock(side_effect=AssertionError("Live grasp must not read the current wrist")),
+        gripper_center_to_ee=Mock(side_effect=lambda centre: memory_pose(centre.p + [0, 0, 0.131], centre.q)),
+    )
+    task = SimpleNamespace(
+        cfg=SimpleNamespace(compact_fixed_pair_scene=True), public_actor_map=actors,
+        _resolve_public_object_name=lambda name: "candidate_left" if name == "left" else name,
+        _robot_manager=robot,
+        _lift_can_style_grasp_pose=Mock(side_effect=lambda actor: memory_pose(
+            actor.get_pose().p + [-0.065, 0, -0.008], actor.get_pose().q)),
+    )
+    monkeypatch.setattr(memory_server, "_TASK", task)
+    monkeypatch.setattr(memory_server, "_TASK_NAME", "tactile_memory_match")
+    monkeypatch.setattr(memory_server, "_GRASP_OFFSET", {"candidate_left": (np.ones(3), np.array([1, 0, 0, 0]))})
+    monkeypatch.setenv("CAPX_MEMORY_MATCH_LIVE_GRASP", "1")
+    return SimpleNamespace(task=task, actors=actors, robot=robot)
+
+
+@pytest.mark.parametrize("name", ["reference_object", "candidate_left", "candidate_right", "left"])
+def test_live_grasp_resolves_each_public_actor_and_converts_to_wrist(memory_scene, name):
+    actor = memory_scene.actors["candidate_left" if name == "left" else name]
+    before = dict(memory_server._GRASP_OFFSET)
+    result = memory_server._sim_get_grasp_pose(name, allow_ground_truth=True)
+    memory_scene.task._lift_can_style_grasp_pose.assert_called_once_with(actor)
+    centre = memory_scene.robot.gripper_center_to_ee.call_args.args[0]
+    np.testing.assert_allclose(result["position"], centre.p + [0, 0, 0.131])
+    np.testing.assert_allclose(result["position"], actor.get_pose().p + [-0.065, 0, 0.123])
+    assert memory_server._GRASP_OFFSET == before
+    memory_scene.robot.get_ee_pose.assert_not_called()
+
+
+def test_second_query_recomputes_after_object_translation_and_rotation(memory_scene):
+    memory_server._sim_get_grasp_pose("candidate_left", allow_ground_truth=True)
+    memory_scene.actors["candidate_left"].get_pose.return_value = memory_pose([0.43, -0.12, 0.03], [0, 0, 1, 0])
+    result = memory_server._sim_get_grasp_pose("candidate_left", allow_ground_truth=True)
+    np.testing.assert_allclose(result["position"], [0.365, -0.12, 0.153])
+    np.testing.assert_allclose(result["quaternion_wxyz"], [0, 0, 1, 0])
+    assert memory_scene.task._lift_can_style_grasp_pose.call_count == 2
+    assert memory_scene.robot.gripper_center_to_ee.call_count == 2
+
+
+@pytest.mark.parametrize("bad", [memory_pose([float("nan"), 0, 0]), memory_pose([0, 0]), memory_pose([0, 0, 0], [0, 0, 0, 0])])
+def test_invalid_native_result_does_not_fall_back_to_cache(memory_scene, bad):
+    memory_scene.robot.gripper_center_to_ee.side_effect = None
+    memory_scene.robot.gripper_center_to_ee.return_value = bad
+    with pytest.raises(ValueError, match="invalid wrist pose"):
+        memory_server._sim_get_grasp_pose("candidate_left", allow_ground_truth=True)
+    memory_scene.robot.get_ee_pose.assert_not_called()
+
+
+def test_native_error_is_not_hidden_by_cached_target(memory_scene):
+    memory_scene.task._lift_can_style_grasp_pose.side_effect = RuntimeError("native geometry failed")
+    with pytest.raises(RuntimeError, match="native geometry failed"):
+        memory_server._sim_get_grasp_pose("candidate_left", allow_ground_truth=True)
+
+
+@pytest.mark.parametrize("disabled", ["flag", "task", "privilege"])
+def test_existing_path_is_unchanged_without_pilot_opt_in(memory_scene, monkeypatch, disabled):
+    if disabled == "flag":
+        monkeypatch.setenv("CAPX_MEMORY_MATCH_LIVE_GRASP", "0")
+    elif disabled == "task":
+        monkeypatch.setattr(memory_server, "_TASK_NAME", "grasp_classify")
+        memory_scene.task._actor_manager = SimpleNamespace(actors=memory_scene.actors)
+    result = memory_server._sim_get_grasp_pose("candidate_left", allow_ground_truth=disabled != "privilege")
+    np.testing.assert_allclose(result["position"], memory_scene.actors["candidate_left"].get_pose().p + 1)
+    memory_scene.task._lift_can_style_grasp_pose.assert_not_called()
+
+
+def test_missing_public_actor_does_not_return_wrist(memory_scene):
+    result = memory_server._sim_get_grasp_pose("unknown", allow_ground_truth=True)
+    assert result == {"position": None, "quaternion_wxyz": None}
+    memory_scene.robot.get_ee_pose.assert_not_called()
+
+
+def test_memory_live_grasp_default_is_enabled(memory_scene, monkeypatch):
+    monkeypatch.delenv("CAPX_MEMORY_MATCH_LIVE_GRASP")
+    result = memory_server._sim_get_grasp_pose("candidate_right", allow_ground_truth=True)
+    assert result["position"] is not None
+    memory_scene.task._lift_can_style_grasp_pose.assert_called_once()
+
+
+@pytest.mark.parametrize("group", ["bd", "bs", "ds", "bds"])
+def test_memory_configs_use_live_queries_and_native_seed_selection(group):
+    path = REPO_ROOT / "env_configs/ablations/tactile_features" / f"combination_{group}.yaml"
+    cfg = yaml.safe_load(path.read_text())
+    assert all("compact_fixed_pair_scene=true" not in str(s.get("cfg_override", ""))
+               for s in cfg["api_servers"])
+    prompt = cfg["env"]["cfg"]["prompt"]
+    assert "Use this live query separately" in prompt
+    assert "Do NOT call" not in prompt and "grasp_offset =" not in prompt
+    assert "grasp-pose-from-offset" not in cfg["env"]["cfg"]["tactile_skills"]
+    assert cfg["env"]["cfg"]["tactile_feature_groups"] == group.upper()
+
+
+def test_memory_init_uses_native_compact_builder_only_for_matching():
+    init = next(n for n in ast.parse((REPO_ROOT / "capx/serving/launch_univtac_server.py").read_text()).body
+                if isinstance(n, ast.FunctionDef) and n.name == "init_task")
+    assignment = next(n for n in init.body if isinstance(n, ast.Assign)
+                      and any(isinstance(v, ast.Call) and isinstance(v.func, ast.Name)
+                              and v.func.id == "_build_compact_memory_task" for v in ast.walk(n)))
+    for name in ("tactile_memory_match", "grasp_classify"):
+        cfg = object()
+        native = Mock()
+        compact = Mock()
+        module = SimpleNamespace(Task=native)
+        scope = dict(task_name=name, task_module=module, env_cfg=cfg, seed=7,
+                     _build_compact_memory_task=compact)
+        exec(compile(ast.Module(body=[assignment], type_ignores=[]), "init_task", "exec"), scope)
+        if name == "tactile_memory_match":
+            compact.assert_called_once_with(module, cfg, 7)
+            native.assert_not_called()
+        else:
+            native.assert_called_once_with(cfg, mode="collect")
+            compact.assert_not_called()

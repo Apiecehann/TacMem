@@ -6,7 +6,7 @@
     "DS": {
       "tactile_memory_match": {
         "config": "env_configs/ablations/tactile_features/combination_ds.yaml",
-        "skills": 30,
+        "skills": 29,
         "exec_alarm_seconds": 2400,
         "trial_timeout_seconds": 3600,
         "process_timeout_seconds": 4200
@@ -36,7 +36,7 @@
     "BS": {
       "tactile_memory_match": {
         "config": "env_configs/ablations/tactile_features/combination_bs.yaml",
-        "skills": 30,
+        "skills": 29,
         "exec_alarm_seconds": 2400,
         "trial_timeout_seconds": 3600,
         "process_timeout_seconds": 4200
@@ -66,7 +66,7 @@
     "BD": {
       "tactile_memory_match": {
         "config": "env_configs/ablations/tactile_features/combination_bd.yaml",
-        "skills": 30,
+        "skills": 29,
         "exec_alarm_seconds": 2400,
         "trial_timeout_seconds": 3600,
         "process_timeout_seconds": 4200
@@ -96,7 +96,7 @@
     "BDS": {
       "tactile_memory_match": {
         "config": "env_configs/ablations/tactile_features/combination_bds.yaml",
-        "skills": 30,
+        "skills": 29,
         "exec_alarm_seconds": 2400,
         "trial_timeout_seconds": 3600,
         "process_timeout_seconds": 4200
@@ -204,7 +204,8 @@
     "blind_pick_balls": "UNIVTAC_BLIND_LEGACY_PHYSX=1 only for verified Isaac Sim 4.5/Isaac Lab 2.1 compatibility",
     "usd_permissions": "umask 0022 on simulator process",
     "GPU": "explicit GPU, one Kit GPU, no automatic switching",
-    "proxies": "unset upper/lower HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY"
+    "proxies": "unset upper/lower HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY",
+    "tactile_memory_match": "Native compact three-object construction with original seed sampling; live native grasp geometry enabled by default. Do not set compact_fixed_pair_scene=true with random class keys before construction."
   },
   "required_paths": [
     "CAPX_SIM_PYTHON",

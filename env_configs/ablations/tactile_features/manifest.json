@@ -21,11 +21,11 @@
   ],
   "files_sha256": {
     "capx/envs/tasks/base.py": "9612a93d260b944e29843833644e653fafddfbe116ada0c3d80ea23d5f3abb39",
-    "capx/integrations/tactile/univtac_api.py": "6906fbc07ad998fc333060ce2002bb7fe91c7ca2c9e1fa48e20f2bf5c0341e28",
-    "capx/serving/launch_univtac_server.py": "b474732ffad4b0c254791cbc392d32731625db32796a313824575b01dfc81597",
+    "capx/integrations/tactile/univtac_api.py": "ed7aa5a195fba508f64f63acfedc865cb4c6ebcc83a220f760bcb549a6b4c481",
+    "capx/serving/launch_univtac_server.py": "b2e190285ae971bb7324a01cefeaa7533f73157c9d4ef79133e6723e423c8ea3",
     "capx/utils/launch_utils.py": "c316a77aed536ca2bea28b3b49582fa29eddea2d5a308e3478473a7d106c6145",
-    "env_configs/ablations/tactile_features/combination_bd_smoke.yaml": "ab69ecb13ddf2b70e2b16e8a15304595571f96d800195444eb00c814c2f30195",
-    "env_configs/ablations/tactile_features/combination_full_smoke.yaml": "827c87b114d6dd060b1b355f20e13e8f40e5fd782e08a7a86b7b2d4133ef8228",
+    "env_configs/ablations/tactile_features/combination_bd_smoke.yaml": "62ddb79bec857f0428b2a1f5720be9f408171b11c70632859b89834afa9e0157",
+    "env_configs/ablations/tactile_features/combination_full_smoke.yaml": "3dddbf5dfa1ae1a63c5d45f4ae253e79aa62c93882233b339242d879f6fc4dff",
     "env_configs/ablations/tactile_features/roughness_full_smoke.yaml": "c6f5e152d8324e7c4a9d803e699ef62b22523e72b79cd1c3b5ee89b0205f7142",
     "env_configs/ablations/tactile_features/seeds.json": "d4be13ed052caa84f126bcb1a50da561903c2659cb42cda3a3831d372b96599a",
     "env_configs/ablations/tactile_features/skills/bd/skills/act/asymmetry-means-misaligned.md": "0cab5a015b305fd1958f54a32f35255479979496882921b94c80b35c0ef4180b",
@@ -156,7 +156,7 @@
     "env_configs/ablations/tactile_features/skills/full/skills/sense/texture-slope-two-grips.md": "fb3557149ac4bd6d477cfeb13a5228116cef6352f199dbd793b0dd95d09fbf00",
     "env_configs/ablations/tactile_features/skills/full/skills/sense/wide-pads-see-nothing.md": "7b67a9b7c3a7a91abcef79cf763bf001db3636509c8a21e0fcb8006d0a8f9207",
     "env_configs/ablations/tactile_features/skills/full/taxonomy.yaml": "d50b2d28d128ed81cc346a1f87c59722afa21cc65886af67d80c3fa68cfc6014",
-    "tests/integrations/test_tactile_skills.py": "d421df869467b97470a31a7e5c2dc32e6b15c5d678e22e9785b8afc579eaa49d"
+    "tests/integrations/test_tactile_skills.py": "bafb438cc83192dd4eab2bc259062b5bd90d97631904c65565e2a88d7dd62203"
   },
   "environments": {
     "grasp_classify": {
@@ -197,5 +197,16 @@
     "oracle_code": false,
     "umask": "0022"
   },
-  "publication_does_not_start_experiments": true
+  "publication_does_not_start_experiments": true,
+  "combination_native_geometry": {
+    "source_branch": "exp/logger2skill-skillopt",
+    "source_head": "50d458c012361b55a701975f8b5097c4c20b2362",
+    "source_server_sha256": "5bbdfddfdce69435f13f62839138d92cd319c6c5e5e7bec04d825d03583dcde3",
+    "native_builder_sha256": "c2a01f0ad6d0bfa172ad9862e3b48863dbacffe26a76e6b8f53c9fd07161e239",
+    "native_commit": "1a131a416e57e95164b40c54aeb6b15c76ab4476",
+    "live_grasp_default_enabled": true,
+    "skill_files_unchanged": true,
+    "omitted_from_combination_delivery": "grasp-pose-from-offset",
+    "seed_draw_preserved": true
+  }
 }

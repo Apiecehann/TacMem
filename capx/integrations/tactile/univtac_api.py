@@ -991,6 +991,12 @@ class UniVTACTactileApi(ApiBase):
         rather than cached, so it follows the object after it has been moved or
         re-grasped, and the FIRST-call caveat above does not apply.
 
+        For tactile_memory_match, reference_object, candidate_left and
+        candidate_right use the native live-geometry rule by default. Each
+        query returns the current wrist target directly, even after an object
+        moves. Do not add an offset or repeat the gripper-to-wrist conversion.
+        Use get_object_pose for match_slot placement geometry.
+
         Args:
             object_name: The simulator PRIM name of the object (e.g.
                 "object_a", "object_b") — NOT a perception phrase.  This
