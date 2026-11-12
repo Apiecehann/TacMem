@@ -137,7 +137,7 @@ view. Match the view to the question:
 | Field | What it means |
 |---|---|
 | `*_contact` | bool — a surface is inside the sensor's range. **Not a press**: it goes true up to ~5.6 mm before the gel is touched |
-| `*_depth_mm` | distance to the nearest surface; **~34 mm = far plane (nothing in range), the gel face is ~28.3 mm** — above it the surface has not reached the pad, below it is pressed in; DECREASES as contact hardens (27.8-29 mm is the gel-face band — a light grasp OR an empty close with under 0.01 px of marker displacement; ~24 mm the sensor's floor — a pad bottomed out, not a deeper grip) |
+| `*_depth_mm` | distance to the nearest surface; **~34 mm = far plane (nothing in range), the gel face is ~28.3 mm** — above it the surface has not reached the pad, below it is pressed in; DECREASES as contact hardens (27.8-29 mm is the gel-face band — a light grasp OR an empty close with under 0.01 px of marker displacement; a rigid part squeezed hard reads in the low 20s — 20.16-20.75 mm at a 20.5 target) |
 | `*_marker_displacement_px` | mean marker motion since the no-contact reset — rises with ANY gel deformation (contact, insertion, slip), so NOT a clean slip signal on its own |
 | `*_marker_coherence` | 0–1 uniformity of marker motion — **high = markers move together (shear/slip), low = incoherent (compression/tracking loss)**; combine with displacement for slip |
 

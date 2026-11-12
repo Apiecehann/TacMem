@@ -857,6 +857,7 @@ class MoveReflexiveResponse(ActionResponse):
 
 
 class TactileResponse(BaseModel):
+    step: int = 0
     left_contact: bool = False
     right_contact: bool = False
     left_depth_mm: float = 0.0
@@ -1847,8 +1848,9 @@ def _sim_gripper(action: str, force_threshold: float | None,
             # task config's: with a request-level force_threshold the task
             # config usually holds None, and the check below would then
             # reject a close that landed exactly as instructed.
-            reached = depth < depth_threshold + 1.0
-            detail = (f"qpos={final_qpos:.4f} depth={depth:.2f}mm "
+            pad_depths = _TASK._tactile_manager.get_min_depth()
+            reached = bool(torch.all(torch.abs(pad_depths - depth_threshold) <= 1.0).item())
+            detail = (f"qpos={final_qpos:.4f} depths={pad_depths.tolist()} "
                       f"target={depth_threshold:.2f}mm")
         else:
             # Position close: the fingers stop on the commanded qpos — or
@@ -2043,6 +2045,7 @@ def _sim_get_tactile_data(*, raw_read: bool = False) -> dict:
             pass
 
         result = {
+            "step": int(_TASK.step_count),
             "left_contact": left_contact,
             "right_contact": right_contact,
             # Depth from GelSight sensor is already in mm (same unit as
@@ -3574,9 +3577,13 @@ def _prefer_vitforge_tacex(root: Path) -> None:
     """
     import importlib
 
-    source = root.resolve() / "third_party" / "TacEx" / "source"
+    configured_root = os.environ.get("CAPX_TACEX_RUNTIME_ROOT")
+    source = (Path(configured_root).expanduser().resolve() / "source" if configured_root
+              else root.resolve() / "third_party" / "TacEx" / "source")
     staged = [source / name for name in _TACEX_PACKAGES
               if (source / name / name / "__init__.py").is_file()]
+    if configured_root and len(staged) != len(_TACEX_PACKAGES):
+        raise FileNotFoundError(f"Incomplete configured TacEx runtime: {source}")
     if not staged:
         logger.warning("No ViTaForge TacEx fork under %s — leaving the "
                        "environment's editable install in place", source)
@@ -3596,6 +3603,46 @@ def _prefer_vitforge_tacex(root: Path) -> None:
             del sys.modules[name]
     importlib.invalidate_caches()
     logger.info("TacEx fork active: %s", ", ".join(str(p) for p in staged))
+
+
+def _configure_task_tacex(task_name: str) -> None:
+    backing = _backing_for(task_name)
+    if not os.environ.get("CAPX_TACEX_RUNTIME_ROOT"):
+        if task_name in {"weight_classify", "grasp_classify", "hardness_classify", "tactile_memory_match"}:
+            root = Path(os.environ.get(
+                "UNIVTAC_TACEX_ROOT",
+                str(_backing_for("tactile_memory_match").root / "third_party" / "TacEx"),
+            ))
+        else:
+            root = backing.root / "third_party" / "TacEx"
+        os.environ["CAPX_TACEX_RUNTIME_ROOT"] = str(root.expanduser().resolve())
+    _prefer_vitforge_tacex(backing.root)
+
+
+def _verify_configured_tacex_runtime() -> None:
+    import importlib.util
+
+    configured_root = os.environ.get("CAPX_TACEX_RUNTIME_ROOT")
+    if not configured_root:
+        return
+    source = Path(configured_root).expanduser().resolve() / "source"
+    loaded = {}
+    for name in (*_TACEX_PACKAGES, "tacex.gelsight_sensor"):
+        module = sys.modules.get(name)
+        filename = getattr(module, "__file__", None)
+        if module is None:
+            spec = importlib.util.find_spec(name)
+            filename = getattr(spec, "origin", None)
+        package = name.split(".")[0]
+        expected = source / package / package
+        if not filename or not Path(filename).resolve().is_relative_to(expected):
+            raise RuntimeError(f"TacEx runtime mismatch: {name} loaded from {filename}; expected {expected}")
+        loaded[name] = {"path": str(Path(filename).resolve()), "loaded": module is not None}
+    logger.info("TacEx runtime verified: %s", loaded)
+    report = os.environ.get("CAPX_TACEX_RUNTIME_REPORT")
+    if report:
+        import json
+        Path(report).write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8")
 
 
 def _apply_cfg_override(env_cfg: Any, spec: str) -> None:
@@ -4031,7 +4078,7 @@ def init_task(task_name: str, device: str, sensor_type: str = "gsmini",
     # that the second test is a property of the profile: a ``task_parameters``
     # block is what marks a force-task config, and ViTaForge's other profiles
     # (gelsight.yml) do not have one.
-    if backing.vitforge_tacex or "task_parameters" in task_config:
+    if os.environ.get("CAPX_TACEX_RUNTIME_ROOT") or backing.vitforge_tacex or "task_parameters" in task_config:
         _prefer_vitforge_tacex(backing.root)
 
     # blind_pick_balls is not a BaseTask: every step from here down -- the
@@ -4241,6 +4288,7 @@ def main() -> None:
     # Pin the task's backing repo before anything imports envs.*: AppLauncher
     # below pulls in isaaclab, and init_task imports the task module.
     _activate_backing_root(_backing_for(cli.task).root)
+    _configure_task_tacex(cli.task)
 
     # Set defaults that UniVTAC tasks expect — must match scripts/eval_policy.py
     cli.enable_cameras = True
@@ -4295,6 +4343,7 @@ def main() -> None:
         device = getattr(cli, "device", "cuda:0")
         init_task(cli.task, device, cli.sensor_type, seed=cli.seed,
                   cfg_overrides=cli.cfg_override)
+        _verify_configured_tacex_runtime()
     except Exception:
         logger.error("Failed to initialize task: %s", traceback.format_exc())
         listener_socket.close()

@@ -51,6 +51,7 @@ _READ_TIMEOUT = 1800.0
 # straight afterwards.  The images are the one thing withheld: those are what
 # that call is for.
 _MOTION_TACTILE_FIELDS = (
+    "step",
     "left_contact",
     "right_contact",
     "left_depth_mm",
@@ -543,7 +544,11 @@ class UniVTACTactileApi(ApiBase):
         Returns:
             dict with the scalar tactile readings after the move, per side:
             contact, depth_mm, marker_displacement_px, marker_shear_dx,
-            marker_shear_dy, marker_coherence and marker_anisotropy.
+            marker_shear_dy, marker_coherence and marker_anisotropy, plus
+            ``step`` — the physics ticks the episode has advanced, 120 of
+            them per second.  A move spends whatever the planned trajectory
+            ran, at least ten ticks and about forty for a short one, so the
+            length of a hold is the difference between two ``step`` reads.
         """
         data = self._post(
             "/move",
@@ -714,17 +719,21 @@ class UniVTACTactileApi(ApiBase):
 
     def close_gripper(self, force_threshold: float | None = None,
                       position: float | None = None,
-                      adaptive: bool = True) -> dict:
+                      adaptive: bool | None = None) -> dict:
         """Close the gripper to grasp an object. Uses tactile feedback to stop
         at the requested gel deformation depth.
 
         force_threshold is a gel-depth target in mm, where depth DECREASES as
         contact hardens (see get_tactile_data).  Lower values grip firmer.
 
-        With adaptive=True (the default) the close is judged by the gel depth
-        it reached, so a close that meets nothing never reaches the target and
-        raises "Gripper action failed" instead of returning a far-plane
-        reading.  adaptive=False commands the finger travel directly: a close
+        With adaptive=True the close is judged by the gel depth it reached: a
+        close that meets nothing, or one that overshoots the target (for
+        example, one that jams at the sensor's near clip), does not land in
+        the accepted band and raises "Gripper action failed" instead of
+        returning that reading as a success.  That is the default for a close
+        that names a depth, and it is why a close that names only an opening
+        runs the travel command instead.
+        adaptive=False commands the finger travel directly: a close
         that meets nothing returns the far-plane reading, and one an object
         stops short of the commanded opening raises, the message carrying the
         opening it landed on.  A raise is not a lost reading: the fingers stay
@@ -733,27 +742,32 @@ class UniVTACTactileApi(ApiBase):
 
         Args:
             force_threshold: (float, optional) Target gel deformation depth in
-                mm. Lower values = firmer/deeper grip. Below ~26.5 mm the depth
-                is one the servo can never reach on a compliant object, and the
-                close fails outright rather than stopping short. An explicit
-                value switches the close to a servoed landing: the fingers
-                micro-step onto the target and the released depth comes back
-                close to it — not exactly: 26.23, 26.32 and 26.68 were
-                measured around a 26.5 target — so check the reading against a
-                narrow band rather than one exact value. It gives up on an
-                asymmetric or wedged grasp, where the fingers stop wherever
-                they jammed. None uses the task default (firm), which is not
-                servoed, lands near 25.5 mm and varies from one close to the
-                next.
+                mm. Lower values = firmer/deeper grip. On a compliant object a
+                depth below ~26.5 mm is one the servo can never reach, and the
+                close fails outright rather than stopping short. A rigid part
+                can be taken deeper: a 20.5 target has landed at 20.16-20.75.
+                An explicit value switches the close to a servoed landing: the
+                fingers micro-step onto the target and the released depth
+                comes back close to it — not exactly: 26.23, 26.32 and 26.68
+                were measured around a 26.5 target — so check the reading
+                against a narrow band rather than one exact value. It gives up
+                on an asymmetric or wedged grasp, where the fingers stop
+                wherever they jammed. None uses the task default (firm), which
+                is not servoed, lands near 25.5 mm and varies from one close
+                to the next.
             position: (float, optional) Gripper opening percentage, 0.0 (fully
                 closed) to 1.0 (fully open). Sets the grip by finger separation
                 instead of by gel depth, which fixes the grip only where the
                 object is rigid enough for the fingers to pin it. None leaves
                 the travel unconstrained (closes fully).
             adaptive: (bool) Whether the depth servo runs during the close.
-                True (default) drives towards force_threshold. False commands
-                the finger travel directly, so it goes exactly where it is told
-                whatever the object does.
+                True drives towards force_threshold. False commands the finger
+                travel directly, so it goes exactly where it is told whatever
+                the object does. Omitted, it is True unless a position was
+                given: a position close is a travel command by definition, and
+                running the depth servo alongside it would stop the fingers on
+                the gel reading while the opening stayed wherever they happened
+                to be.
 
         Returns:
             dict with the scalar tactile readings after closing (same set as
@@ -762,6 +776,8 @@ class UniVTACTactileApi(ApiBase):
         if getattr(self, "_observation_mode", "native") != "native":
             if force_threshold is not None or adaptive:
                 raise ValueError("Only position-control closing is enabled")
+        if adaptive is None:
+            adaptive = position is None
         payload: dict = {"action": "close", "use_adaptive_grasp": adaptive}
         if force_threshold is not None:
             payload["force_threshold"] = force_threshold
@@ -792,7 +808,11 @@ class UniVTACTactileApi(ApiBase):
         there is no image to read.)
 
         Returns:
-            dict with: left_contact, right_contact (bool — a RANGE flag, not
+            dict with: step (int — physics ticks since the episode was reset,
+            at 120 per simulated second.  This call does not advance it, so
+            it is the clock as it stands: two reads around a motion say how
+            long that motion took, and a read before a hold is the start of
+            it); left_contact, right_contact (bool — a RANGE flag, not
             a press: true as soon as any surface is inside the sensor's range,
             which happens while the depth is below the far plane and the
             surface can still be up to ~5.6 mm short of the gel face.  Both
@@ -803,14 +823,14 @@ class UniVTACTactileApi(ApiBase):
             that is a surface that has NOT reached the pad and one below it is
             pressed into the gel.  The reading DECREASES as contact hardens:
             ~27.8-29 mm is the gel-face band, where a light grasp and a
-            close that met nothing both read — the contact flags are up in
-            either case, and only the marker displacement separates them
-            (under 0.01 px for the empty close; a real grasp moves them
-            1.5 px or more.  A pad that has touched nothing still reports a
-            few thousandths of a pixel, so test a threshold — anything
-            above ~1 px is contact — and never "nonzero") — ~24 mm is the
-            sensor's floor (the camera's window ends there), and the reading
-            saturates there.  Returning to 34 mm
+            close that caught nothing both read — the contact flags are up
+            in either case, and only the marker displacement separates
+            them.  A pad that has touched nothing still reports a few
+            thousandths of a pixel, so read the field as a magnitude above
+            a noise floor, never as "nonzero" — the reading also falls
+            below 24 mm: a rigid part squeezed hard between the pads reads
+            in the low 20s (a 20.5 target has landed at 20.16-20.75).
+            Returning to 34 mm
             means the pads are
             open, which is the same reading whether the object was never held,
             was set down, or was dropped — the field answers whether something
@@ -850,7 +870,9 @@ class UniVTACTactileApi(ApiBase):
             same squeeze a smooth ball reads 0.02-0.03 mm and a dotted one
             0.09-0.25 mm while the pads sit on its centre — so it answers
             what the surface is shaped like rather than how hard it is
-            pressed.  Reported only where the
+            pressed, as long as the imprint is still the object's own
+            surface: a pad that keeps closing on a compliant object measures
+            the crush.  Reported only where the
             fingertip exposes a full height map; absent from the response
             otherwise.)
         """
@@ -990,12 +1012,6 @@ class UniVTACTactileApi(ApiBase):
         rule exists the pose is rebuilt from the object's pose on every call
         rather than cached, so it follows the object after it has been moved or
         re-grasped, and the FIRST-call caveat above does not apply.
-
-        For tactile_memory_match, reference_object, candidate_left and
-        candidate_right use the native live-geometry rule by default. Each
-        query returns the current wrist target directly, even after an object
-        moves. Do not add an offset or repeat the gripper-to-wrist conversion.
-        Use get_object_pose for match_slot placement geometry.
 
         Args:
             object_name: The simulator PRIM name of the object (e.g.
@@ -1245,6 +1261,11 @@ class UniVTACTactileApi(ApiBase):
 
     def get_ee_pose(self) -> dict:
         """Return the end-effector pose in the world frame.
+
+        Agent-facing only: this method is intentionally NOT listed in
+        ``functions()``, so it never appears in the generated LLM prompt and
+        is not bound in the exec sandbox.  It exists for coding agents that
+        drive the arm interactively (see ``univtac_skill/robo.py``).
 
         Diagnostic use only: verify that a commanded move_delta actually
         executed (execution state != world state), detect drift from a

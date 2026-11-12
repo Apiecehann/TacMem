@@ -53,7 +53,7 @@ def test_bd_feature_view_keeps_native_values_and_controls(monkeypatch, capsys):
     assert read["left_depth_mm"] == 26.3 and read["right_marker_shear_dx"] == -0.3
     assert read["step"] == 42 and read["time_seconds"] == 0.35
     feedback = api._motion_feedback({"tactile": data})
-    assert feedback == {k: v for k, v in read.items() if k not in {"step", "time_seconds"}}
+    assert feedback == {k: v for k, v in read.items() if k != "time_seconds"}
     for text in (repr(read), repr(feedback), api.combined_doc(), capsys.readouterr().out):
         assert "anisotropy" not in text and "roughness" not in text and "base64" not in text
     assert api.selected_functions()["close_gripper"].__func__ is UniVTACTactileApi.close_gripper
