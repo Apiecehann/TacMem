@@ -1960,6 +1960,55 @@ def test_blind_legacy_physx_is_scoped_and_opt_in(monkeypatch, supported, opt_in,
     assert original.PhysxCfg is (modern if supported else legacy)
 
 
+@pytest.mark.parametrize("supported,opt_in,fail", [
+    (supported, opt_in, fail)
+    for supported in (False, True)
+    for opt_in in (False, True)
+    for fail in (False, True)
+])
+def test_blind_physx_native_field_introspection(monkeypatch, supported, opt_in, fail):
+    from dataclasses import make_dataclass
+
+    ns = _blind_compatibility_namespace()
+    monkeypatch.setenv("UNIVTAC_BLIND_LEGACY_PHYSX", "1" if opt_in else "0")
+    parameter = "enable_external_forces_every_iteration"
+    fields = [("solver_type", int, 1)]
+    if supported:
+        fields.append((parameter, bool, False))
+    native = make_dataclass("NativePhysxCfg", fields)
+    original = SimpleNamespace(PhysxCfg=native)
+    articulation = lambda: None
+    module = SimpleNamespace(sim_utils=original, Articulation=articulation)
+    error = RuntimeError("native task construction failed")
+    constructed = []
+
+    def task(cfg, render_mode):
+        factory = module.sim_utils.PhysxCfg
+        assert factory.__dataclass_fields__ is native.__dataclass_fields__
+        kwargs = {parameter: True} if parameter in factory.__dataclass_fields__ else {}
+        value = factory(solver_type=0, **kwargs)
+        assert type(value) is native
+        assert value.solver_type == 0
+        assert getattr(value, parameter, None) is (True if supported else None)
+        constructed.append(value)
+        if fail:
+            raise error
+        return value
+
+    module.Task = task
+    if fail:
+        with pytest.raises(RuntimeError) as caught:
+            ns["_construct_blind_task"](module, None)
+        assert caught.value is error
+    else:
+        result = ns["_construct_blind_task"](module, None)
+        assert constructed == [result]
+    assert len(constructed) == 1
+    assert module.sim_utils is original
+    assert original.PhysxCfg is native
+    assert module.Articulation is articulation
+
+
 def _blind_compatibility_namespace():
     import ast
     import logging

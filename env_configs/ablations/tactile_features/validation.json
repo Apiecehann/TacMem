@@ -24,5 +24,20 @@
     "new_group_gpu_behavior": "not validated",
     "scope": "CPU loading/binding/filtering/skill-link/one-program contract only; not task success."
   },
-  "gpu_status": "CPU checks complete; resumed GPU batch audited separately."
+  "gpu_status": "CPU checks complete; resumed GPU batch audited separately.",
+  "blind_physx_compatibility": {
+    "parent_commit": "dbf6e673a7052ac36e49980cfb7a73955c4fa4d8",
+    "test_command": "python -m pytest tests/integrations/test_tactile_skills.py -k 'blind_legacy or blind_wrench or blind_physx_native' -q -p no:cacheprovider",
+    "before_fix": {
+      "new_regression_passed": 6,
+      "new_regression_failed": 2,
+      "failure": "AttributeError: 'function' object has no attribute '__dataclass_fields__'"
+    },
+    "after_fix": {
+      "passed": 16,
+      "failed": 0,
+      "deselected": 194
+    },
+    "scope": "Preserve native PhysxCfg field introspection, existing keyword compatibility, module restoration, and world-frame wrench timing. No physics, task, prompt or skill changes."
+  }
 }

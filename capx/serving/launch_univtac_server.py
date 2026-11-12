@@ -3905,6 +3905,8 @@ def _construct_blind_task(task_module, cfg):
 
     local_sim_utils = SimpleNamespace(**vars(native_sim_utils))
     if parameter not in inspect.signature(native_physx_cfg).parameters:
+        if hasattr(native_physx_cfg, "__dataclass_fields__"):
+            compatible_physx_cfg.__dataclass_fields__ = native_physx_cfg.__dataclass_fields__
         local_sim_utils.PhysxCfg = compatible_physx_cfg
     task_module.sim_utils = local_sim_utils
     task_module.Articulation = compatible_articulation
