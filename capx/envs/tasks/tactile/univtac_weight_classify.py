@@ -177,6 +177,10 @@ class UniVTACWeightClassifyCodeEnv(CodeExecutionEnvBase):
     oracle_code = ORACLE_CODE
 
 
+class UniVTACEmptyCanSelectCodeEnv(CodeExecutionEnvBase):
+    tactile_skills_verbose = True
+
+
 class UniVTACWeightClassifyTraceCodeEnv(UniVTACWeightClassifyCodeEnv):
     """The cross-seed trace experiment on weight_classify.
 

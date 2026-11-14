@@ -117,6 +117,7 @@ AVAILABLE_TASKS = [
     "tactile_transfer_rearrange_clean",
     "tactile_memory_match",
     "weight_classify",
+    "can_empty_select",
     "hardness_classify",
     "bulb_tightening",
     "wipe_vase",
@@ -158,6 +159,7 @@ DEFAULT_BACKING = TaskBacking(UNIVTAC_ROOT, "contact.yml")
 # the task, not of the invocation, so it lives here rather than in a CLI flag —
 # an unsupported task/root combination is then unrepresentable.
 TASK_BACKING: dict[str, TaskBacking] = {
+    "can_empty_select": TaskBacking(UNIVTAC_ROOT, "gelsight.yml", vitforge_tacex=True),
     "weight_classify": TaskBacking(
         VITAFORGE_ROOT,
         "gelsight.yml",
@@ -2601,6 +2603,19 @@ def _sim_get_grasp_pose(object_name: str, allow_ground_truth: bool = False) -> d
 
     object_pos = np.asarray(obj_data["position"], dtype=np.float64)
 
+    if _TASK_NAME == "can_empty_select" and allow_ground_truth:
+        if object_name not in ("fanta", "pepsi"):
+            return {"position": None, "quaternion_wxyz": None}
+        from envs.utils.transforms import construct_grasp_pose
+        task_module = sys.modules[type(_TASK).__module__]
+        height = task_module.CAN_HEIGHTS[object_name] - task_module.GRASP_HEIGHT_MARGIN
+        centre = construct_grasp_pose(
+            object_pos + np.array([0.0, 0.0, height]),
+            [0.0, 0.0, 1.0], [1.0, 0.0, 0.0],
+        )
+        wrist = _TASK._robot_manager.gripper_center_to_ee(centre)
+        return {"position": wrist.p.tolist(), "quaternion_wxyz": wrist.q.tolist()}
+
     if allow_ground_truth:
         # The task's own module — the one its class was defined in, so the
         # constant read here cannot come from a different fork of the env.
@@ -2723,6 +2738,10 @@ def _find_actor(object_name: str):
     this is the one that was moved into the robot's reach during reset.
     """
     global _TASK
+    if _TASK_NAME == "can_empty_select":
+        if object_name == "basket":
+            return _TASK.basket
+        return getattr(_TASK, "active_cans", {}).get(object_name)
     actors = _TASK._actor_manager.actors
     actor = actors.get(object_name)
     if actor is not None:
@@ -3888,6 +3907,9 @@ def main() -> None:
 
     # Parse combined args
     cli = parser.parse_args()
+    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning",
+                            loop="asyncio", http="h11", ws="none")
+    config.load()
 
     # Claim the port before the expensive Isaac Sim startup. Passing this
     # socket to Uvicorn below keeps the check race-free: no other server can
@@ -3963,7 +3985,6 @@ def main() -> None:
     # -------------------------------------------------------------------
     # Start uvicorn in daemon thread; keep main thread for Isaac Sim.
     # -------------------------------------------------------------------
-    config = uvicorn.Config(app, host=cli.host, port=cli.port, log_level="warning")
     server = uvicorn.Server(config)
 
     def _run_uvicorn() -> None:

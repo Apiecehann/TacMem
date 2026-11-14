@@ -28,6 +28,7 @@ task_types:
   classify:
     # Tactile is the answer itself: the reading is the classification.
     - weight_classify
+    - can_empty_select
     - hardness_classify
     - grasp_classify
     - tactile_memory_match

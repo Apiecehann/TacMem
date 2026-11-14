@@ -37,6 +37,74 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_ROOT = REPO_ROOT / "env_configs" / "univtac"
 LIBRARY_ROOT = REPO_ROOT / "capx" / "tactile_skills"
 
+
+def test_empty_can_entry_uses_native_gelsight_config(monkeypatch):
+    from capx.serving import launch_univtac_server as server
+
+    assert "can_empty_select" in server.AVAILABLE_TASKS
+    backing = server._backing_for("can_empty_select")
+    assert backing.root == server.UNIVTAC_ROOT
+    assert backing.config_file == "gelsight.yml"
+    assert backing.vitforge_tacex
+    assert backing.cfg_overrides == ()
+
+
+def test_empty_can_public_names_resolve_active_actors(monkeypatch):
+    from capx.serving import launch_univtac_server as server
+
+    fanta, pepsi, basket = object(), object(), object()
+    task = SimpleNamespace(active_cans={"fanta": fanta, "pepsi": pepsi}, basket=basket)
+    monkeypatch.setattr(server, "_TASK", task)
+    monkeypatch.setattr(server, "_TASK_NAME", "can_empty_select")
+    assert server._find_actor("fanta") is fanta
+    assert server._find_actor("pepsi") is pepsi
+    assert server._find_actor("basket") is basket
+    for private_name in ("empty_can", "fanta_light_can", "pepsi_heavy_can", "can"):
+        assert server._find_actor(private_name) is None
+    replacement = object()
+    task.active_cans["fanta"] = replacement
+    assert server._find_actor("fanta") is replacement
+
+
+def test_empty_can_bbox_uses_existing_client_contract(monkeypatch):
+    import numpy as np
+    from capx.integrations.tactile.univtac_api import UniVTACTactileApi
+    from capx.serving import launch_univtac_server as server
+
+    pose = SimpleNamespace(p=np.array([0.5, -0.2, 0.002]), q=np.array([1., 0., 0., 0.]))
+    actor = SimpleNamespace(get_pose=lambda: pose)
+    monkeypatch.setattr(server, "_TASK", SimpleNamespace(basket=actor))
+    monkeypatch.setattr(server, "_TASK_NAME", "can_empty_select")
+    monkeypatch.setattr(server, "_try_get_bbox_extent", lambda value: [0.162, 0.162, 0.145])
+    api = object.__new__(UniVTACTactileApi)
+    calls = []
+
+    def get(endpoint, params):
+        calls.append((endpoint, params))
+        return server._sim_get_object_pose(params["object_name"], params.get("return_bbox_extent") == "true")
+
+    api._get = get
+    position, quaternion, size = api.get_object_pose("basket", return_bbox_extent=True)
+    np.testing.assert_allclose(position, pose.p)
+    np.testing.assert_allclose(quaternion, pose.q)
+    np.testing.assert_allclose(size, [0.162, 0.162, 0.145])
+    assert calls == [("/object_pose", {"object_name": "basket", "return_bbox_extent": "true"})]
+    assert api.get_object_pose("basket")[2] is None
+
+
+def test_empty_can_config_has_one_program_and_full_routed_skills():
+    from capx.envs.tasks.tactile.univtac_weight_classify import UniVTACEmptyCanSelectCodeEnv
+
+    config = yaml.safe_load((CONFIG_ROOT / "can_empty_select/univtac_can_empty_select.yaml").read_text())
+    assert config["env"]["cfg"]["apis"] == ["UniVTACTactileApi"]
+    assert config["env"]["cfg"]["multi_turn_prompt"] is None
+    assert config["multiturn_limit"] == 1
+    assert config["trace_mode"] == "off"
+    assert config["use_img_differencing"] is False
+    assert UniVTACEmptyCanSelectCodeEnv.tactile_skills_verbose
+    assert not hasattr(UniVTACEmptyCanSelectCodeEnv, "oracle_code")
+    assert default_library().for_task("can_empty_select")
+
 LINK = re.compile(r"\[\[([^\]]+)\]\]")
 
 # The optional-paragraph marker an API docstring used to carry.  Deleted along

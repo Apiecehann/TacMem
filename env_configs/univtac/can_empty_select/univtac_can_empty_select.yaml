@@ -1,0 +1,66 @@
+env:
+  _target_: capx.envs.tasks.tactile.univtac_weight_classify.UniVTACEmptyCanSelectCodeEnv
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    low_level: env_configs/univtac/can_empty_select/low_level_can_empty_select.yaml
+    privileged: false
+    apis:
+      - UniVTACTactileApi
+    deliver_tactile_skills: true
+    multi_turn_prompt: null
+    prompt: |
+      You control a Franka Emika robot with GelSight Mini sensors on both fingertips.
+      Find the empty can by touch and place it inside the basket. There are two
+      reachable cans, named "fanta" and "pepsi", and one "basket". Exactly one can
+      is empty; brand and appearance do not reveal which. Leave the other can
+      outside the basket. Release the selected can into the basket and stop.
+
+      Use these public names with get_object_pose. The function always returns
+      (position, quaternion_wxyz, bbox_extent). Set return_bbox_extent=True to
+      obtain the full outer width, depth and height in metres. The position is
+      the object's world origin at its bottom, not its geometric centre or a
+      wrist target. The basket is upright; its collision rim height is its
+      origin z plus bbox_extent[2]. The outer size is not its interior opening.
+      Query this geometry instead of assuming a drop height or copying a plate
+      placement coordinate from another task.
+
+      The native reset opens the gripper; it does not approach either can.
+      sample_grasp_pose("fanta") and sample_grasp_pose("pepsi") return wrist
+      targets rebuilt from each active can's current geometry. They are not
+      cached from the reset wrist pose. goto_pose targets the wrist, not the can.
+
+      Use the existing tactile skills where their stated conditions apply.
+      This is a new object geometry: old task-specific thresholds are historical
+      evidence, not ground-truth empty/full labels for these cans. You may probe
+      both cans using their public tactile observations and compare responses.
+      Object positions are available for reaching, clearance and checking actual
+      grasp/lift progress; true mass, empty/full identity and task scoring are
+      unavailable to your program.
+
+      After returning a probed can and opening the gripper, raise the empty hand
+      before moving towards the other can. Clear the basket rim with the held
+      object before crossing it. Respect the documented motion limits and use
+      bounded recovery within this one program. Do not call check_success or
+      read simulator files, metadata or hidden labels; the host scores the final
+      state. Write ONLY one complete executable Python program, without code
+      fences or input(). There is no later code-generation round.
+
+api_servers:
+  - _target_: capx.serving.launch_univtac_server.main
+    task: can_empty_select
+    port: 8146
+    host: 127.0.0.1
+
+model: gpt-6-astra
+reasoning_effort: high
+max_tokens: 8192
+record_video: true
+output_dir: /mnt/data/ljz/opentacbench/empty-can-generalization
+use_visual_feedback: true
+use_img_differencing: false
+use_video_differencing: false
+trace_mode: "off"
+trials: 1
+resume_idx: 1
+num_workers: 1
+multiturn_limit: 1
