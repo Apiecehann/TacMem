@@ -14,6 +14,7 @@ import random
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import requests
@@ -156,6 +157,95 @@ def _responses_content(body: dict) -> str | None:
         if part.get("type") == "output_text"
     ]
     return "".join(parts) or None
+
+
+def _read_responses_stream(response, folder: Path | None, deadline: float):
+    if "text/event-stream" not in response.headers.get("Content-Type", "").lower():
+        if folder is not None:
+            (folder / "response.json").write_text(response.text, encoding="utf-8")
+        raise RuntimeError("Responses requires SSE; non-streaming response rejected")
+    response.encoding = "utf-8"
+    stream_log = (folder / "response.events.sse").open("w", encoding="utf-8") if folder else None
+    deltas = {}
+    finalized = {}
+    final_response = None
+
+    def finish_part(key, text):
+        if not isinstance(text, str):
+            raise RuntimeError("Responses stream contains invalid text")
+        if key in deltas and "".join(deltas[key]) != text:
+            raise RuntimeError("Responses stream text does not match its final text")
+        if key in finalized and finalized[key] != text:
+            raise RuntimeError("Responses stream contains conflicting final text")
+        finalized[key] = text
+
+    def consume(data):
+        nonlocal final_response
+        if data == "[DONE]":
+            return True
+        event = json.loads(data)
+        kind = event.get("type")
+        key = (event.get("output_index", 0), event.get("content_index", 0))
+        if kind == "response.output_text.delta":
+            deltas.setdefault(key, []).append(event["delta"])
+        elif kind == "response.output_text.done":
+            finish_part(key, event["text"])
+        elif kind == "response.output_item.done":
+            item = event.get("item", {})
+            if item.get("type") == "message" and item.get("status") == "completed":
+                for index, part in enumerate(item.get("content") or []):
+                    if part.get("type") == "output_text":
+                        finish_part((key[0], index), part["text"])
+        elif kind in {"response.completed", "response.failed", "response.incomplete"}:
+            final_response = event.get("response", {})
+            if folder is not None:
+                (folder / "response.json").write_text(json.dumps(final_response, ensure_ascii=False), encoding="utf-8")
+            if kind != "response.completed" or final_response.get("status") != "completed" or final_response.get("error"):
+                raise RuntimeError(f"Responses stream ended with {kind}")
+            return True
+        elif kind == "error":
+            raise RuntimeError("Responses stream reported an error")
+        return False
+
+    data_lines = []
+    try:
+        for line in response.iter_lines(decode_unicode=True):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Responses stream exceeded the model request deadline")
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
+            if stream_log is not None:
+                stream_log.write(line + "\n")
+                stream_log.flush()
+            if not line:
+                if data_lines:
+                    data = "\n".join(data_lines)
+                    data_lines = []
+                    if consume(data):
+                        break
+            elif line.startswith("data:"):
+                data_lines.append(line[5:].lstrip(" "))
+        else:
+            if data_lines:
+                consume("\n".join(data_lines))
+        if final_response is None:
+            raise RuntimeError("Responses stream ended without response.completed")
+        body_text = _responses_content(final_response)
+        text = "".join(finalized[key] for key in sorted(finalized)) if finalized else body_text
+        if deltas and not set(deltas).issubset(finalized):
+            delta_text = "".join("".join(deltas[key]) for key in sorted(deltas))
+            if not body_text or delta_text != body_text:
+                raise RuntimeError("Responses stream ended with unfinished text")
+        if body_text and text != body_text:
+            raise RuntimeError("Responses final response disagrees with streamed text")
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError("Responses stream completed without output text")
+        if folder is not None:
+            (folder / "response_text.txt").write_text(text, encoding="utf-8")
+        return final_response, text
+    finally:
+        if stream_log is not None:
+            stream_log.close()
 
 
 def is_vlm_model(model: str) -> bool:
@@ -317,6 +407,53 @@ def _completions_to_responses_convert_prompt(prompt: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _query_responses(args, prompt):
+    if getattr(args, "single_program", False):
+        if getattr(args, "_code_request_count", 0):
+            raise RuntimeError("The single-program request budget is exhausted")
+        args._code_request_count = 1
+    payload = {
+        "model": args.model,
+        "input": _completions_to_responses_convert_prompt(copy.deepcopy(prompt)),
+        "reasoning": {"effort": args.reasoning_effort},
+        "max_output_tokens": args.max_tokens,
+        "stream": True,
+    }
+    folder_name = getattr(args, "request_log_dir", None) or os.getenv("CAPX_MODEL_LOG_DIR")
+    folder = Path(folder_name) if folder_name else None
+    if folder is not None:
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "request.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    timeout = float(getattr(args, "model_timeout_seconds", 600))
+    started = time.monotonic()
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    key = args.api_key or os.getenv("CAPX_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    status = {"completed": False, "stream": True, "http_status": None}
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            with session.post(_responses_server_url(args.server_url), headers=headers,
+                              json=payload, stream=True, timeout=(30, timeout)) as response:
+                status["http_status"] = response.status_code
+                if response.status_code != 200 and folder is not None:
+                    (folder / "response.json").write_text(response.text, encoding="utf-8")
+                response.raise_for_status()
+                body, content = _read_responses_stream(response, folder, started + timeout)
+        usage = _usage_from_body(body)
+        _TOKEN_USAGE.append(usage)
+        status.update(completed=True, usage=body.get("usage"), content_chars=len(content))
+        return {"content": content, "reasoning": None, "usage": usage}
+    except BaseException as exc:
+        status.update(error_type=type(exc).__name__, error=str(exc))
+        raise
+    finally:
+        status["elapsed_seconds"] = time.monotonic() - started
+        if folder is not None:
+            (folder / "request_status.json").write_text(json.dumps(status), encoding="utf-8")
+
+
 def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     """Query vLLM server for code generation.
 
@@ -326,6 +463,9 @@ def query_model(args: LaunchArgs | ModelQueryArgs, prompt: list[dict]) -> str:
     Returns:
         Model response content
     """
+
+    if is_responses_model(args.model):
+        return _query_responses(args, prompt)
 
     # Route OpenRouter models to the OpenRouter proxy server
     if is_openrouter_model(args.model):
