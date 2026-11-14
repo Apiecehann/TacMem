@@ -1,0 +1,176 @@
+{
+  "schema": "protected_skill_dropout_paired_seeds.v1",
+  "test_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "development_seeds": [],
+  "task_order": [
+    "tactile_memory_match",
+    "tension_strap",
+    "bulb_tightening",
+    "blind_pick_balls"
+  ],
+  "requests": {
+    "combined_match": {
+      "0": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "1": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "2": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "3": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      },
+      "4": {
+        "match_property": "combined",
+        "operation": "probe reference, compare both candidates, place matching candidate on match slot"
+      }
+    },
+    "tension_strap": {
+      "0": {
+        "force_time_sequence": [
+          17.02,
+          1.75,
+          14.16,
+          1.96
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "1": {
+        "force_time_sequence": [
+          10.25,
+          1.32,
+          12.89,
+          1.38
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "2": {
+        "force_time_sequence": [
+          15.47,
+          1.78,
+          14.29,
+          1.42
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "3": {
+        "force_time_sequence": [
+          12.24,
+          1.56,
+          14.4,
+          1.69
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      },
+      "4": {
+        "force_time_sequence": [
+          11.94,
+          1.49,
+          11.84,
+          1.5
+        ],
+        "force_unit": "N",
+        "duration_unit": "s",
+        "tolerance_N": 0.5
+      }
+    },
+    "bulb_tightening": {
+      "0": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "1": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "2": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "3": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      },
+      "4": {
+        "operation": "thread and seat the bulb without breaking it, finish the complete native task"
+      }
+    },
+    "blind_pick_balls": {
+      "0": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "1": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "2": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "3": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      },
+      "4": {
+        "target_class": "textured",
+        "operation": "lift the selected ball clear of the box and release into the bowl"
+      }
+    }
+  },
+  "smoke_requests": {},
+  "split_status": "Pilot on existing seeds 0-4; not an unseen-seed generalization evaluation",
+  "strap_color_mode": "tricolor",
+  "request_source": {
+    "path": "env_configs/ablations/seeds40.json",
+    "sha256": "e3381cddaf0c0b819133a43517e95a8027a067fbf9a9e9c338d6261bdfd98288",
+    "mapping": {
+      "0": 41000,
+      "1": 41001,
+      "2": 41002,
+      "3": 41003,
+      "4": 41004,
+      "5": 41005,
+      "6": 41006,
+      "7": 41007,
+      "8": 41008,
+      "9": 41009,
+      "10": 41010,
+      "11": 41011,
+      "12": 41012,
+      "13": 41013,
+      "14": 41014,
+      "15": 41015,
+      "16": 41016,
+      "17": 41017,
+      "18": 41018,
+      "19": 41019,
+      "20": 41020,
+      "21": 41021,
+      "22": 41022,
+      "23": 41023,
+      "24": 41024,
+      "25": 41025,
+      "26": 41026,
+      "27": 41027,
+      "28": 41028,
+      "29": 41029
+    }
+  }
+}

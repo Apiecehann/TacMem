@@ -1,0 +1,391 @@
+{
+  "schema": "protected_skill_dropout_pilot.v1",
+  "base_commit": "b54178ec979b8d6c2f877204f0ae64630dead5a1",
+  "groups": {
+    "drop10": {
+      "tactile_memory_match": {
+        "config": "env_configs/ablations/skill_dropout/tactile_memory_match_drop10.yaml",
+        "retained_skills": 27,
+        "removed_skills": 2,
+        "actual_deleted_percent": 9.090909090909092,
+        "exec_alarm_seconds": 2400,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 4200
+      },
+      "tension_strap": {
+        "config": "env_configs/ablations/skill_dropout/tension_strap_drop10.yaml",
+        "retained_skills": 11,
+        "removed_skills": 1,
+        "actual_deleted_percent": 12.5,
+        "exec_alarm_seconds": 2400,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 4200
+      },
+      "bulb_tightening": {
+        "config": "env_configs/ablations/skill_dropout/bulb_tightening_drop10.yaml",
+        "retained_skills": 23,
+        "removed_skills": 2,
+        "actual_deleted_percent": 10.526315789473685,
+        "exec_alarm_seconds": 10500,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 12000
+      },
+      "blind_pick_balls": {
+        "config": "env_configs/ablations/skill_dropout/blind_pick_balls_drop10.yaml",
+        "retained_skills": 19,
+        "removed_skills": 2,
+        "actual_deleted_percent": 11.764705882352942,
+        "exec_alarm_seconds": 7200,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 9000
+      }
+    },
+    "drop20": {
+      "tactile_memory_match": {
+        "config": "env_configs/ablations/skill_dropout/tactile_memory_match_drop20.yaml",
+        "retained_skills": 25,
+        "removed_skills": 4,
+        "actual_deleted_percent": 18.181818181818183,
+        "exec_alarm_seconds": 2400,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 4200
+      },
+      "tension_strap": {
+        "config": "env_configs/ablations/skill_dropout/tension_strap_drop20.yaml",
+        "retained_skills": 10,
+        "removed_skills": 2,
+        "actual_deleted_percent": 25.0,
+        "exec_alarm_seconds": 2400,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 4200
+      },
+      "bulb_tightening": {
+        "config": "env_configs/ablations/skill_dropout/bulb_tightening_drop20.yaml",
+        "retained_skills": 21,
+        "removed_skills": 4,
+        "actual_deleted_percent": 21.05263157894737,
+        "exec_alarm_seconds": 10500,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 12000
+      },
+      "blind_pick_balls": {
+        "config": "env_configs/ablations/skill_dropout/blind_pick_balls_drop20.yaml",
+        "retained_skills": 18,
+        "removed_skills": 3,
+        "actual_deleted_percent": 17.647058823529413,
+        "exec_alarm_seconds": 7200,
+        "trial_timeout_seconds": 3600,
+        "process_timeout_seconds": 9000
+      }
+    }
+  },
+  "conditions": [
+    "drop10",
+    "drop20"
+  ],
+  "test_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "task_order": [
+    "tactile_memory_match",
+    "tension_strap",
+    "bulb_tightening",
+    "blind_pick_balls"
+  ],
+  "planned_runs": 40,
+  "schedule": [
+    {
+      "seed": 0,
+      "task": "tactile_memory_match",
+      "condition": "drop10"
+    },
+    {
+      "seed": 0,
+      "task": "tactile_memory_match",
+      "condition": "drop20"
+    },
+    {
+      "seed": 0,
+      "task": "tension_strap",
+      "condition": "drop10"
+    },
+    {
+      "seed": 0,
+      "task": "tension_strap",
+      "condition": "drop20"
+    },
+    {
+      "seed": 0,
+      "task": "bulb_tightening",
+      "condition": "drop10"
+    },
+    {
+      "seed": 0,
+      "task": "bulb_tightening",
+      "condition": "drop20"
+    },
+    {
+      "seed": 0,
+      "task": "blind_pick_balls",
+      "condition": "drop10"
+    },
+    {
+      "seed": 0,
+      "task": "blind_pick_balls",
+      "condition": "drop20"
+    },
+    {
+      "seed": 1,
+      "task": "tactile_memory_match",
+      "condition": "drop10"
+    },
+    {
+      "seed": 1,
+      "task": "tactile_memory_match",
+      "condition": "drop20"
+    },
+    {
+      "seed": 1,
+      "task": "tension_strap",
+      "condition": "drop10"
+    },
+    {
+      "seed": 1,
+      "task": "tension_strap",
+      "condition": "drop20"
+    },
+    {
+      "seed": 1,
+      "task": "bulb_tightening",
+      "condition": "drop10"
+    },
+    {
+      "seed": 1,
+      "task": "bulb_tightening",
+      "condition": "drop20"
+    },
+    {
+      "seed": 1,
+      "task": "blind_pick_balls",
+      "condition": "drop10"
+    },
+    {
+      "seed": 1,
+      "task": "blind_pick_balls",
+      "condition": "drop20"
+    },
+    {
+      "seed": 2,
+      "task": "tactile_memory_match",
+      "condition": "drop10"
+    },
+    {
+      "seed": 2,
+      "task": "tactile_memory_match",
+      "condition": "drop20"
+    },
+    {
+      "seed": 2,
+      "task": "tension_strap",
+      "condition": "drop10"
+    },
+    {
+      "seed": 2,
+      "task": "tension_strap",
+      "condition": "drop20"
+    },
+    {
+      "seed": 2,
+      "task": "bulb_tightening",
+      "condition": "drop10"
+    },
+    {
+      "seed": 2,
+      "task": "bulb_tightening",
+      "condition": "drop20"
+    },
+    {
+      "seed": 2,
+      "task": "blind_pick_balls",
+      "condition": "drop10"
+    },
+    {
+      "seed": 2,
+      "task": "blind_pick_balls",
+      "condition": "drop20"
+    },
+    {
+      "seed": 3,
+      "task": "tactile_memory_match",
+      "condition": "drop10"
+    },
+    {
+      "seed": 3,
+      "task": "tactile_memory_match",
+      "condition": "drop20"
+    },
+    {
+      "seed": 3,
+      "task": "tension_strap",
+      "condition": "drop10"
+    },
+    {
+      "seed": 3,
+      "task": "tension_strap",
+      "condition": "drop20"
+    },
+    {
+      "seed": 3,
+      "task": "bulb_tightening",
+      "condition": "drop10"
+    },
+    {
+      "seed": 3,
+      "task": "bulb_tightening",
+      "condition": "drop20"
+    },
+    {
+      "seed": 3,
+      "task": "blind_pick_balls",
+      "condition": "drop10"
+    },
+    {
+      "seed": 3,
+      "task": "blind_pick_balls",
+      "condition": "drop20"
+    },
+    {
+      "seed": 4,
+      "task": "tactile_memory_match",
+      "condition": "drop10"
+    },
+    {
+      "seed": 4,
+      "task": "tactile_memory_match",
+      "condition": "drop20"
+    },
+    {
+      "seed": 4,
+      "task": "tension_strap",
+      "condition": "drop10"
+    },
+    {
+      "seed": 4,
+      "task": "tension_strap",
+      "condition": "drop20"
+    },
+    {
+      "seed": 4,
+      "task": "bulb_tightening",
+      "condition": "drop10"
+    },
+    {
+      "seed": 4,
+      "task": "bulb_tightening",
+      "condition": "drop20"
+    },
+    {
+      "seed": 4,
+      "task": "blind_pick_balls",
+      "condition": "drop10"
+    },
+    {
+      "seed": 4,
+      "task": "blind_pick_balls",
+      "condition": "drop20"
+    }
+  ],
+  "denominator": "Nonprotected skill entries actually delivered to each task; not total library size",
+  "rounding": "floor(eligible_count * fraction + 0.5); report the actual ratio",
+  "nested_masks": true,
+  "mask_seed": 20261114,
+  "protected_manifest": "env_configs/ablations/skill_dropout/protected_21.json",
+  "skill_masks": "env_configs/ablations/skill_dropout/skill_masks.json",
+  "full_skill_root": "env_configs/ablations/tactile_features/skills/full",
+  "tactile_feature_groups": "BDS",
+  "skills_frozen": true,
+  "skill_updates": false,
+  "code_reuse": false,
+  "regenerations": 0,
+  "full_library_control": false,
+  "model": "gpt-6-astra",
+  "reasoning_effort": "high",
+  "stream": true,
+  "max_output_tokens": 8192,
+  "model_timeout_seconds": 600,
+  "code_requests_per_attempt": 1,
+  "automatic_retry": {
+    "max_attempts_per_episode": 3,
+    "backoff_seconds": [
+      30,
+      60
+    ],
+    "only": "Transient provider/connection/initialization timeout before program generation or policy execution",
+    "never": [
+      "generated_code_error",
+      "native_task_failure",
+      "timeout_after_policy_execution"
+    ],
+    "billing_stop": "Only unsuccessful model requests with HTTP 401/402/403 or structured provider authentication/quota errors; never match billing keywords in generated code or terminal output"
+  },
+  "launch": {
+    "cwd": "repository root",
+    "entrypoint": "capx.envs.launch",
+    "inline_bootstrap": "import json\nfrom pathlib import Path\nfrom capx.envs import launch\noriginal_loader=launch._load_config\ndef configured_loader(args):\n    result=original_loader(args)\n    args.model_timeout_seconds=600\n    p=Path(args.request_log_dir).parent/'protocol.json'\n    data=json.loads(p.read_text());data['model_timeout_seconds']=args.model_timeout_seconds\n    p.write_text(json.dumps(data,ensure_ascii=False,indent=2))\n    print('MODEL_REQUEST_TIMEOUT_SECONDS='+str(args.model_timeout_seconds),flush=True)\n    return result\nlaunch._load_config=configured_loader\nlaunch.main(launch.tyro.cli(launch.LaunchArgs))\n",
+    "argv": [
+      "${CAPX_BASELINE_PYTHON}",
+      "-c",
+      "<inline_bootstrap>",
+      "--config-path",
+      "<groups[condition][task].config>"
+    ],
+    "per_episode_environment": {
+      "CAPX_TASK_SEED": "<seed>",
+      "GPU": "<explicit physical GPU index>",
+      "CAPX_TACEX_RUNTIME_ROOT": "<task_backing_root>/third_party/TacEx"
+    },
+    "sequential": true,
+    "gpu_policy": "Check the explicitly selected GPU before each attempt; pause if busy; do not automatically switch",
+    "proxy_policy": "Remove HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY and lowercase forms from client and simulator",
+    "simulator_umask": "0022",
+    "environment_paths": "Discover local paths; do not copy paths from another machine",
+    "required_environment": [
+      "CAPX_BASELINE_PYTHON",
+      "CAPX_SIM_PYTHON",
+      "CAPX_SIM_HTTP_DEPS",
+      "CAPX_API_KEY",
+      "CAPX_MODEL_URL",
+      "CAPX_ABLATION_OUTPUT_DIR",
+      "GPU",
+      "UNIVTAC_PORT",
+      "UNIVTAC_SERVER_URL",
+      "UNIVTAC_ROOT",
+      "VITAFORGE_ROOT",
+      "UNIVTAC_COMPOSABLE_ROOT"
+    ],
+    "backing_roots": {
+      "tactile_memory_match": "UNIVTAC_COMPOSABLE_ROOT",
+      "tension_strap": "VITAFORGE_ROOT",
+      "bulb_tightening": "VITAFORGE_ROOT",
+      "blind_pick_balls": "UNIVTAC_ROOT"
+    },
+    "environment_binding": "UNIVTAC_ROOT and VITAFORGE_ROOT point to the same compatible OpenTacBench checkout; combination uses the existing composable checkout",
+    "dependency_check": "Verify uvicorn.Config(FastAPI()).load() with CAPX_SIM_PYTHON and CAPX_SIM_HTTP_DEPS before GPU startup; package import alone does not verify WebSocket modules",
+    "compatibility": {
+      "blind_pick_balls": "UNIVTAC_BLIND_LEGACY_PHYSX=1 for the verified Isaac Sim 4.5 environment",
+      "tactile_memory_match": "CAPX_MEMORY_MATCH_LIVE_GRASP=1; use the current compact native builder without the obsolete compact_fixed_pair_scene override"
+    }
+  },
+  "metrics": {
+    "success_rate": "Native task_completed=True / attempted unique seeds; not generated or missing verdict count as failure, unstarted are excluded",
+    "input_tokens": "Provider actual usage, selected attempt; missing stays unknown",
+    "output_tokens": "Provider actual usage, selected attempt; missing stays unknown",
+    "successful_seed_mean_physics_steps": "Only native-success runs with complete physics_steps; exclude reset/query/END; report coverage",
+    "retry_cost": "Record all attempts separately; select the final authorized attempt, never the best result"
+  },
+  "baseline_state": "Do not update skills, run CC/SkillOpt, change task prompts, use feature-deleted libraries or modify OpenTacBench; only the listed skills are omitted"
+}

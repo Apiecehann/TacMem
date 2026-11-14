@@ -1,0 +1,119 @@
+{
+  "schema": "protected_skill_identities.v1",
+  "source": {
+    "repository": "https://github.com/SMF-an/cap-tac",
+    "commit": "3758efb4c5609c026ae4963c661d30e4556297d4",
+    "skill_root": "capx/tactile_skills/skills",
+    "license": "MIT"
+  },
+  "source_content_sha256": "8a44c9b170c4a975f536d6385ea08ae53223b709668d460c957a450a86713c66",
+  "protected_count": 21,
+  "scope": "Protect identities appearing in each task full BDS list; retain the current full BDS contents, do not import or rewrite original-21 texts",
+  "entries": [
+    {
+      "id": "S1",
+      "name": "depth-grip-scale",
+      "family": "sense"
+    },
+    {
+      "id": "S13",
+      "name": "shear-vs-displacement",
+      "family": "sense"
+    },
+    {
+      "id": "S2",
+      "name": "gel-shear-weight",
+      "family": "sense"
+    },
+    {
+      "id": "S4",
+      "name": "grip-force-by-mass",
+      "family": "sense"
+    },
+    {
+      "id": "R16",
+      "name": "weigh-grasp-by-lift",
+      "family": "protocol"
+    },
+    {
+      "id": "S7",
+      "name": "hardness-two-closes",
+      "family": "sense"
+    },
+    {
+      "id": "S8",
+      "name": "position-mode-for-yield",
+      "family": "sense"
+    },
+    {
+      "id": "S11",
+      "name": "texture-slope-two-grips",
+      "family": "sense"
+    },
+    {
+      "id": "R11",
+      "name": "memory-match-one-grasp",
+      "family": "protocol"
+    },
+    {
+      "id": "S12",
+      "name": "can-texture-difference",
+      "family": "sense"
+    },
+    {
+      "id": "S20",
+      "name": "follow-is-signal",
+      "family": "sense"
+    },
+    {
+      "id": "A26",
+      "name": "strap-load-is-shear-difference",
+      "family": "sense"
+    },
+    {
+      "id": "A30",
+      "name": "strap-grasp-and-ramp",
+      "family": "act"
+    },
+    {
+      "id": "R15",
+      "name": "strap-hold-creeps",
+      "family": "protocol"
+    },
+    {
+      "id": "A14",
+      "name": "mirrored-shear-slide",
+      "family": "act"
+    },
+    {
+      "id": "A10",
+      "name": "thread-direction-by-legs",
+      "family": "act"
+    },
+    {
+      "id": "A11",
+      "name": "lead-by-overshoot",
+      "family": "act"
+    },
+    {
+      "id": "A13",
+      "name": "seat-by-slide-collapse",
+      "family": "act"
+    },
+    {
+      "id": "S23",
+      "name": "texture-in-relief",
+      "family": "sense"
+    },
+    {
+      "id": "S24",
+      "name": "wide-pads-see-nothing",
+      "family": "sense"
+    },
+    {
+      "id": "S25",
+      "name": "piano-gel-force-band",
+      "family": "sense"
+    }
+  ]
+}

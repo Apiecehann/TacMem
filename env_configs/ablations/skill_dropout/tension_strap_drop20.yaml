@@ -1,0 +1,169 @@
+agent0_mode: native
+api_servers:
+- _target_: capx.serving.launch_univtac_server.main
+  device: cuda:0
+  headless: true
+  host: 127.0.0.1
+  kit_args: --/renderer/multiGpu/enabled=false --/renderer/multiGpu/maxGpuCount=1
+    --/renderer/multiGpu/autoEnable=false
+  observation_mode: native
+  port: ${oc.decode:${oc.env:UNIVTAC_PORT,8132}}
+  python: ${oc.env:CAPX_SIM_PYTHON}
+  seed: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+  task: tension_strap
+  tactile_feature_groups: BDS
+env:
+  _target_: capx.envs.tasks.base.CodeExecutionEnvBase
+  cfg:
+    _target_: capx.envs.tasks.base.CodeExecEnvConfig
+    api_functions:
+      UniVTACTactileApi:
+      - goto_pose
+      - move_delta
+      - open_gripper
+      - close_gripper
+      - get_ee_pose
+      - get_object_pose
+      - sample_grasp_pose
+      - rotate_gripper
+      - get_tactile_data
+      - submit_episode
+    apis:
+    - UniVTACTactileApi
+    append_final_check: submit_episode
+    low_level:
+      _target_: capx.envs.tasks.tactile.low_level.UniVTACStubEnv
+      task_name: tension_strap
+    multi_turn_prompt: ''
+    observation_mode: native
+    privileged: false
+    prompt: '
+
+      You are controlling a Franka Emika robot with GelSight Mini tactile sensors
+
+      on both fingertips. The API is described below.
+
+
+      Goal: execute this episode''s two-stage force and time request: {force_request}.
+
+      The force_time_sequence field is [first force in newtons, first hold in seconds,
+
+      second force in newtons, second hold in seconds]. Complete the stages in that
+
+      order. Each hold counts only while the force stays continuously within half
+
+      a newton of its target. The strap is called "elastic_strap".
+
+
+      Before this program starts, initialization opens the gripper and moves it
+
+      above the strap handle, then down to the handle grasp pose. The actual pose
+
+      is checked before handoff. The gripper is still open: begin by closing it
+
+      with the documented gripper API. Do not repeat the initial approach.
+
+      The preparation has not closed the gripper or issued a pulling action.
+
+
+      The simulation advances only while the hand is being commanded; waiting passes
+
+      no time at all, so a hold is made of commands.
+
+
+      Judge the elastic strap tension from the available documented scalar observations
+      and compatible retained skill rules.
+
+
+      Infer the tension yourself and attempt both requested force-and-time stages.
+
+      Do not stop, return early, or raise an exception solely because a calibrated
+
+      force estimate, conversion formula, or known-force reference is unavailable.
+
+      Make your best attempt using the observations and APIs available to you.
+
+      Continue to respect native termination, action limits, and execution budgets.
+
+
+      The strap is elastic, so the load is set by where the hand is and by nothing
+
+      else - the pull raises it and backing off lowers it by as much. There is no
+
+      second lever and nothing to press against, and nothing is scored on arriving:
+
+      the score is the two holds.
+
+
+      Experimental execution contract:
+
+      Use only functions and per-side scalar fields documented for this configuration.
+
+      Skills referring to unavailable helpers do not register those helpers: implement
+
+      any retained comparison with the documented primitive actions and observations.
+
+      Keep unavailable or invalid measurements unknown; never replace them with zeros
+
+      or invent a calibrated conversion. Do not stop solely because an attribute is
+
+      unavailable. Make a bounded physical attempt using the observations that remain.
+
+      The task requirements and native termination still apply. An ended episode means
+
+      no further motion or gripper calls, including an otherwise planned retreat.
+
+      Return one complete executable Python program; no subsequent regeneration occurs.
+
+
+      Available per-side scalar fields (left_/right_ prefixes):
+
+      contact, depth_mm, marker_displacement_px, marker_shear_dx, marker_shear_dy,
+      marker_coherence, marker_anisotropy, height_roughness_mm.
+
+      Readings include physical step and time where reported. Missing channels remain
+
+      unknown on tasks that do not supply them. Raw sensor
+
+      arrays and unlisted derived estimates are not available. Native actuator control
+
+      is identical across groups; commanded controller targets are not sensor readings.
+
+      Write ONLY executable Python code (no code fences). Import numpy if needed.
+
+      '
+    tactile_skills:
+    - reflex-stop-on-events
+    - one-call-approach
+    - differential-across-states
+    - tactile-cannot-locate
+    - grasp-verification
+    - strap-hold-creeps
+    - depth-grip-scale
+    - shear-vs-displacement
+    - contact-flag-is-range
+    - strap-load-is-shear-difference
+    tactile_feature_groups: BDS
+    tactile_skill_root: env_configs/ablations/tactile_features/skills/full
+exec_alarm_seconds: 2400
+max_tokens: 8192
+model: gpt-6-astra
+num_workers: 1
+output_dir: ${oc.env:CAPX_ABLATION_OUTPUT_DIR}/drop20
+process_timeout_seconds: 4200
+reasoning_effort: high
+record_video: true
+resume_idx: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+seed_manifest: env_configs/ablations/skill_dropout/seeds5.json
+server_url: ${oc.env:CAPX_MODEL_URL,http://127.0.0.1:8110/responses}
+task_name: tension_strap
+temperature: 1.0
+trial_timeout_seconds: 3600
+trials: ${oc.decode:${oc.env:CAPX_TASK_SEED,0}}
+use_img_differencing: false
+use_multimodel: false
+use_oracle_code: false
+use_parallel_ensemble: false
+use_video_differencing: false
+use_visual_feedback: true
+use_wrist_camera: false
