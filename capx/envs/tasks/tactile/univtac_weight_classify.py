@@ -178,7 +178,38 @@ class UniVTACWeightClassifyCodeEnv(CodeExecutionEnvBase):
 
 
 class UniVTACEmptyCanSelectCodeEnv(CodeExecutionEnvBase):
-    tactile_skills_verbose = True
+    tactile_skills_verbose = False
+    tactile_skills = (
+        "one-call-approach",
+        "gel-shear-weight",
+        "shear-vs-displacement",
+        "differential-across-states",
+        "no-absolute-without-reference",
+        "no-calibration-transfer",
+        "depth-grip-scale",
+        "close-lands-on-target",
+        "contact-flag-is-range",
+        "slip-pair-baseline",
+        "lift-before-lateral",
+        "world-frame-transport",
+        "descend-until-supported",
+        "unload-before-open",
+        "settle-after-release",
+        "tactile-cannot-locate",
+    )
+
+    def _tactile_skill_block(self) -> str:
+        block = super()._tactile_skill_block()
+        if not block:
+            return block
+        from capx.tactile_skills import default_library
+
+        library = default_library()
+        scopes = "\n".join(
+            f"- {name}: {library.get(name).objects or 'unspecified'}"
+            for name in self.tactile_skills
+        )
+        return f"{block}\n\nSKILL APPLICABILITY (source objects):\n{scopes}"
 
 
 class UniVTACWeightClassifyTraceCodeEnv(UniVTACWeightClassifyCodeEnv):

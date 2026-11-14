@@ -92,7 +92,7 @@ def test_empty_can_bbox_uses_existing_client_contract(monkeypatch):
     assert api.get_object_pose("basket")[2] is None
 
 
-def test_empty_can_config_has_one_program_and_full_routed_skills():
+def test_empty_can_config_has_one_program_and_fixed_skill_summaries():
     from capx.envs.tasks.tactile.univtac_weight_classify import UniVTACEmptyCanSelectCodeEnv
 
     config = yaml.safe_load((CONFIG_ROOT / "can_empty_select/univtac_can_empty_select.yaml").read_text())
@@ -101,9 +101,26 @@ def test_empty_can_config_has_one_program_and_full_routed_skills():
     assert config["multiturn_limit"] == 1
     assert config["trace_mode"] == "off"
     assert config["use_img_differencing"] is False
-    assert UniVTACEmptyCanSelectCodeEnv.tactile_skills_verbose
+    assert not UniVTACEmptyCanSelectCodeEnv.tactile_skills_verbose
     assert not hasattr(UniVTACEmptyCanSelectCodeEnv, "oracle_code")
-    assert default_library().for_task("can_empty_select")
+    library = default_library()
+    names = UniVTACEmptyCanSelectCodeEnv.tactile_skills
+    assert len(names) == len(set(names)) == 16
+    assert set(names) <= {skill.name for skill in library.for_task("weight_classify")}
+    assert not set(names) & {"grip-force-by-mass", "weigh-grasp-by-lift", "lift-follow-height"}
+    env = object.__new__(UniVTACEmptyCanSelectCodeEnv)
+    env.cfg = SimpleNamespace(deliver_tactile_skills=True)
+    block = env._tactile_skill_block()
+    assert "## How" not in block
+    assert "## Traps" not in block
+    for name in names:
+        skill = library.get(name)
+        assert f"- {name}: {skill.summary}" in block
+        assert f"- {name}: {skill.objects}" in block
+    for value in ("0.4 px", "0.2 px", "0.05 px", "0.7-1.0", "0.72-0.99", "180 g", "1.8 g"):
+        assert value not in block
+    env.cfg.deliver_tactile_skills = False
+    assert env._tactile_skill_block() == ""
 
 LINK = re.compile(r"\[\[([^\]]+)\]\]")
 
@@ -726,6 +743,7 @@ def test_the_only_hook_override_is_the_perception_bulb_variant() -> None:
         "UniVTACTactileMemoryMatchTraceCodeEnv",
         "UniVTACTensionStrapTraceCodeEnv",
         "UniVTACWeightClassifyTraceCodeEnv",
+        "UniVTACEmptyCanSelectCodeEnv",
     }, declared
     assert declared["UniVTACArmShadowPianoCodeEnv"] == (
         "piano-gel-force-band",), declared["UniVTACArmShadowPianoCodeEnv"]
